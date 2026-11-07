@@ -1,0 +1,24 @@
+cask "macsync" do
+  version "@VERSION@"
+  sha256 "@SHA256@"
+
+  url "https://github.com/onlymehdi/macsync/releases/download/v#{version}/MacSync-#{version}.zip"
+  name "MacSync"
+  desc "Sync your Dock, apps and settings across Macs through iCloud Drive"
+  homepage "https://github.com/onlymehdi/macsync"
+
+  livecheck do
+    url :url
+    strategy :github_latest
+  end
+
+  depends_on macos: ">= :ventura"
+
+  app "MacSync.app"
+  binary "#{appdir}/MacSync.app/Contents/Helpers/macsync"
+
+  zap trash: [
+    "~/Library/Application Support/MacSync",
+    "~/Library/Preferences/com.onlymehdi.macsync.plist",
+  ]
+end

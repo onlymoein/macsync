@@ -43,7 +43,10 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 PLIST
 
 IDENTITY="${SIGN_IDENTITY:--}"
-codesign --force --options runtime --timestamp=none --sign "$IDENTITY" "$APP/Contents/Helpers/macsync"
-codesign --force --options runtime --timestamp=none --sign "$IDENTITY" "$APP"
+# Notarization requires a secure timestamp, which only a real identity can request.
+TS="--timestamp=none"
+if [ "$IDENTITY" != "-" ]; then TS="--timestamp"; fi
+codesign --force --options runtime $TS --sign "$IDENTITY" "$APP/Contents/Helpers/macsync"
+codesign --force --options runtime $TS --sign "$IDENTITY" "$APP"
 codesign --verify --strict "$APP"
 echo "Built $APP ($VERSION), signed with: $IDENTITY"
