@@ -5,9 +5,12 @@ cd "$(dirname "$0")/.."
 VERSION=$(sed -n 's/.*appVersion = "\(.*\)"/\1/p' Sources/MacSyncCore/Environment.swift)
 FLAGS=()
 if [ "${UIPROBE:-0}" = "1" ]; then FLAGS=(-Xswiftc -DUIPROBE); fi
-swift build -c release --product MacSyncApp ${FLAGS[@]+"${FLAGS[@]}"}
-swift build -c release --product macsync ${FLAGS[@]+"${FLAGS[@]}"}
-BIN=$(swift build -c release --show-bin-path)
+# Universal by default (Apple silicon and Intel). ARCHS=arm64 builds faster for local use.
+ARCH_FLAGS=()
+for a in ${ARCHS:-arm64 x86_64}; do ARCH_FLAGS+=(--arch "$a"); done
+swift build -c release "${ARCH_FLAGS[@]}" --product MacSyncApp ${FLAGS[@]+"${FLAGS[@]}"}
+swift build -c release "${ARCH_FLAGS[@]}" --product macsync ${FLAGS[@]+"${FLAGS[@]}"}
+BIN=$(swift build -c release "${ARCH_FLAGS[@]}" --show-bin-path)
 APP=build/MacSync.app
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Helpers" "$APP/Contents/Resources"
