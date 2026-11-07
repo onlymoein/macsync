@@ -39,7 +39,13 @@ final class AppModel: ObservableObject {
             Task { @MainActor in self?.backgroundSync() }
         }
         syncNow()
-        if CommandLine.arguments.contains("--review") { ReviewWindow.shared.show(model: self) }
+        if CommandLine.arguments.contains("--review") {
+            // This init runs inside a SwiftUI update, and opening a window there aborts the app.
+            DispatchQueue.main.async { [self] in ReviewWindow.shared.show(model: self) }
+        }
+        #if UIPROBE
+        DispatchQueue.main.async { [self] in UIProbe.runIfRequested(model: self) }
+        #endif
     }
 
     var menuBarSymbol: String {

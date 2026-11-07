@@ -231,6 +231,69 @@ final class EngineTests: XCTestCase {
         XCTAssertEqual(air.engine.restorePoints().count, Engine.maxRestorePoints)
     }
 
+    func testUndoRemovesKeysTheApplyAdded() throws {
+        let world = try TestWorld()
+        let studio = try world.mac("studio", dock: ["a", "b"])
+        try studio.dockStore.importPlist(try TestWorld.plist(apps: ["a", "b"], orientation: "left"))
+        try studio.engine.sync()
+        world.tick()
+        let air = try world.mac("air", dock: ["a", "b"])
+        XCTAssertNil(try air.dockStore.readRaw()["orientation"])
+        _ = try air.engine.apply(ApplyRequest(applyDock: true, apps: []))
+        XCTAssertEqual(try air.dockStore.readRaw()["orientation"] as? String, "left")
+        _ = try air.engine.undoLast()
+        XCTAssertNil(try air.dockStore.readRaw()["orientation"], "the backup had no such key, so undo must remove it")
+    }
+
+    func testApplyDoesNotAddAnUnsetDefaultPosition() throws {
+        let world = try TestWorld()
+        let studio = try world.mac("studio", dock: ["b", "a"])
+        try studio.engine.sync()
+        world.tick()
+        let air = try world.mac("air", dock: ["a", "b"])
+        _ = try air.engine.apply(ApplyRequest(applyDock: true, apps: []))
+        XCTAssertNil(try air.dockStore.readRaw()["orientation"])
+    }
+
+    func testApplyAndUndoSurviveADockThatOverwritesThem() throws {
+        let world = try TestWorld()
+        let studio = try world.mac("studio", dock: ["b", "a"])
+        try studio.engine.sync()
+        world.tick()
+        let air = try world.mac("air", dock: ["a", "b"])
+        let stubborn = StubbornDock(inner: air.dockStore, overwrites: 2)
+        let engine = world.engine(for: air, dock: stubborn, locate: ["a", "b"])
+        XCTAssertTrue(try engine.apply(ApplyRequest(applyDock: true, apps: [])).dockChanged)
+        XCTAssertEqual(try dockBundleIDs(air), ["b", "a"])
+        XCTAssertEqual(stubborn.restarts, 3)
+        stubborn.overwritesLeft = 2
+        _ = try engine.undoLast()
+        XCTAssertEqual(try dockBundleIDs(air), ["a", "b"], "undo must not report success while the Dock kept the old list")
+    }
+
+    func testDockThatNeverAcceptsIsAFailureAndUndoStaysAvailable() throws {
+        let world = try TestWorld()
+        let studio = try world.mac("studio", dock: ["b", "a"])
+        try studio.engine.sync()
+        world.tick()
+        let air = try world.mac("air", dock: ["a", "b"])
+        let stubborn = StubbornDock(inner: air.dockStore, overwrites: 1000)
+        let engine = world.engine(for: air, dock: stubborn, locate: ["a", "b"])
+        XCTAssertThrowsError(try engine.apply(ApplyRequest(applyDock: true, apps: [])))
+        XCTAssertEqual(try dockBundleIDs(air), ["a", "b"])
+    }
+
+    func testAMacWithAPendingChangeIsNotInSync() throws {
+        let world = try TestWorld()
+        let studio = try world.mac("studio", dock: ["a", "b"])
+        try studio.engine.sync()
+        world.tick()
+        let air = try world.mac("air", dock: ["a"], locate: ["a", "b"])
+        let overview = try air.engine.sync()
+        XCTAssertNotNil(overview.dockPlan)
+        XCTAssertEqual(overview.machines.first { $0.isThisMac }?.dockMatchesSource, false)
+    }
+
     func testSelectionPersists() throws {
         let world = try TestWorld()
         let air = try world.mac("air", dock: ["a"])

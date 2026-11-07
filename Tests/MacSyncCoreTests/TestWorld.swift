@@ -29,6 +29,32 @@ final class FakeRunner: CommandRunning {
     }
 }
 
+/// Behaves like the real Dock: on restart it can write back the list it had in memory.
+final class StubbornDock: DockStoring {
+    let inner: FileDockStore
+    var overwritesLeft: Int
+    private(set) var restarts = 0
+    init(inner: FileDockStore, overwrites: Int) {
+        self.inner = inner
+        overwritesLeft = overwrites
+    }
+
+    func exportPlist() throws -> Data { try inner.exportPlist() }
+    func importPlist(_ data: Data) throws {
+        if overwritesLeft > 0 { memory = try inner.exportPlist() }
+        try inner.importPlist(data)
+    }
+    func removeKeys(_ keys: [String]) throws { try inner.removeKeys(keys) }
+    func restartDock() {
+        restarts += 1
+        if overwritesLeft > 0, let memory {
+            overwritesLeft -= 1
+            try? inner.importPlist(memory)
+        }
+    }
+    private var memory: Data?
+}
+
 /// A temp folder holding one or more simulated Macs that share a sync folder.
 final class TestWorld {
     let root: URL
@@ -53,6 +79,15 @@ final class TestWorld {
             self.runner = runner
             self.id = id
         }
+    }
+
+    func engine(for mac: Mac, dock: DockStoring, locate: Set<String>) -> Engine {
+        let folder = root.appendingPathComponent(mac.id)
+        let env = MacSyncEnvironment(
+            syncDirectory: sync, dataDirectory: folder.appendingPathComponent("data"), machineID: mac.id, machineName: mac.id.capitalized,
+            dockFile: nil, brewPath: "/fake/brew", applicationsDirectory: folder.appendingPathComponent("Applications"),
+            homeDirectory: "/Users/test")
+        return Engine(env: env, dock: dock, locator: TestLocator(apps: locate), runner: mac.runner, now: { [unowned self] in self.clock })
     }
 
     func mac(_ id: String, dock: [String], locate: Set<String>? = nil, brew: String? = "/fake/brew") throws -> Mac {

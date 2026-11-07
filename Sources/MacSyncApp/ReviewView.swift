@@ -57,6 +57,7 @@ struct ReviewView: View {
             }
             Button("Close") { ReviewWindow.shared.close() }.keyboardShortcut(.cancelAction)
             Button("Apply") { model.apply() }
+                .buttonStyle(.borderedProminent)
                 .keyboardShortcut(.defaultAction)
                 .disabled(!model.canApply)
         }
@@ -223,6 +224,7 @@ private struct ResultSection: View {
             Label(headline, systemImage: report.hasFailures ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
                 .font(.headline)
                 .foregroundStyle(report.hasFailures ? .orange : .green)
+            if report.hasFailures, report.dockChanged { Text("Your Dock was updated.") }
             ForEach(report.results) { result in
                 VStack(alignment: .leading, spacing: 1) {
                     Text("\(result.app.name): \(text(for: result.outcome))")

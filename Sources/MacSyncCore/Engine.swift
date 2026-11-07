@@ -91,6 +91,7 @@ public final class Engine {
 
     public static let maxRestorePoints = 20
     static let republishInterval: TimeInterval = 3600
+    static let maxDockWriteAttempts = 4
 
     let env: MacSyncEnvironment
     let dock: DockStoring
@@ -189,12 +190,13 @@ public final class Engine {
             plan = Planner.dockPlan(current: local, target: target, source: winner.machineName, locator: locator)
         }
         func keys(_ section: DockSection?) -> [String] { ((section?.apps ?? []) + (section?.others ?? [])).map(\.key) }
-        let sourceKeys = Set(keys(winner?.dock))
         let summaries = everyone.map { machine -> MachineSummary in
             let isSource = machine.machineID == winner?.machineID
-            // A Mac that lacks some apps still counts as matching if it holds the rest in the same order.
-            let matches = isSource || keys(machine.dock) == keys(winner?.dock).filter { Set(keys(machine.dock)).contains($0) }
-                && Set(keys(machine.dock)).isSubset(of: sourceKeys)
+            // In sync means it copied this exact layout (even if it lacks some apps) or looks identical.
+            let copied = machine.dock?.basedOn == winner?.machineID && machine.dock?.changedAt == winner?.dock?.changedAt
+            let identical = keys(machine.dock) == keys(winner?.dock) && machine.dock?.tileSize == winner?.dock?.tileSize
+                && machine.dock?.orientation == winner?.dock?.orientation
+            let matches = isSource || copied || identical
             let inventory = machine.inventory
             return MachineSummary(
                 id: machine.machineID, name: machine.machineName, osVersion: machine.osVersion, savedAt: machine.savedAt,
@@ -296,14 +298,50 @@ public final class Engine {
         let raw = try dock.readRaw()
         let merged = try merge(raw: raw, plan: plan, target: target)
         let data = try PropertyListSerialization.data(fromPropertyList: merged, format: .xml, options: 0)
-        try dock.importPlist(data)
-        // Read it back. If it didn't land as planned, put the backup straight back.
-        let written = DockCapture.section(from: try dock.readRaw(), changedAt: target.changedAt, home: env.homeDirectory)
-        guard (written.apps + written.others).map(\.key) == (plan.targetApps + plan.targetOthers).map(\.key) else {
-            try dock.importPlist(original)
+        let expected = DockFingerprint(apps: plan.targetApps, others: plan.targetOthers,
+                                       tileSize: target.tileSize ?? (raw["tilesize"] as? NSNumber)?.doubleValue,
+                                       orientation: target.orientation)
+        do {
+            try commit(data, expecting: expected)
+        } catch {
+            try? commit(original, expecting: fingerprint(of: original))
             throw EngineError.refused("The Dock didn't accept the new layout, so it was restored.")
         }
-        dock.restartDock()
+    }
+
+    /// What must be true of the Dock once it has restarted.
+    struct DockFingerprint: Equatable {
+        var keys: [String]
+        var tileSize: Double?
+        var orientation: String
+        init(apps: [DockItem], others: [DockItem], tileSize: Double?, orientation: String) {
+            keys = (apps + others).map(\.key)
+            self.tileSize = tileSize
+            self.orientation = orientation
+        }
+    }
+
+    private func fingerprint(of raw: [String: Any]) -> DockFingerprint {
+        let section = DockCapture.section(from: raw, changedAt: now(), home: env.homeDirectory)
+        return DockFingerprint(apps: section.apps, others: section.others, tileSize: section.tileSize, orientation: section.orientation)
+    }
+
+    private func fingerprint(of plist: Data) throws -> DockFingerprint {
+        guard let raw = try PropertyListSerialization.propertyList(from: plist, format: nil) as? [String: Any] else {
+            throw DockStoreError.failed("That Dock backup is not in the expected format.")
+        }
+        return fingerprint(of: raw)
+    }
+
+    /// A running Dock saves its own list when it quits or restarts, which can overwrite a write
+    /// that just landed. So success is only judged after the restart, and the write is retried.
+    private func commit(_ data: Data, expecting expected: DockFingerprint) throws {
+        for _ in 0..<Self.maxDockWriteAttempts {
+            try dock.replacePlist(data)
+            dock.restartDock()
+            if fingerprint(of: try dock.readRaw()) == expected { return }
+        }
+        throw DockStoreError.failed("The Dock kept its old layout.")
     }
 
     private func merge(raw: [String: Any], plan: DockPlan, target: DockSection) throws -> [String: Any] {
@@ -311,7 +349,8 @@ public final class Engine {
         result["persistent-apps"] = try tiles(existing: raw["persistent-apps"], other: raw["persistent-others"], items: plan.targetApps)
         result["persistent-others"] = try tiles(existing: raw["persistent-others"], other: raw["persistent-apps"], items: plan.targetOthers)
         if let size = target.tileSize { result["tilesize"] = size }
-        result["orientation"] = target.orientation
+        // Unset means bottom. Don't add the key unless the position really differs.
+        if raw["orientation"] != nil || target.orientation != "bottom" { result["orientation"] = target.orientation }
         return result
     }
 
@@ -358,8 +397,7 @@ public final class Engine {
         guard var point = restorePoints().first(where: { $0.undoneAt == nil }) else { throw EngineError.nothingToUndo }
         let file = restoreDirectory(point.id).appendingPathComponent("dock.plist")
         let backup = try Data(contentsOf: file)
-        try dock.importPlist(backup)
-        dock.restartDock()
+        try commit(backup, expecting: try fingerprint(of: backup))
         point.undoneAt = now()
         try writeRestoreInfo(point)
         // The restored Dock counts as a new edit here, so it isn't immediately overwritten again.

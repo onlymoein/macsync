@@ -3,8 +3,10 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 VERSION=$(sed -n 's/.*appVersion = "\(.*\)"/\1/p' Sources/MacSyncCore/Environment.swift)
-swift build -c release --product MacSyncApp
-swift build -c release --product macsync
+FLAGS=()
+if [ "${UIPROBE:-0}" = "1" ]; then FLAGS=(-Xswiftc -DUIPROBE); fi
+swift build -c release --product MacSyncApp ${FLAGS[@]+"${FLAGS[@]}"}
+swift build -c release --product macsync ${FLAGS[@]+"${FLAGS[@]}"}
 BIN=$(swift build -c release --show-bin-path)
 APP=build/MacSync.app
 rm -rf "$APP"
