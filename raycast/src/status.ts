@@ -1,10 +1,10 @@
 import { showHUD } from "@raycast/api";
-import { macsync } from "./run";
+import { failure, macsync } from "./run";
 
 export default async function Command() {
   try {
-    await showHUD(await macsync("status"));
+    await showHUD((await macsync("status")).split("\n").join(" · "));
   } catch (e) {
-    await showHUD("Status failed: " + (e as Error).message);
+    await showHUD(failure(e));
   }
 }

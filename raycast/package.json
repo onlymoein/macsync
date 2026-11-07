@@ -2,18 +2,17 @@
   "$schema": "https://www.raycast.com/schemas/extension.json",
   "name": "macsync",
   "title": "MacSync",
-  "description": "Sync your Dock, apps and settings across Macs",
+  "description": "Keep your Macs set up the same way",
   "icon": "command-icon.png",
   "author": "onlymehdi",
   "license": "MIT",
   "commands": [
-    { "name": "push", "title": "Push Setup", "description": "Save this Mac's Dock and apps to iCloud", "mode": "no-view" },
-    { "name": "pull", "title": "Pull Setup", "description": "Apply the saved Dock and apps to this Mac", "mode": "no-view" },
-    { "name": "status", "title": "Show Status", "description": "Show the last saved snapshot", "mode": "no-view" },
-    { "name": "pro-push", "title": "Pro: Push Settings", "description": "Save trackpad, keyboard, Finder, Dock and display settings", "mode": "no-view" },
-    { "name": "pro-pull", "title": "Pro: Pull Settings", "description": "Apply saved settings to this Mac", "mode": "no-view" },
-    { "name": "pro-status", "title": "Pro: Show Status", "description": "Show the last saved settings snapshot", "mode": "no-view" }
+    { "name": "sync", "title": "Sync Now", "description": "Save this Mac's setup and check your other Macs. Changes nothing here.", "mode": "no-view" },
+    { "name": "pull", "title": "Apply Dock Layout", "description": "Preview the latest Dock layout, then apply it to this Mac", "mode": "no-view" },
+    { "name": "undo", "title": "Undo Last Apply", "description": "Put the Dock back as it was before the last apply", "mode": "no-view" },
+    { "name": "status", "title": "Show Status", "description": "Show each Mac and whether it's in sync", "mode": "no-view" }
   ],
   "dependencies": { "@raycast/api": "^1.80.0" },
-  "scripts": { "dev": "ray develop", "build": "ray build" }
+  "devDependencies": { "@types/node": "^22.0.0", "@types/react": "^19.0.0", "typescript": "^5.4.0" },
+  "scripts": { "dev": "ray develop", "build": "ray build -e dist" }
 }
