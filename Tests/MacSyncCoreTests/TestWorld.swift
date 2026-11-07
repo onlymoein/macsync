@@ -73,11 +73,13 @@ final class TestWorld {
         let dockStore: FileDockStore
         let runner: FakeRunner
         let id: String
-        init(engine: Engine, dockStore: FileDockStore, runner: FakeRunner, id: String) {
+        let prefs: InMemoryPreferences
+        init(engine: Engine, dockStore: FileDockStore, runner: FakeRunner, id: String, prefs: InMemoryPreferences) {
             self.engine = engine
             self.dockStore = dockStore
             self.runner = runner
             self.id = id
+            self.prefs = prefs
         }
     }
 
@@ -87,10 +89,11 @@ final class TestWorld {
             syncDirectory: sync, dataDirectory: folder.appendingPathComponent("data"), machineID: mac.id, machineName: mac.id.capitalized,
             dockFile: nil, brewPath: "/fake/brew", applicationsDirectory: folder.appendingPathComponent("Applications"),
             homeDirectory: "/Users/test")
-        return Engine(env: env, dock: dock, locator: TestLocator(apps: locate), runner: mac.runner, now: { [unowned self] in self.clock })
+        return Engine(env: env, dock: dock, locator: TestLocator(apps: locate), runner: mac.runner, prefs: mac.prefs,
+                      now: { [unowned self] in self.clock })
     }
 
-    func mac(_ id: String, dock: [String], locate: Set<String>? = nil, brew: String? = "/fake/brew") throws -> Mac {
+    func mac(_ id: String, dock: [String], locate: Set<String>? = nil, brew: String? = "/fake/brew", pro: Bool = true) throws -> Mac {
         let folder = root.appendingPathComponent(id)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         let dockURL = folder.appendingPathComponent("dock.plist")
@@ -101,9 +104,10 @@ final class TestWorld {
             dockFile: dockURL, brewPath: brew, applicationsDirectory: folder.appendingPathComponent("Applications"),
             homeDirectory: "/Users/test")
         let runner = FakeRunner()
+        let prefs = InMemoryPreferences()
         let engine = Engine(env: env, dock: store, locator: TestLocator(apps: locate ?? Set(dock)), runner: runner,
-                            now: { [unowned self] in self.clock })
-        return Mac(engine: engine, dockStore: store, runner: runner, id: id)
+                            prefs: prefs, proUnlocked: pro, now: { [unowned self] in self.clock })
+        return Mac(engine: engine, dockStore: store, runner: runner, id: id, prefs: prefs)
     }
 
     func tick(_ seconds: TimeInterval = 60) { clock = clock.addingTimeInterval(seconds) }

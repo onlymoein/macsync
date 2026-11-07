@@ -19,6 +19,9 @@ public struct RestorePointInfo: Codable, Equatable, Identifiable {
     public var summary: String
     public var installed: [String]
     public var undoneAt: Date?
+    /// Nil on restore points from before these existed, which are treated as touching the Dock.
+    public var touchedDock: Bool?
+    public var touchedSettings: Bool?
 }
 
 public struct SyncOverview: Codable, Equatable {
@@ -32,8 +35,12 @@ public struct SyncOverview: Codable, Equatable {
     public var selectedApps: [String]
     public var issues: [String]
     public var lastRestorePoint: RestorePointInfo?
+    public var proEnabled: Bool
+    public var settingsPlan: SettingsPlan?
+    public var settingsSkipped: [String]
+    public var appPrefDomains: [String]
 
-    public var hasPendingChanges: Bool { dockPlan != nil || !missingApps.isEmpty }
+    public var hasPendingChanges: Bool { dockPlan != nil || settingsPlan != nil || !missingApps.isEmpty }
 }
 
 public struct InstallResult: Codable, Equatable, Identifiable {
@@ -47,9 +54,11 @@ public struct InstallResult: Codable, Equatable, Identifiable {
 public struct ApplyRequest {
     public var applyDock: Bool
     public var apps: [AppRef]
-    public init(applyDock: Bool, apps: [AppRef]) {
+    public var applySettings: Bool
+    public init(applyDock: Bool, apps: [AppRef], applySettings: Bool = true) {
         self.applyDock = applyDock
         self.apps = apps
+        self.applySettings = applySettings
     }
 }
 
@@ -58,7 +67,10 @@ public struct ApplyReport: Codable, Equatable {
     public var dockChanged: Bool
     public var skippedDockItems: [DockItem]
     public var results: [InstallResult]
-    public var hasFailures: Bool { results.contains { $0.outcome == .failed } }
+    public var settingsChanged = false
+    public var settingsSkipped: [String] = []
+    public var settingsError: String?
+    public var hasFailures: Bool { results.contains { $0.outcome == .failed } || settingsError != nil }
 }
 
 public enum EngineError: Error, LocalizedError {
@@ -87,6 +99,10 @@ public final class Engine {
         var selectedApps: [String] = []
         var publishedHash: String?
         var publishedAt: Date?
+        var settingsHash: String?
+        var settingsChangedAt: Date?
+        var settingsBasedOn: String?
+        var appPrefDomains: [String]?
     }
 
     public static let maxRestorePoints = 20
@@ -99,9 +115,14 @@ public final class Engine {
     let runner: CommandRunning
     let store: SyncStore
     let now: () -> Date
+    let prefs: PreferencesStoring
+    let proUnlocked: Bool
 
     public init(env: MacSyncEnvironment, dock: DockStoring, locator: AppLocating, runner: CommandRunning,
+                prefs: PreferencesStoring = InMemoryPreferences(), proUnlocked: Bool = ProLicense.isUnlocked,
                 now: @escaping () -> Date = Date.init) {
+        self.prefs = prefs
+        self.proUnlocked = proUnlocked
         self.env = env
         self.dock = dock
         self.locator = locator
@@ -113,7 +134,9 @@ public final class Engine {
     public static func live(env: MacSyncEnvironment = .current()) -> Engine {
         let runner = SystemCommandRunner()
         let dock: DockStoring = env.dockFile.map { FileDockStore(url: $0) } ?? SystemDockStore(runner: runner)
-        return Engine(env: env, dock: dock, locator: SystemAppLocator(), runner: runner)
+        // A simulated Mac (its Dock lives in a file) must not touch this Mac's real settings.
+        let prefs: PreferencesStoring = env.dockFile == nil ? SystemPreferences(runner: runner) : InMemoryPreferences()
+        return Engine(env: env, dock: dock, locator: SystemAppLocator(), runner: runner, prefs: prefs)
     }
 
     // MARK: Sync
@@ -127,7 +150,8 @@ public final class Engine {
             state.inventory = InventoryReader(runner: runner, env: env).read()
             state.inventoryAt = now()
         }
-        let snapshot = makeSnapshot(state: state, dock: local)
+        let settings = capturePrefs(&state)
+        let snapshot = makeSnapshot(state: state, dock: local, settings: settings)
         var issues: [String] = []
         do {
             try publishIfNeeded(snapshot, state: &state)
@@ -162,11 +186,44 @@ public final class Engine {
         return section
     }
 
-    private func makeSnapshot(state: LocalState, dock: DockSection) -> MachineSnapshot {
+    private static let epoch = Date(timeIntervalSince1970: 0)
+
+    private func capturePrefs(_ state: inout LocalState) -> PrefsSection? {
+        guard proUnlocked else { return nil }
+        let domains = (state.appPrefDomains ?? []).sorted()
+        let captured = PrefsCapture.values(prefs: prefs, appDomains: domains, home: env.homeDirectory)
+        var section = PrefsSection(changedAt: state.settingsChangedAt ?? Self.epoch, basedOn: state.settingsBasedOn,
+                                   covered: captured.covered, values: captured.values, appDomains: domains)
+        let hash = section.contentHash
+        if state.settingsHash == nil {
+            // Same rule as the Dock: the first look at a Mac's settings is a starting point, not an edit.
+            state.settingsChangedAt = section.changedAt
+        } else if state.settingsHash != hash {
+            section.changedAt = now()
+            section.basedOn = nil
+            state.settingsChangedAt = section.changedAt
+            state.settingsBasedOn = nil
+        }
+        state.settingsHash = hash
+        return section
+    }
+
+    private func currentPrefsHash(_ state: LocalState) -> String {
+        let domains = (state.appPrefDomains ?? []).sorted()
+        let captured = PrefsCapture.values(prefs: prefs, appDomains: domains, home: env.homeDirectory)
+        return PrefsSection(changedAt: Self.epoch, covered: captured.covered, values: captured.values, appDomains: domains).contentHash
+    }
+
+    private func settingsWinner(_ machines: [MachineSnapshot]) -> MachineSnapshot? {
+        guard proUnlocked else { return nil }
+        return Planner.winner(among: machines) { $0.settings.map { ($0.changedAt, $0.basedOn) } }
+    }
+
+    private func makeSnapshot(state: LocalState, dock: DockSection, settings: PrefsSection? = nil) -> MachineSnapshot {
         MachineSnapshot(machineID: env.machineID, machineName: env.machineName,
                         osVersion: ProcessInfo.processInfo.operatingSystemVersionString,
                         appVersion: MacSyncEnvironment.appVersion, firstSeenAt: state.firstSeenAt,
-                        savedAt: now(), dock: dock, inventory: state.inventory)
+                        savedAt: now(), dock: dock, inventory: state.inventory, settings: settings)
     }
 
     private func publishIfNeeded(_ snapshot: MachineSnapshot, state: inout LocalState) throws {
@@ -188,6 +245,11 @@ public final class Engine {
         var plan: DockPlan?
         if let winner, let target = winner.dock, winner.machineID != env.machineID, let local = snapshot.dock {
             plan = Planner.dockPlan(current: local, target: target, source: winner.machineName, locator: locator)
+        }
+        var settingsPlan: SettingsPlan?
+        if let sw = settingsWinner(everyone), sw.machineID != env.machineID, let target = sw.settings {
+            settingsPlan = SettingsPlanner.plan(target: target, source: sw.machineName, sourceID: sw.machineID,
+                                                prefs: prefs, home: env.homeDirectory)
         }
         func keys(_ section: DockSection?) -> [String] { ((section?.apps ?? []) + (section?.others ?? [])).map(\.key) }
         let summaries = everyone.map { machine -> MachineSummary in
@@ -214,7 +276,11 @@ public final class Engine {
             missingApps: Planner.missingApps(local: state.inventory ?? Inventory(), others: others),
             selectedApps: state.selectedApps,
             issues: issues + loaded.issues,
-            lastRestorePoint: restorePoints().first { $0.undoneAt == nil })
+            lastRestorePoint: restorePoints().first { $0.undoneAt == nil },
+            proEnabled: proUnlocked,
+            settingsPlan: settingsPlan?.hasChanges == true ? settingsPlan : nil,
+            settingsSkipped: settingsPlan?.skipped ?? [],
+            appPrefDomains: state.appPrefDomains ?? [])
     }
 
     // MARK: Apply
@@ -227,12 +293,14 @@ public final class Engine {
         let allowed = Set(before.missingApps.map(\.app))
         let apps = request.apps.filter { allowed.contains($0) && $0.isSafe }
         let wantsDock = request.applyDock && before.dockPlan != nil
-        guard wantsDock || !apps.isEmpty else {
+        let wantsSettings = request.applySettings && before.settingsPlan != nil
+        guard wantsDock || wantsSettings || !apps.isEmpty else {
             return ApplyReport(restorePoint: nil, dockChanged: false, skippedDockItems: before.dockMissing, results: [])
         }
 
-        let source = before.dockPlan?.sourceMachine ?? before.machines.first { !$0.isThisMac }?.name ?? "another Mac"
-        var point = try createRestorePoint(source: source, summary: Self.summary(dock: wantsDock ? before.dockPlan : nil, apps: apps))
+        let source = before.dockPlan?.sourceMachine ?? before.settingsPlan?.sourceMachine ?? before.machines.first { !$0.isThisMac }?.name ?? "another Mac"
+        var point = try createRestorePoint(source: source, summary: Self.summary(dock: wantsDock ? before.dockPlan : nil,
+                                                                                     settings: wantsSettings ? before.settingsPlan : nil, apps: apps))
 
         var results: [InstallResult] = []
         for app in apps {
@@ -243,9 +311,25 @@ public final class Engine {
         try writeRestoreInfo(point)
 
         var dockChanged = false
+        var settingsChanged = false
+        var settingsError: String?
         var skipped: [DockItem] = before.dockMissing
         var state = loadState()
         if !apps.isEmpty { state.inventory = InventoryReader(runner: runner, env: env).read(); state.inventoryAt = now() }
+        // Settings go first: Dock behaviour keys live in the Dock's own preferences, and the layout
+        // write below must start from them. The restore point's Dock backup predates both.
+        if wantsSettings, let plan = before.settingsPlan {
+            progress("Updating settings…")
+            do {
+                try applySettings(plan, point: point)
+                settingsChanged = true
+                state.settingsChangedAt = plan.sourceChangedAt
+                state.settingsBasedOn = plan.sourceMachineID
+                state.settingsHash = currentPrefsHash(state)
+            } catch {
+                settingsError = error.localizedDescription
+            }
+        }
         if wantsDock {
             progress("Updating the Dock…")
             // Plan again: anything just installed can now take its place in the Dock.
@@ -264,10 +348,14 @@ public final class Engine {
                 }
             }
         }
+        point.touchedDock = dockChanged
+        point.touchedSettings = settingsChanged
+        try writeRestoreInfo(point)
         try saveState(state)
         pruneRestorePoints()
         _ = try? sync(refreshInventory: false)
-        return ApplyReport(restorePoint: point, dockChanged: dockChanged, skippedDockItems: skipped, results: results)
+        return ApplyReport(restorePoint: point, dockChanged: dockChanged, skippedDockItems: skipped, results: results,
+                           settingsChanged: settingsChanged, settingsSkipped: before.settingsSkipped, settingsError: settingsError)
     }
 
     private func install(_ app: AppRef) -> InstallResult {
@@ -294,7 +382,6 @@ public final class Engine {
             throw EngineError.refused("None of the apps in that Dock are on this Mac, so the Dock was left alone.")
         }
         let original = try dock.exportPlist()
-        try original.write(to: restoreDirectory(backup.id).appendingPathComponent("dock.plist"), options: .atomic)
         let raw = try dock.readRaw()
         let merged = try merge(raw: raw, plan: plan, target: target)
         let data = try PropertyListSerialization.data(fromPropertyList: merged, format: .xml, options: 0)
@@ -378,14 +465,90 @@ public final class Engine {
         return output
     }
 
-    static func summary(dock: DockPlan?, apps: [AppRef]) -> String {
+    static func summary(dock: DockPlan?, settings: SettingsPlan? = nil, apps: [AppRef]) -> String {
         var parts: [String] = []
         if let dock {
             let total = dock.added.count + dock.removed.count + dock.moved.count
             parts.append(total == 0 ? "Dock settings" : "\(total) Dock change\(total == 1 ? "" : "s")")
         }
+        if let settings { parts.append("\(settings.changes.count) setting\(settings.changes.count == 1 ? "" : "s")") }
         if !apps.isEmpty { parts.append("\(apps.count) app\(apps.count == 1 ? "" : "s")") }
         return parts.joined(separator: ", ")
+    }
+
+    // MARK: Settings
+
+    struct SettingsBackupEntry: Codable {
+        var domain: String
+        var key: String
+        var value: PrefValue?
+        var type: SettingType?
+        var restart: RestartTarget?
+    }
+
+    private func settingsBackupURL(_ id: String) -> URL { restoreDirectory(id).appendingPathComponent("settings-before.json") }
+
+    /// Saves every value about to change, writes the new ones, restarts what needs it, then
+    /// checks. If the checks fail everything goes back.
+    private func applySettings(_ plan: SettingsPlan, point: RestorePointInfo) throws {
+        let backup = plan.changes.map {
+            SettingsBackupEntry(domain: $0.domain, key: $0.key, value: prefs.value(domain: $0.domain, key: $0.key),
+                                type: $0.type, restart: $0.restart)
+        }
+        try JSONEncoder().encode(backup).write(to: settingsBackupURL(point.id), options: .atomic)
+        let entries = plan.changes.map { SettingsBackupEntry(domain: $0.domain, key: $0.key, value: $0.to, type: $0.type, restart: $0.restart) }
+        do {
+            try commitSettings(entries)
+        } catch {
+            try? commitSettings(backup)
+            throw EngineError.refused("Some settings didn't take effect, so they were put back.")
+        }
+    }
+
+    private func restoreSettings(from point: RestorePointInfo) throws {
+        let data = try Data(contentsOf: settingsBackupURL(point.id))
+        try commitSettings(try JSONDecoder().decode([SettingsBackupEntry].self, from: data))
+    }
+
+    /// A value is only trusted after the processes that cache it have restarted.
+    private func commitSettings(_ entries: [SettingsBackupEntry]) throws {
+        let targets = Set(entries.compactMap(\.restart))
+        for _ in 0..<Self.maxDockWriteAttempts {
+            for entry in entries {
+                if let value = entry.value {
+                    prefs.set(domain: entry.domain, key: entry.key, value: value, type: entry.type)
+                } else {
+                    prefs.remove(domain: entry.domain, key: entry.key)
+                }
+            }
+            for target in targets.sorted(by: { $0.rawValue < $1.rawValue }) {
+                if target == .dock { dock.restartDock() } else { prefs.restart(target) }
+            }
+            if entries.allSatisfy({ prefs.value(domain: $0.domain, key: $0.key) == $0.value }) { return }
+        }
+        throw EngineError.refused("The settings didn't stick.")
+    }
+
+    // MARK: App preferences (Pro)
+
+    public var proEnabledForCLI: Bool { proUnlocked }
+
+    public func appPrefDomains() -> [String] { loadState().appPrefDomains ?? [] }
+
+    public func setAppPrefDomains(_ domains: [String]) throws {
+        var state = loadState()
+        let valid = domains.filter { $0.range(of: "^[A-Za-z0-9][A-Za-z0-9._-]*$", options: .regularExpression) != nil
+            && !$0.hasPrefix("com.apple.") && $0 != "NSGlobalDomain" }
+        state.appPrefDomains = Array(Set(valid)).sorted()
+        try saveState(state)
+    }
+
+    /// Apps that have saved preferences on this Mac, for the person to choose from.
+    public func availableAppPrefDomains() -> [String] {
+        let folder = URL(fileURLWithPath: env.homeDirectory).appendingPathComponent("Library/Preferences")
+        let names = (try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? []
+        return names.filter { $0.hasSuffix(".plist") }.map { String($0.dropLast(6)) }
+            .filter { !$0.hasPrefix("com.apple.") && !$0.hasPrefix(".") && $0.contains(".") }.sorted()
     }
 
     // MARK: Undo
@@ -395,9 +558,11 @@ public final class Engine {
         let lock = try acquireLock()
         defer { close(lock) }
         guard var point = restorePoints().first(where: { $0.undoneAt == nil }) else { throw EngineError.nothingToUndo }
-        let file = restoreDirectory(point.id).appendingPathComponent("dock.plist")
-        let backup = try Data(contentsOf: file)
-        try commit(backup, expecting: try fingerprint(of: backup))
+        if point.touchedDock != false {
+            let backup = try Data(contentsOf: restoreDirectory(point.id).appendingPathComponent("dock.plist"))
+            try commit(backup, expecting: try fingerprint(of: backup))
+        }
+        if point.touchedSettings == true { try restoreSettings(from: point) }
         point.undoneAt = now()
         try writeRestoreInfo(point)
         // The restored Dock counts as a new edit here, so it isn't immediately overwritten again.

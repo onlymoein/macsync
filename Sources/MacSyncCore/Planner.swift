@@ -31,10 +31,16 @@ public enum Planner {
     /// Latest wins. On a tie a layout edited on that Mac beats one copied from elsewhere,
     /// then the Mac that joined first beats a newer one, so a fresh Mac never overwrites an established setup.
     public static func winner(among machines: [MachineSnapshot]) -> MachineSnapshot? {
-        machines.filter { $0.dock != nil }.min { a, b in
-            let (da, db) = (a.dock!, b.dock!)
-            if da.changedAt != db.changedAt { return da.changedAt > db.changedAt }
-            if (da.basedOn == nil) != (db.basedOn == nil) { return da.basedOn == nil }
+        winner(among: machines) { $0.dock.map { ($0.changedAt, $0.basedOn) } }
+    }
+
+    /// The same rule for any section: pass how to read its stamp from a snapshot.
+    public static func winner(among machines: [MachineSnapshot],
+                              stamp: (MachineSnapshot) -> (changedAt: Date, basedOn: String?)?) -> MachineSnapshot? {
+        machines.filter { stamp($0) != nil }.min { a, b in
+            let (sa, sb) = (stamp(a)!, stamp(b)!)
+            if sa.changedAt != sb.changedAt { return sa.changedAt > sb.changedAt }
+            if (sa.basedOn == nil) != (sb.basedOn == nil) { return sa.basedOn == nil }
             if a.firstSeenAt != b.firstSeenAt { return a.firstSeenAt < b.firstSeenAt }
             return a.machineID < b.machineID
         }

@@ -115,9 +115,11 @@ public struct MachineSnapshot: Codable, Equatable {
     public var savedAt: Date
     public var dock: DockSection?
     public var inventory: Inventory?
+    /// Pro. Optional and additive, so it needs no new schema version.
+    public var settings: PrefsSection?
 
     public init(machineID: String, machineName: String, osVersion: String, appVersion: String,
-                firstSeenAt: Date, savedAt: Date, dock: DockSection?, inventory: Inventory?) {
+                firstSeenAt: Date, savedAt: Date, dock: DockSection?, inventory: Inventory?, settings: PrefsSection? = nil) {
         self.schemaVersion = SnapshotCodec.currentVersion
         self.machineID = machineID
         self.machineName = machineName
@@ -127,6 +129,7 @@ public struct MachineSnapshot: Codable, Equatable {
         self.savedAt = savedAt
         self.dock = dock
         self.inventory = inventory
+        self.settings = settings
     }
 }
 

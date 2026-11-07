@@ -13,6 +13,14 @@ public enum PreviewText {
             if let change = plan.orientationChange { lines.append("  ~ position \(change.from ?? "bottom") to \(change.to)") }
             for item in plan.folderOptionsChanged { lines.append("  ~ folder style of \(item.label)") }
         }
+        if let plan = overview.settingsPlan {
+            lines.append("Settings, from \(plan.sourceMachine):")
+            for change in plan.changes {
+                lines.append("  ~ \(change.label) (\(change.category)): \(change.from?.display ?? "default") to \(change.to?.display ?? "default")")
+            }
+            if plan.needsLogout { lines.append("  Some of these need a log out to take full effect.") }
+        }
+        for note in overview.settingsSkipped { lines.append("Left out of settings: \(note)") }
         if !overview.dockMissing.isEmpty {
             lines.append("Left out of the Dock, not on this Mac: " + overview.dockMissing.map(\.label).joined(separator: ", "))
         }

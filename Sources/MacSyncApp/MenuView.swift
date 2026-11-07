@@ -84,6 +84,10 @@ struct MenuView: View {
     private var footer: some View {
         HStack {
             Menu {
+                if model.proEnabled {
+                    Button("App Preferences…") { AppPrefsWindow.shared.show(model: model) }
+                    Divider()
+                }
                 Toggle("Sync Automatically", isOn: $model.autoSync)
                 Toggle("Open at Login", isOn: Binding(get: { model.openAtLogin }, set: { model.setOpenAtLogin($0) }))
             } label: {

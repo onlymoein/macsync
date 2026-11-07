@@ -10,9 +10,11 @@ macsync \(MacSyncEnvironment.appVersion): keep your Macs set up the same way.
   macsync apply              Apply, after showing the preview and asking
       --yes                  Don't ask (required when not run from a terminal)
       --no-dock              Leave the Dock alone
+      --no-settings          Leave settings alone (Pro)
       --install a,b          Also install these (e.g. cask:ghostty,formula:jq,mas:497799835)
       --all-apps             Also install everything your other Macs have
   macsync undo [--yes]       Undo the last apply
+  macsync app-prefs [add|remove <domain>]   Choose apps whose preferences sync (Pro)
   macsync restore-points     List saved restore points
 
 Add --json to status, sync, preview, apply or undo for machine-readable output.
@@ -57,7 +59,7 @@ let flags = Set(arguments.dropFirst().filter { $0.hasPrefix("--") })
 let json = flags.contains("--json")
 let yes = flags.contains("--yes")
 
-let known: Set<String> = ["--json", "--yes", "--no-dock", "--install", "--all-apps"]
+let known: Set<String> = ["--json", "--yes", "--no-dock", "--no-settings", "--install", "--all-apps"]
 if let unknown = flags.first(where: { !known.contains($0) }) { fail("Unknown option \(unknown).\n\n\(usage)", code: 2) }
 
 do {
@@ -89,14 +91,15 @@ do {
             print(PreviewText.render(overview))
             if !apps.isEmpty { print("Will install: " + apps.map(\.token).joined(separator: ", ")) }
         }
-        guard (applyDock && overview.dockPlan != nil) || !apps.isEmpty else {
+        let applySettings = !flags.contains("--no-settings")
+        guard (applyDock && overview.dockPlan != nil) || (applySettings && overview.settingsPlan != nil) || !apps.isEmpty else {
             if json { try printJSON(ApplyReportEmpty()) } else if !overview.missingApps.isEmpty {
                 print("\nNothing selected. Use --install or --all-apps to install apps.")
             }
             exit(0)
         }
         confirm("Apply these changes? A restore point is saved first.", assumeYes: yes)
-        let report = try engine.apply(ApplyRequest(applyDock: applyDock, apps: apps)) { message in
+        let report = try engine.apply(ApplyRequest(applyDock: applyDock, apps: apps, applySettings: applySettings)) { message in
             if !json { print(message) }
         }
         if json {
@@ -106,6 +109,8 @@ do {
                 print("\(result.app.token): \(result.outcome.rawValue)\(result.message.map { " (\($0))" } ?? "")")
             }
             print(report.dockChanged ? "Dock updated. Run `macsync undo` to go back." : "Dock not changed.")
+            if report.settingsChanged { print("Settings updated. Run `macsync undo` to go back.") }
+            if let error = report.settingsError { print("Settings: \(error)") }
         }
         if report.hasFailures { exit(1) }
     case "undo":
@@ -116,10 +121,27 @@ do {
         if json {
             try printJSON(undone)
         } else {
-            print("Dock restored.")
+            print("Restored.")
             if !undone.installed.isEmpty {
                 print("These stay installed. Remove them yourself if you want: " + undone.installed.joined(separator: ", "))
             }
+        }
+    case "app-prefs":
+        guard engine.proEnabledForCLI else { fail("App preferences are a Pro feature.") }
+        let words = arguments.dropFirst().filter { !$0.hasPrefix("--") }
+        var chosen = engine.appPrefDomains()
+        if words.first == "add", words.count == 2 {
+            chosen.append(words[1])
+            try engine.setAppPrefDomains(chosen)
+        } else if words.first == "remove", words.count == 2 {
+            try engine.setAppPrefDomains(chosen.filter { $0 != words[1] })
+        } else if !words.isEmpty {
+            fail("Usage: macsync app-prefs [add|remove <domain>]", code: 2)
+        }
+        let now = engine.appPrefDomains()
+        if json { try printJSON(now) } else {
+            print(now.isEmpty ? "No apps chosen yet. Try: macsync app-prefs add com.raycast.macos" : "Syncing preferences of: " + now.joined(separator: ", "))
+            if words.isEmpty { print("Available on this Mac: \(engine.availableAppPrefDomains().count). Passwords, tokens and keys are never synced.") }
         }
     case "restore-points":
         let points = engine.restorePoints()

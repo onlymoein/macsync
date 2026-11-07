@@ -23,6 +23,9 @@ struct ReviewView: View {
                             .font(.callout)
                             .foregroundStyle(.secondary)
                     }
+                    if let plan = model.overview?.settingsPlan {
+                        SettingsSectionView(plan: plan, model: model)
+                    }
                     AppsSection(model: model)
                     if model.overview?.hasPendingChanges != true, model.lastReport == nil {
                         Text("Nothing to change. This Mac matches your other Macs.")
@@ -233,6 +236,8 @@ private struct ResultSection: View {
                     }
                 }
             }
+            if report.settingsChanged { Text("Settings updated.") }
+            if let error = report.settingsError { Text(error).font(.callout).foregroundStyle(.secondary) }
             if !report.skippedDockItems.isEmpty {
                 Text("Left out of the Dock: \(report.skippedDockItems.map(\.label).joined(separator: ", "))")
                     .font(.callout)
@@ -242,8 +247,8 @@ private struct ResultSection: View {
     }
 
     private var headline: String {
-        if report.hasFailures { return "Some items didn't install" }
-        return report.dockChanged ? "Dock updated" : "Done"
+        if report.hasFailures { return "Some changes didn't apply" }
+        return report.dockChanged || report.settingsChanged ? "Changes applied" : "Done"
     }
 
     private func text(for outcome: InstallResult.Outcome) -> String {
@@ -251,6 +256,47 @@ private struct ResultSection: View {
         case .installed: return "installed"
         case .openedInAppStore: return "opened in the App Store"
         case .failed: return "failed"
+        }
+    }
+}
+
+private struct SettingsSectionView: View {
+    let plan: SettingsPlan
+    @ObservedObject var model: AppModel
+
+    private var grouped: [(String, [SettingsChange])] {
+        Dictionary(grouping: plan.changes, by: \.category).sorted { $0.key < $1.key }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Toggle(isOn: $model.applySettings) {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Settings from \(plan.sourceMachine)").font(.headline)
+                    Text("\(plan.changes.count) change\(plan.changes.count == 1 ? "" : "s")" + (plan.needsLogout ? ", some need a log out" : ""))
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .toggleStyle(.checkbox)
+            VStack(alignment: .leading, spacing: 10) {
+                ForEach(grouped, id: \.0) { category, changes in
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(category).font(.caption.weight(.medium)).foregroundStyle(.secondary)
+                        ForEach(changes) { change in
+                            HStack(spacing: 6) {
+                                Text(change.label)
+                                Spacer(minLength: 8)
+                                Text(change.from?.display ?? "default").foregroundStyle(.secondary)
+                                Image(systemName: "arrow.right").font(.caption2).foregroundStyle(.tertiary)
+                                Text(change.to?.display ?? "default")
+                            }
+                            .font(.callout)
+                        }
+                    }
+                }
+            }
+            .opacity(model.applySettings ? 1 : 0.5)
         }
     }
 }

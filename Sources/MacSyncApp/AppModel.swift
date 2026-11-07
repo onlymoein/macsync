@@ -13,6 +13,7 @@ final class AppModel: ObservableObject {
     @Published var lastReport: ApplyReport?
     @Published var undoMessage: String?
     @Published var applyDock = true
+    @Published var applySettings = true
     @Published var selectedApps: Set<String> = []
     @Published var autoSync: Bool {
         didSet {
@@ -63,6 +64,9 @@ final class AppModel: ObservableObject {
         if let plan = overview.dockPlan {
             return "New Dock layout from \(plan.sourceMachine)"
         }
+        if let plan = overview.settingsPlan {
+            return "New settings from \(plan.sourceMachine)"
+        }
         if !overview.missingApps.isEmpty {
             let count = overview.missingApps.count
             return "\(count) app\(count == 1 ? "" : "s") on your other Macs"
@@ -106,7 +110,8 @@ final class AppModel: ObservableObject {
     }
 
     var canApply: Bool {
-        !isApplying && ((applyDock && overview?.dockPlan != nil) || !appsToInstall.isEmpty)
+        !isApplying && ((applyDock && overview?.dockPlan != nil) || (applySettings && overview?.settingsPlan != nil)
+                        || !appsToInstall.isEmpty)
     }
 
     func apply() {
@@ -115,7 +120,7 @@ final class AppModel: ObservableObject {
         lastReport = nil
         undoMessage = nil
         errorMessage = nil
-        let request = ApplyRequest(applyDock: applyDock, apps: appsToInstall)
+        let request = ApplyRequest(applyDock: applyDock, apps: appsToInstall, applySettings: applySettings)
         let engine = engine
         Task {
             let result: Result<ApplyReport, Error> = await Task.detached {
@@ -146,15 +151,25 @@ final class AppModel: ObservableObject {
             switch result {
             case .success(let point):
                 lastReport = nil
+                let restored = point.touchedSettings == true && point.touchedDock == false ? "Your settings are back as they were."
+                    : (point.touchedSettings == true ? "Your Dock and settings are back as they were." : "Your Dock is back as it was.")
                 undoMessage = point.installed.isEmpty
-                    ? "Your Dock is back as it was."
-                    : "Your Dock is back as it was. Installed apps stay installed: \(point.installed.joined(separator: ", "))."
+                    ? restored
+                    : "\(restored) Installed apps stay installed: \(point.installed.joined(separator: ", "))."
             case .failure(let error):
                 errorMessage = error.localizedDescription
             }
             syncNow()
         }
     }
+
+    func appPrefDomains() -> [String] { engine.appPrefDomains() }
+    func availableAppPrefDomains() -> [String] { engine.availableAppPrefDomains() }
+    func setAppPrefDomains(_ domains: [String]) {
+        try? engine.setAppPrefDomains(domains)
+        syncNow()
+    }
+    var proEnabled: Bool { overview?.proEnabled ?? ProLicense.isUnlocked }
 
     func setOpenAtLogin(_ enabled: Bool) {
         do {
