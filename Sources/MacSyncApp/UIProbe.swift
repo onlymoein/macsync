@@ -3,31 +3,34 @@ import AppKit
 import MacSyncCore
 import SwiftUI
 
-/// Test builds only (UIPROBE=1 scripts/build-app.sh). Walks the app through review, apply and
-/// undo, and writes what each screen really renders. Never compiled into a shipped build.
+/// Test builds only (UIPROBE=1 scripts/build-app.sh). Drives the real views through review, apply
+/// and undo, and writes what each renders as 2x images. Never compiled into a shipped build.
 @MainActor
 enum UIProbe {
     static func runIfRequested(model: AppModel) {
-        guard let dir = ProcessInfo.processInfo.environment["MACSYNC_UI_PROBE"] else { return }
-        let selection = ProcessInfo.processInfo.environment["MACSYNC_UI_PROBE_SELECT"]?.split(separator: ",").map(String.init) ?? []
+        let env = ProcessInfo.processInfo.environment
+        guard let dir = env["MACSYNC_UI_PROBE"] else { return }
+        let suffix = env["MACSYNC_UI_PROBE_DARK"] != nil ? "dark" : "light"
+        let height = CGFloat(Double(env["MACSYNC_UI_PROBE_HEIGHT"] ?? "") ?? 900)
         Task {
             await settle(model)
-            NSApp.appearance = NSAppearance(named: ProcessInfo.processInfo.environment["MACSYNC_UI_PROBE_DARK"] != nil ? .darkAqua : .aqua)
-            for token in selection { model.setSelected(token, true) }
-            ReviewWindow.shared.show(model: model)
-            try? await Task.sleep(nanoseconds: 800_000_000)
-            shoot(dir, "1-review", "1-menu", model)
+            NSApp.appearance = NSAppearance(named: suffix == "dark" ? .darkAqua : .aqua)
+            let wanted = env["MACSYNC_UI_PROBE_SELECT"] ?? ""
+            let tokens = wanted == "all" ? (model.overview?.missingApps.map(\.app.token) ?? []) : wanted.split(separator: ",").map(String.init)
+            for token in tokens { model.setSelected(token, true) }
+            try? await Task.sleep(nanoseconds: 500_000_000)
+            shoot(dir, "review-\(suffix)", "menu-\(suffix)", model, height)
             print("before: canApply=\(model.canApply) status=\(model.statusLine)")
-            model.apply()
-            await settle(model)
-            try? await Task.sleep(nanoseconds: 800_000_000)
-            shoot(dir, "2-review-after-apply", "2-menu-after-apply", model)
-            print("after apply: report=\(String(describing: model.lastReport?.dockChanged)) status=\(model.statusLine)")
-            model.undo()
-            await settle(model)
-            try? await Task.sleep(nanoseconds: 800_000_000)
-            shoot(dir, "3-review-after-undo", "3-menu-after-undo", model)
-            print("after undo: \(model.undoMessage ?? "-") status=\(model.statusLine)")
+            if env["MACSYNC_UI_PROBE_NOAPPLY"] == nil {
+                model.apply()
+                await settle(model)
+                try? await Task.sleep(nanoseconds: 800_000_000)
+                shoot(dir, "applied-\(suffix)", "menu-applied-\(suffix)", model, height)
+                print("after apply: dock=\(String(describing: model.lastReport?.dockChanged)) settings=\(String(describing: model.lastReport?.settingsChanged)) status=\(model.statusLine)")
+                model.undo()
+                await settle(model)
+                print("after undo: \(model.undoMessage ?? "-") status=\(model.statusLine)")
+            }
             NSApp.terminate(nil)
         }
     }
@@ -39,18 +42,23 @@ enum UIProbe {
         }
     }
 
-    private static func shoot(_ dir: String, _ review: String, _ menu: String, _ model: AppModel) {
-        if let view = NSApp.windows.first(where: { $0.title == "Review Changes" })?.contentView { write(view, dir, review) }
-        let host = NSHostingView(rootView: MenuView(model: model))
+    private static func shoot(_ dir: String, _ review: String, _ menu: String, _ model: AppModel, _ height: CGFloat) {
+        let background = Color(nsColor: .windowBackgroundColor)
+        write(ReviewView(model: model).frame(width: 680, height: height).background(background), dir, review)
+        write(MenuView(model: model).background(background), dir, menu)
+    }
+
+    private static func write<V: View>(_ view: V, _ dir: String, _ name: String) {
+        let host = NSHostingView(rootView: view)
         host.frame = NSRect(origin: .zero, size: host.fittingSize)
         host.appearance = NSApp.appearance
         host.layoutSubtreeIfNeeded()
-        write(host, dir, menu)
-    }
-
-    private static func write(_ view: NSView, _ dir: String, _ name: String) {
-        guard let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return }
-        view.cacheDisplay(in: view.bounds, to: rep)
+        let bounds = host.bounds
+        guard let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: Int(bounds.width * 2), pixelsHigh: Int(bounds.height * 2),
+                                         bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+                                         colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0) else { return }
+        rep.size = bounds.size
+        host.cacheDisplay(in: bounds, to: rep)
         try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: dir).appendingPathComponent(name + ".png"))
     }
 }
