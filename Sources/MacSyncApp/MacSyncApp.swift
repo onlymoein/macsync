@@ -27,10 +27,13 @@ final class ReviewWindow {
         if window == nil {
             let host = NSHostingController(rootView: ReviewView(model: model))
             let window = NSWindow(contentViewController: host)
-            window.title = "Review Changes"
-            window.styleMask = [.titled, .closable, .resizable, .miniaturizable]
-            window.setContentSize(NSSize(width: 640, height: 640))
-            window.contentMinSize = NSSize(width: 520, height: 420)
+            window.title = "Sync"
+            window.styleMask = [.titled, .closable, .resizable, .miniaturizable, .fullSizeContentView]
+            window.titlebarAppearsTransparent = true
+            window.titleVisibility = .hidden
+            window.isMovableByWindowBackground = true
+            window.setContentSize(NSSize(width: 680, height: 720))
+            window.contentMinSize = NSSize(width: 560, height: 460)
             window.isReleasedWhenClosed = false
             window.center()
             self.window = window

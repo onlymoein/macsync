@@ -13,8 +13,11 @@ final class EngineTests: XCTestCase {
         world.tick()
         let air = try world.mac("air", dock: ["x"], locate: ["a", "b", "x"])
         let overview = try air.engine.sync()
-        XCTAssertEqual(overview.dockPlan?.sourceMachine, "Studio")
-        XCTAssertNil(try studio.engine.sync().dockPlan, "the established Mac must not be offered the new Mac's default Dock")
+        let keys = overview.dockPlan?.targetApps.compactMap(\.bundleID) ?? []
+        XCTAssertEqual(Set(keys), ["a", "b", "x"], "the new Mac keeps its own app and gains Studio's")
+        XCTAssertLessThan(keys.firstIndex(of: "a")!, keys.firstIndex(of: "b")!, "Studio's order is kept")
+        let studioPlan = try studio.engine.sync().dockPlan
+        XCTAssertNil(studioPlan?.removed.first, "a new Mac must never remove anything from an established one")
     }
 
     func testSyncChangesNothingOnThisMac() throws {
@@ -40,13 +43,16 @@ final class EngineTests: XCTestCase {
         let report = try air.engine.apply(ApplyRequest(applyDock: true, apps: []))
         XCTAssertTrue(report.dockChanged)
         XCTAssertNotNil(report.restorePoint)
-        XCTAssertEqual(try dockBundleIDs(air), ["a", "b", "c"])
+        XCTAssertEqual(Set(try dockBundleIDs(air)), ["a", "b", "c", "x"])
         XCTAssertEqual(air.dockStore.restarts, 1)
 
         let undone = try air.engine.undoLast()
         XCTAssertNotNil(undone.undoneAt)
         XCTAssertEqual(try air.dockStore.exportPlist(), original)
         XCTAssertThrowsError(try air.engine.undoLast())
+        world.tick()
+        try air.engine.sync()
+        XCTAssertEqual(try studio.engine.sync().dockPlan?.removed ?? [], [], "undo on one Mac must not remove apps from another")
     }
 
     func testApplyKeepsLocalTileDataAndRecentApps() throws {
@@ -116,11 +122,11 @@ final class EngineTests: XCTestCase {
         try air.engine.sync()
         world.tick()
         let conflict = try studio.engine.sync()
-        XCTAssertEqual(conflict.dockPlan?.sourceMachine, "Air")
+        XCTAssertEqual(conflict.dockPlan?.targetApps.compactMap(\.bundleID), ["a", "b", "c"])
         XCTAssertNil(try air.engine.sync().dockPlan)
         let report = try studio.engine.apply(ApplyRequest(applyDock: true, apps: []))
         XCTAssertEqual(try dockBundleIDs(studio), ["a", "b", "c"])
-        XCTAssertEqual(report.restorePoint?.sourceMachine, "Air")
+        XCTAssertNotNil(report.restorePoint)
     }
 
     func testUndoBeatsTheLayoutItCameFrom() throws {
@@ -134,7 +140,7 @@ final class EngineTests: XCTestCase {
         _ = try air.engine.undoLast()
         XCTAssertNil(try air.engine.sync().dockPlan, "undo must stick on the Mac that undid")
         world.tick()
-        XCTAssertEqual(try studio.engine.sync().dockPlan?.sourceMachine, "Air")
+        XCTAssertEqual(try studio.engine.sync().dockPlan?.targetApps.compactMap(\.bundleID), ["b", "a"])
     }
 
     func testFailedInstallIsReportedAndOthersContinue() throws {
@@ -294,10 +300,117 @@ final class EngineTests: XCTestCase {
         XCTAssertEqual(overview.machines.first { $0.isThisMac }?.dockMatchesSource, false)
     }
 
-    func testSelectionPersists() throws {
+    func testAppsStartTickedAndUntickingPersists() throws {
         let world = try TestWorld()
+        let studio = try world.mac("studio", dock: ["a"])
+        studio.runner.casks = ["ghostty", "rectangle"]
+        try studio.engine.sync()
         let air = try world.mac("air", dock: ["a"])
-        try air.engine.setSelectedApps(["cask:ghostty"])
-        XCTAssertEqual(try air.engine.sync().selectedApps, ["cask:ghostty"])
+        XCTAssertEqual(try air.engine.sync().selectedApps, ["cask:ghostty", "cask:rectangle"], "everything from the other Macs starts ticked")
+        try air.engine.setSelectedApps(["cask:rectangle"])
+        XCTAssertEqual(try air.engine.sync().selectedApps, ["cask:rectangle"])
+        studio.runner.casks.append("raycast")
+        try studio.engine.sync()
+        XCTAssertEqual(try air.engine.sync().selectedApps, ["cask:raycast", "cask:rectangle"], "a new app starts ticked, the unticked one stays unticked")
+    }
+
+    func testDocksCombineSoEveryMacGetsEveryApp() throws {
+        let world = try TestWorld()
+        let studio = try world.mac("studio", dock: ["a", "b"], locate: ["a", "b", "raycast"])
+        try studio.engine.sync()
+        world.tick()
+        let air = try world.mac("air", dock: ["a", "raycast", "b"], locate: ["a", "b", "raycast"])
+        try air.engine.sync()
+        world.tick()
+        let plan = try XCTUnwrap(try studio.engine.sync().dockPlan)
+        XCTAssertEqual(plan.added.compactMap(\.bundleID), ["raycast"])
+        XCTAssertEqual(plan.removed, [])
+        XCTAssertEqual(plan.targetApps.compactMap(\.bundleID), ["a", "raycast", "b"], "it goes in next to its neighbours")
+        XCTAssertNil(try air.engine.sync().dockPlan?.removed.first, "the Mac that has it is never told to remove it")
+    }
+
+    func testRemovingOnOneMacRemovesEverywhereAndAddingBackRestores() throws {
+        let world = try TestWorld()
+        let studio = try world.mac("studio", dock: ["a", "b", "c"])
+        let air = try world.mac("air", dock: ["a", "b", "c"])
+        try studio.engine.sync()
+        try air.engine.sync()
+        world.tick()
+        try studio.dockStore.importPlist(try TestWorld.plist(apps: ["a", "b"]))
+        try studio.engine.sync()
+        world.tick()
+        let plan = try XCTUnwrap(try air.engine.sync().dockPlan)
+        XCTAssertEqual(plan.removed.compactMap(\.bundleID), ["c"])
+        _ = try air.engine.apply(ApplyRequest(applyDock: true, apps: []))
+        XCTAssertEqual(try dockBundleIDs(air), ["a", "b"])
+        world.tick()
+        try air.dockStore.importPlist(try TestWorld.plist(apps: ["a", "b", "c"]))
+        try air.engine.sync()
+        world.tick()
+        XCTAssertEqual(try studio.engine.sync().dockPlan?.added.compactMap(\.bundleID), ["c"])
+    }
+
+    func testDownloadedAppIsCopiedThroughICloud() throws {
+        let world = try TestWorld()
+        let studio = try world.mac("studio", dock: ["a"])
+        try world.installDirectApp("PhotoCraft", bundleID: "ai.storyteller.photocraft", on: "studio")
+        try studio.engine.sync()
+        let air = try world.mac("air", dock: ["a"])
+        let offered = try air.engine.sync()
+        let photo = try XCTUnwrap(offered.missingApps.first { $0.app.source == .direct })
+        XCTAssertEqual(photo.displayName, "PhotoCraft")
+        XCTAssertTrue(offered.selectedApps.contains(photo.app.token))
+
+        let report = try air.engine.apply(ApplyRequest(applyDock: false, apps: [photo.app]))
+        XCTAssertEqual(report.results.first?.outcome, .copying)
+        XCTAssertEqual(try air.engine.sync().copies.first?.stage, .waitingForUpload)
+
+        try studio.engine.sync()  // Studio sees the request and uploads.
+        let after = try air.engine.sync()  // Air finds the copy and installs it.
+        XCTAssertTrue(world.hasApp("PhotoCraft", on: "air"))
+        XCTAssertEqual(after.copies.first?.stage, .installed)
+        XCTAssertFalse(after.missingApps.contains { $0.app.source == .direct })
+
+        try studio.engine.sync()  // Nobody is waiting any more, so the copy leaves iCloud.
+        let packages = world.sync.appendingPathComponent("apps/packages")
+        XCTAssertEqual(((try? FileManager.default.contentsOfDirectory(atPath: packages.path)) ?? []).filter { !$0.hasPrefix(".") }, [])
+    }
+
+    func testCopyThatIsTheWrongAppIsRefused() throws {
+        let world = try TestWorld()
+        let studio = try world.mac("studio", dock: ["a"])
+        try world.installDirectApp("Tool", bundleID: "com.example.tool", on: "studio")
+        try studio.engine.sync()
+        let air = try world.mac("air", dock: ["a"])
+        let tool = try XCTUnwrap(try air.engine.sync().missingApps.first { $0.app.source == .direct })
+        _ = try air.engine.apply(ApplyRequest(applyDock: false, apps: [tool.app]))
+        try studio.engine.sync()
+        // Someone swaps the package for a different app.
+        try world.installDirectApp("Tool", bundleID: "com.evil.other", on: "evil")
+        let zip = world.sync.appendingPathComponent("apps/packages/com.example.tool.zip")
+        try FileManager.default.removeItem(at: zip)
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/usr/bin/ditto")
+        p.arguments = ["-c", "-k", "--keepParent", world.root.appendingPathComponent("evil/Applications/Tool.app").path, zip.path]
+        try p.run(); p.waitUntilExit()
+        let after = try air.engine.sync()
+        XCTAssertFalse(world.hasApp("Tool", on: "air"))
+        XCTAssertEqual(after.copies.first?.stage, .failed)
+    }
+
+    func testRemovingInReviewRemovesFromEveryMac() throws {
+        let world = try TestWorld()
+        let studio = try world.mac("studio", dock: ["a", "junk"], locate: ["a", "junk", "x"])
+        try studio.engine.sync()
+        world.tick()
+        let air = try world.mac("air", dock: ["a", "x"], locate: ["a", "junk", "x"])
+        let plan = try XCTUnwrap(try air.engine.sync().dockPlan)
+        let junk = try XCTUnwrap(plan.targetApps.first { $0.bundleID == "junk" })
+        _ = try air.engine.apply(ApplyRequest(applyDock: true, apps: [], removeFromDock: [junk.key]))
+        XCTAssertEqual(Set(try dockBundleIDs(air)), ["a", "x"], "the marked item is left out here")
+        world.tick()
+        let studioPlan = try XCTUnwrap(try studio.engine.sync().dockPlan)
+        XCTAssertEqual(studioPlan.removed.compactMap(\.bundleID), ["junk"], "and removed from the other Mac")
+        XCTAssertEqual(studioPlan.added.compactMap(\.bundleID), ["x"])
     }
 }

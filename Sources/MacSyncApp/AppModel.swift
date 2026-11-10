@@ -15,6 +15,8 @@ final class AppModel: ObservableObject {
     @Published var applyDock = true
     @Published var applySettings = true
     @Published var selectedApps: Set<String> = []
+    /// Dock items marked in the review window to be removed from every Mac.
+    @Published var dockRemovals: Set<String> = []
     @Published var autoSync: Bool {
         didSet {
             UserDefaults.standard.set(autoSync, forKey: "autoSync")
@@ -25,6 +27,8 @@ final class AppModel: ObservableObject {
 
     private let engine = Engine.live()
     private let locator = SystemAppLocator()
+    private let iconStore = IconStore(directory: MacSyncEnvironment.current().syncDirectory.appendingPathComponent("icons"))
+    private var iconCache: [String: NSImage] = [:]
     private var timer: Timer?
     private var lastInventoryRefresh = Date.distantPast
     private var wakeObserver: NSObjectProtocol?
@@ -62,7 +66,7 @@ final class AppModel: ObservableObject {
         guard let overview else { return errorMessage ?? "Not synced yet" }
         if !overview.iCloudAvailable { return "iCloud Drive is off" }
         if let plan = overview.dockPlan {
-            return "New Dock layout from \(plan.sourceMachine)"
+            return "Dock changes from \(plan.sourceMachine)"
         }
         if let plan = overview.settingsPlan {
             return "New settings from \(plan.sourceMachine)"
@@ -105,12 +109,31 @@ final class AppModel: ObservableObject {
         try? engine.setSelectedApps(selectedApps)
     }
 
+    func toggleDockRemoval(_ key: String) {
+        if dockRemovals.contains(key) { dockRemovals.remove(key) } else { dockRemovals.insert(key) }
+    }
+
+    /// Ticks or unticks several apps at once (a whole group).
+    func setSelected(_ tokens: [String], _ selected: Bool) {
+        if selected { selectedApps.formUnion(tokens) } else { selectedApps.subtract(tokens) }
+        try? engine.setSelectedApps(selectedApps)
+    }
+
+    /// The app's own icon, shared through iCloud by the Mac that has it.
+    func icon(for missing: MissingApp) -> NSImage? {
+        guard let id = missing.detail?.iconID else { return nil }
+        if let cached = iconCache[id] { return cached }
+        guard let url = iconStore.url(for: id), let image = NSImage(contentsOf: url) else { return nil }
+        iconCache[id] = image
+        return image
+    }
+
     var appsToInstall: [AppRef] {
         (overview?.missingApps ?? []).map(\.app).filter { selectedApps.contains($0.token) }
     }
 
     var canApply: Bool {
-        !isApplying && ((applyDock && overview?.dockPlan != nil) || (applySettings && overview?.settingsPlan != nil)
+        !isApplying && ((applyDock && (overview?.dockPlan != nil || !dockRemovals.isEmpty)) || (applySettings && overview?.settingsPlan != nil)
                         || !appsToInstall.isEmpty)
     }
 
@@ -120,7 +143,8 @@ final class AppModel: ObservableObject {
         lastReport = nil
         undoMessage = nil
         errorMessage = nil
-        let request = ApplyRequest(applyDock: applyDock, apps: appsToInstall, applySettings: applySettings)
+        let request = ApplyRequest(applyDock: applyDock, apps: appsToInstall, applySettings: applySettings,
+                                   removeFromDock: Array(dockRemovals))
         let engine = engine
         Task {
             let result: Result<ApplyReport, Error> = await Task.detached {
@@ -133,7 +157,7 @@ final class AppModel: ObservableObject {
             isApplying = false
             progress = nil
             switch result {
-            case .success(let report): lastReport = report
+            case .success(let report): lastReport = report; dockRemovals = []
             case .failure(let error): errorMessage = error.localizedDescription
             }
             syncNow()

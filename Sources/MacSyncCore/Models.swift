@@ -60,15 +60,19 @@ public struct DockSection: Codable, Equatable {
     public var others: [DockItem]
     public var tileSize: Double?
     public var orientation: String
+    /// What this Mac knows about each Dock item: added or removed, and when. Combining these from
+    /// every Mac gives the shared Dock. Optional and additive, so it needs no new schema version.
+    public var events: [String: DockEvent]?
 
     public init(changedAt: Date, basedOn: String? = nil, apps: [DockItem], others: [DockItem],
-                tileSize: Double? = nil, orientation: String = "bottom") {
+                tileSize: Double? = nil, orientation: String = "bottom", events: [String: DockEvent]? = nil) {
         self.changedAt = changedAt
         self.basedOn = basedOn
         self.apps = apps
         self.others = others
         self.tileSize = tileSize
         self.orientation = orientation
+        self.events = events
     }
 
     /// Hash of what the Dock looks like, ignoring when and where it came from.
@@ -76,11 +80,31 @@ public struct DockSection: Codable, Equatable {
         var copy = self
         copy.changedAt = Date(timeIntervalSince1970: 0)
         copy.basedOn = nil
+        copy.events = nil
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
         let data = (try? encoder.encode(copy)) ?? Data()
         return Hashing.sha256(data)
     }
+}
+
+/// One item's latest known state. A Mac's starting Dock counts as present at the epoch, so it never
+/// beats a deliberate removal on another Mac. Removing an item on any Mac removes it everywhere;
+/// adding it back on any Mac brings it back everywhere.
+public struct DockEvent: Codable, Equatable, Hashable {
+    public var present: Bool
+    public var at: Date
+    public var item: DockItem
+    public var inApps: Bool
+    public init(present: Bool, at: Date, item: DockItem, inApps: Bool) {
+        self.present = present
+        self.at = at
+        self.item = item
+        self.inApps = inApps
+    }
+
+    /// Later wins; at the same moment, present wins, so nothing vanishes on a tie.
+    func beats(_ other: DockEvent) -> Bool { at != other.at ? at > other.at : (present && !other.present) }
 }
 
 public struct AppStoreApp: Codable, Equatable, Hashable {
@@ -100,8 +124,11 @@ public struct Inventory: Codable, Equatable {
     /// Display names, one-line descriptions and shared icon IDs, keyed by `AppRef.token`.
     /// Optional and additive, so older snapshots still read and older Macs ignore it.
     public var details: [String: AppDetail]?
+    /// Apps from neither Homebrew nor the App Store. Other Macs get them as copies through iCloud.
+    public var directApps: [DirectApp]?
     public init(brewAvailable: Bool = false, casks: [String] = [], formulae: [String] = [], appStore: [AppStoreApp] = [],
-                details: [String: AppDetail]? = nil) {
+                details: [String: AppDetail]? = nil, directApps: [DirectApp]? = nil) {
+        self.directApps = directApps
         self.brewAvailable = brewAvailable
         self.casks = casks
         self.formulae = formulae
@@ -116,10 +143,13 @@ public struct AppDetail: Codable, Equatable, Hashable {
     public var displayName: String?
     public var summary: String?
     public var iconID: String?
-    public init(displayName: String? = nil, summary: String? = nil, iconID: String? = nil) {
+    /// Lets a Dock item that isn't on this Mac be matched to the app that would install it.
+    public var bundleID: String?
+    public init(displayName: String? = nil, summary: String? = nil, iconID: String? = nil, bundleID: String? = nil) {
         self.displayName = displayName
         self.summary = summary
         self.iconID = iconID
+        self.bundleID = bundleID
     }
 }
 

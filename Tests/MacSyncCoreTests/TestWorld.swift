@@ -17,6 +17,15 @@ final class FakeRunner: CommandRunning {
 
     func run(_ executable: String, _ arguments: [String], input: Data?, environment: [String: String]) -> CommandResult {
         calls.append([executable] + arguments)
+        if executable == "/usr/bin/ditto" {
+            // Real zipping, so app copies through the shared folder can be tested end to end.
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: executable)
+            process.arguments = arguments
+            try? process.run()
+            process.waitUntilExit()
+            return CommandResult(status: process.terminationStatus)
+        }
         if arguments.first == "list" { return CommandResult(status: 0, stdout: Data(casks.joined(separator: "\n").utf8)) }
         if arguments.first == "leaves" { return CommandResult(status: 0, stdout: Data(formulae.joined(separator: "\n").utf8)) }
         if let name = arguments.last, failing.contains(name) {
@@ -128,6 +137,19 @@ final class TestWorld {
             "file-label": bundleID, "bundle-identifier": bundleID, "file-type": 41, "book": Data("local-bookmark-\(bundleID)".utf8),
             "file-data": ["_CFURLString": "file:///Applications/\(bundleID).app/", "_CFURLStringType": 15],
         ] as [String: Any]]
+    }
+
+    /// A downloaded app (neither Homebrew nor the App Store) in a Mac's Applications folder.
+    func installDirectApp(_ name: String, bundleID: String, on mac: String) throws {
+        let app = root.appendingPathComponent(mac).appendingPathComponent("Applications/\(name).app/Contents")
+        try FileManager.default.createDirectory(at: app.appendingPathComponent("MacOS"), withIntermediateDirectories: true)
+        let info: [String: Any] = ["CFBundleIdentifier": bundleID, "CFBundleName": name, "CFBundleShortVersionString": "1.0"]
+        try PropertyListSerialization.data(fromPropertyList: info, format: .xml, options: 0).write(to: app.appendingPathComponent("Info.plist"))
+        try Data("binary".utf8).write(to: app.appendingPathComponent("MacOS/\(name)"))
+    }
+
+    func hasApp(_ name: String, on mac: String) -> Bool {
+        FileManager.default.fileExists(atPath: root.appendingPathComponent(mac).appendingPathComponent("Applications/\(name).app").path)
     }
 
     static func app(_ id: String) -> DockItem { DockItem(kind: .app, label: id, bundleID: id, path: "/Applications/\(id).app") }

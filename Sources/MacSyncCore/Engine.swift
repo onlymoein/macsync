@@ -39,15 +39,29 @@ public struct SyncOverview: Codable, Equatable {
     public var settingsPlan: SettingsPlan?
     public var settingsSkipped: [String]
     public var appPrefDomains: [String]
+    /// Apps being copied from another Mac through iCloud.
+    public var copies: [CopyStatus] = []
 
     public var hasPendingChanges: Bool { dockPlan != nil || settingsPlan != nil || !missingApps.isEmpty }
 }
 
+public struct CopyStatus: Codable, Equatable, Identifiable {
+    public enum Stage: String, Codable { case waitingForUpload, downloading, installed, failed }
+    public var bundleID: String
+    public var name: String
+    public var stage: Stage
+    public var fromMachine: String?
+    public var message: String?
+    public var id: String { bundleID }
+}
+
 public struct InstallResult: Codable, Equatable, Identifiable {
-    public enum Outcome: String, Codable { case installed, openedInAppStore, failed }
+    public enum Outcome: String, Codable { case installed, openedInAppStore, copying, failed }
     public var app: AppRef
     public var outcome: Outcome
     public var message: String?
+    /// The name people recognize ("Android Studio", "PhotoCraft").
+    public var displayName: String? = nil
     public var id: String { app.token }
 }
 
@@ -55,10 +69,13 @@ public struct ApplyRequest {
     public var applyDock: Bool
     public var apps: [AppRef]
     public var applySettings: Bool
-    public init(applyDock: Bool, apps: [AppRef], applySettings: Bool = true) {
+    /// Dock items (by key) to take out of every Mac's Dock.
+    public var removeFromDock: [String]
+    public init(applyDock: Bool, apps: [AppRef], applySettings: Bool = true, removeFromDock: [String] = []) {
         self.applyDock = applyDock
         self.apps = apps
         self.applySettings = applySettings
+        self.removeFromDock = removeFromDock
     }
 }
 
@@ -97,6 +114,15 @@ public final class Engine {
         var inventory: Inventory?
         var inventoryAt: Date?
         var selectedApps: [String] = []
+        /// Apps the person unticked. Everything else from the other Macs is installed by default.
+        var deselectedApps: [String]?
+        var lastMissing: [String]?
+        /// Non-spacer Dock keys at the last capture, and this Mac's view of every item's history.
+        var dockKeys: [String]?
+        var dockEvents: [String: DockEvent]?
+        /// Direct-download apps this Mac asked another Mac to copy, by bundle ID, with their names.
+        var pendingCopies: [String: String]?
+        var finishedCopies: [CopyStatus]?
         var publishedHash: String?
         var publishedAt: Date?
         var settingsHash: String?
@@ -117,6 +143,7 @@ public final class Engine {
     let now: () -> Date
     let prefs: PreferencesStoring
     let proUnlocked: Bool
+    private var missingNames: [String: String] = [:]
 
     public init(env: MacSyncEnvironment, dock: DockStoring, locator: AppLocating, runner: CommandRunning,
                 prefs: PreferencesStoring = InMemoryPreferences(), proUnlocked: Bool = ProLicense.isUnlocked,
@@ -158,13 +185,44 @@ public final class Engine {
         } catch {
             issues.append(error.localizedDescription)
         }
+        if env.iCloudAvailable { exchangeCopies(&state) }
+        let result = overview(snapshot: snapshot, state: state, issues: issues)
+        state.lastMissing = result.missingApps.map(\.app.token)
         try saveState(state)
-        return overview(snapshot: snapshot, state: state, issues: issues)
+        return result
     }
 
+    /// Uploads apps other Macs asked for, and installs copies this Mac was waiting for.
+    private func exchangeCopies(_ state: inout LocalState) {
+        let share = AppShare(env: env, runner: runner, now: now)
+        share.serve(local: state.inventory?.directApps ?? [])
+        var pending = state.pendingCopies ?? [:]
+        var finished = (state.finishedCopies ?? []).suffix(10).map { $0 }
+        var installedAny = false
+        for (id, name) in pending {
+            guard case .ready(let package) = share.availability(id) else { continue }
+            switch share.install(package) {
+            case .success:
+                finished.append(CopyStatus(bundleID: id, name: name, stage: .installed, fromMachine: package.fromMachine))
+                installedAny = true
+            case .failure(let error):
+                finished.append(CopyStatus(bundleID: id, name: name, stage: .failed, fromMachine: package.fromMachine,
+                                           message: error.localizedDescription))
+                share.withdraw(id)
+            }
+            pending[id] = nil
+        }
+        state.pendingCopies = pending.isEmpty ? nil : pending
+        state.finishedCopies = finished.isEmpty ? nil : finished
+        if installedAny { state.inventory = InventoryReader(runner: runner, env: env).read(); state.inventoryAt = now() }
+    }
+
+    /// Records the choice as what was unticked, so apps that turn up later start ticked.
     public func setSelectedApps(_ tokens: Set<String>) throws {
         var state = loadState()
-        state.selectedApps = tokens.sorted()
+        let shown = Set(state.lastMissing ?? [])
+        let kept = Set(state.deselectedApps ?? []).subtracting(shown)
+        state.deselectedApps = kept.union(shown.subtracting(tokens)).sorted()
         try saveState(state)
     }
 
@@ -183,7 +241,30 @@ public final class Engine {
             state.dockBasedOn = nil
         }
         state.dockHash = hash
+        recordDockEvents(section, &state)
+        section.events = state.dockEvents
         return section
+    }
+
+    /// Turns what changed in this Mac's Dock since the last look into added and removed events.
+    private func recordDockEvents(_ section: DockSection, _ state: inout LocalState) {
+        let now = now()
+        let current = Planner.startingEvents(section, at: now)
+        var events = state.dockEvents ?? [:]
+        if let previous = state.dockKeys {
+            let before = Set(previous), after = Set(current.keys)
+            for key in after.subtracting(before) { events[key] = current[key] }
+            for key in before.subtracting(after) {
+                if let old = events[key] { events[key] = DockEvent(present: false, at: now, item: old.item, inApps: old.inApps) }
+            }
+        } else {
+            // First look: a starting point, which never beats a removal made on another Mac.
+            for (key, event) in Planner.startingEvents(section) where events[key] == nil { events[key] = event }
+        }
+        // Keep the freshest description of items still here (a renamed app, a moved folder).
+        for (key, event) in current { if let old = events[key], old.present { events[key]?.item = event.item; _ = old } }
+        state.dockEvents = events
+        state.dockKeys = current.keys.sorted()
     }
 
     private static let epoch = Date(timeIntervalSince1970: 0)
@@ -243,21 +324,28 @@ public final class Engine {
         let everyone = others + [snapshot]
         let winner = Planner.winner(among: everyone)
         var plan: DockPlan?
-        if let winner, let target = winner.dock, winner.machineID != env.machineID, let local = snapshot.dock {
-            plan = Planner.dockPlan(current: local, target: target, source: winner.machineName, locator: locator)
+        var mergedTarget: DockSection?
+        if let local = snapshot.dock,
+           let merged = Planner.mergedDock(among: everyone, preferring: Set((local.apps + local.others).map(\.key))) {
+            mergedTarget = merged.target
+            plan = Planner.dockPlan(current: local, target: merged.target, source: Self.sourceLabel(merged, everyone: everyone),
+                                    locator: locator)
         }
         var settingsPlan: SettingsPlan?
         if let sw = settingsWinner(everyone), sw.machineID != env.machineID, let target = sw.settings {
             settingsPlan = SettingsPlanner.plan(target: target, source: sw.machineName, sourceID: sw.machineID,
                                                 prefs: prefs, home: env.homeDirectory)
         }
+        let missing = missingApps(state, others: others)
+        let deselected = Set(state.deselectedApps ?? [])
         func keys(_ section: DockSection?) -> [String] { ((section?.apps ?? []) + (section?.others ?? [])).map(\.key) }
         let summaries = everyone.map { machine -> MachineSummary in
             let isSource = machine.machineID == winner?.machineID
             // In sync means it copied this exact layout (even if it lacks some apps) or looks identical.
             let copied = machine.dock?.basedOn == winner?.machineID && machine.dock?.changedAt == winner?.dock?.changedAt
-            let identical = keys(machine.dock) == keys(winner?.dock) && machine.dock?.tileSize == winner?.dock?.tileSize
-                && machine.dock?.orientation == winner?.dock?.orientation
+            let target = mergedTarget ?? winner?.dock
+            let identical = keys(machine.dock) == keys(target) && machine.dock?.tileSize == target?.tileSize
+                && machine.dock?.orientation == target?.orientation
             let matches = isSource || copied || identical
             let inventory = machine.inventory
             return MachineSummary(
@@ -273,14 +361,47 @@ public final class Engine {
             machines: summaries,
             dockPlan: plan?.hasChanges == true ? plan : nil,
             dockMissing: plan?.missing ?? [],
-            missingApps: Planner.missingApps(local: state.inventory ?? Inventory(), others: others),
-            selectedApps: state.selectedApps,
+            missingApps: missing,
+            selectedApps: missing.map(\.app.token).filter { !deselected.contains($0) },
             issues: issues + loaded.issues,
             lastRestorePoint: restorePoints().first { $0.undoneAt == nil },
             proEnabled: proUnlocked,
             settingsPlan: settingsPlan?.hasChanges == true ? settingsPlan : nil,
             settingsSkipped: settingsPlan?.skipped ?? [],
-            appPrefDomains: state.appPrefDomains ?? [])
+            appPrefDomains: state.appPrefDomains ?? [],
+            copies: copyStatuses(state))
+    }
+
+    /// Apps on other Macs that this one lacks, leaving out any this Mac already has under another
+    /// name or source (AnyDesk from Homebrew on one Mac, downloaded on another).
+    private func missingApps(_ state: LocalState, others: [MachineSnapshot]) -> [MissingApp] {
+        let pending = Set((state.pendingCopies ?? [:]).keys)
+        return Planner.missingApps(local: state.inventory ?? Inventory(), others: others).filter { missing in
+            if missing.app.source == .direct, pending.contains(missing.app.name) { return false }
+            // A simulated Mac (its Dock lives in a file) has only its own Applications folder, not this Mac's apps.
+            guard env.dockFile == nil,
+                  let bundle = missing.detail?.bundleID ?? (missing.app.source == .direct ? missing.app.name : nil) else { return true }
+            return locator.path(forBundleID: bundle) == nil
+        }
+    }
+
+    static func sourceLabel(_ merged: Planner.MergedDock, everyone: [MachineSnapshot]) -> String {
+        let names = everyone.filter { $0.dock != nil }.map(\.machineName)
+        return names.count <= 1 ? merged.orderSourceName : "your Macs"
+    }
+
+    private func copyStatuses(_ state: LocalState) -> [CopyStatus] {
+        let share = AppShare(env: env, runner: runner, now: now)
+        var list: [CopyStatus] = []
+        for (id, name) in (state.pendingCopies ?? [:]).sorted(by: { $0.value < $1.value }) {
+            switch share.availability(id) {
+            case .ready(let p), .downloading(let p):
+                list.append(CopyStatus(bundleID: id, name: name, stage: .downloading, fromMachine: p.fromMachine))
+            case .notYet:
+                list.append(CopyStatus(bundleID: id, name: name, stage: .waitingForUpload))
+            }
+        }
+        return list + (state.finishedCopies ?? [])
     }
 
     // MARK: Apply
@@ -292,7 +413,9 @@ public final class Engine {
         let before = try sync(refreshInventory: false)
         let allowed = Set(before.missingApps.map(\.app))
         let apps = request.apps.filter { allowed.contains($0) && $0.isSafe }
-        let wantsDock = request.applyDock && before.dockPlan != nil
+        let removals = request.applyDock ? Set(request.removeFromDock).intersection(
+            ((before.dockPlan?.targetApps ?? []) + (before.dockPlan?.targetOthers ?? [])).map(\.key)) : []
+        let wantsDock = request.applyDock && (before.dockPlan != nil || !removals.isEmpty)
         let wantsSettings = request.applySettings && before.settingsPlan != nil
         guard wantsDock || wantsSettings || !apps.isEmpty else {
             return ApplyReport(restorePoint: nil, dockChanged: false, skippedDockItems: before.dockMissing, results: [])
@@ -303,9 +426,12 @@ public final class Engine {
                                                                                      settings: wantsSettings ? before.settingsPlan : nil, apps: apps))
 
         var results: [InstallResult] = []
+        missingNames = Dictionary(before.missingApps.map { ($0.app.token, $0.displayName) }, uniquingKeysWith: { a, _ in a })
         for app in apps {
-            progress("Installing \(app.name)…")
-            results.append(install(app))
+            progress("Installing \(missingNames[app.token] ?? app.name)…")
+            var result = install(app)
+            result.displayName = missingNames[app.token]
+            results.append(result)
         }
         point.installed = results.filter { $0.outcome == .installed }.map(\.app.token)
         try writeRestoreInfo(point)
@@ -333,18 +459,36 @@ public final class Engine {
         if wantsDock {
             progress("Updating the Dock…")
             // Plan again: anything just installed can now take its place in the Dock.
-            let snapshotDock = try captureDock(&state)
+            var snapshotDock = try captureDock(&state)
+            // Removing here counts as a removal made on this Mac now, so every other Mac follows.
+            for key in removals {
+                let known = state.dockEvents?[key] ?? before.dockPlan.flatMap { plan in
+                    (plan.targetApps.map { ($0, true) } + plan.targetOthers.map { ($0, false) }).first { $0.0.key == key }
+                        .map { DockEvent(present: true, at: Self.epoch, item: $0.0, inApps: $0.1) }
+                }
+                if let known { state.dockEvents?[key] = DockEvent(present: false, at: now(), item: known.item, inApps: known.inApps) }
+            }
+            snapshotDock.events = state.dockEvents
             let everyone = store.load().machines.filter { $0.machineID != env.machineID }
                 + [makeSnapshot(state: state, dock: snapshotDock)]
-            if let winner = Planner.winner(among: everyone), winner.machineID != env.machineID, let target = winner.dock {
-                let plan = Planner.dockPlan(current: snapshotDock, target: target, source: winner.machineName, locator: locator)
+            let localKeys = Set((snapshotDock.apps + snapshotDock.others).map(\.key))
+            if let merged = Planner.mergedDock(among: everyone, preferring: localKeys) {
+                let target = merged.target
+                let plan = Planner.dockPlan(current: snapshotDock, target: target, source: Self.sourceLabel(merged, everyone: everyone),
+                                            locator: locator)
                 skipped = plan.missing
                 if plan.hasChanges {
                     try write(plan: plan, target: target, backup: point)
                     dockChanged = true
-                    state.dockChangedAt = target.changedAt
-                    state.dockBasedOn = winner.machineID
-                    state.dockHash = DockCapture.section(from: try dock.readRaw(), changedAt: target.changedAt, home: env.homeDirectory).contentHash
+                    if merged.orderSourceID != env.machineID {
+                        state.dockChangedAt = target.changedAt
+                        state.dockBasedOn = merged.orderSourceID
+                    }
+                    let written = DockCapture.section(from: try dock.readRaw(), changedAt: target.changedAt, home: env.homeDirectory)
+                    state.dockHash = written.contentHash
+                    // What was applied came from other Macs: adopt their history rather than record it as edits here.
+                    state.dockEvents = merged.events
+                    state.dockKeys = Planner.startingEvents(written).keys.sorted()
                 }
             }
         }
@@ -365,6 +509,23 @@ public final class Engine {
             let result = runner.run("/usr/bin/open", ["macappstore://apps.apple.com/app/id\(app.appStoreID ?? "")"], input: nil, environment: [:])
             return InstallResult(app: app, outcome: result.status == 0 ? .openedInAppStore : .failed,
                                  message: result.status == 0 ? "Click Get in the App Store to finish." : result.stderr)
+        case .direct:
+            let share = AppShare(env: env, runner: runner, now: now)
+            let name = missingNames[app.token] ?? app.name
+            if case .ready(let package) = share.availability(app.name) {
+                switch share.install(package) {
+                case .success: return InstallResult(app: app, outcome: .installed, message: "Copied from \(package.fromMachine).")
+                case .failure(let error): return InstallResult(app: app, outcome: .failed, message: error.localizedDescription)
+                }
+            }
+            do { try share.request(app.name) } catch {
+                return InstallResult(app: app, outcome: .failed, message: "MacSync couldn't ask your other Macs for \(name).")
+            }
+            var state = loadState()
+            state.pendingCopies = (state.pendingCopies ?? [:]).merging([app.name: name]) { $1 }
+            try? saveState(state)
+            return InstallResult(app: app, outcome: .copying,
+                                 message: "Copying from your other Mac through iCloud. It installs by itself when the copy arrives.")
         case .cask, .formula:
             guard let brew = env.brewPath else {
                 return InstallResult(app: app, outcome: .failed, message: "Homebrew isn't installed. Get it at brew.sh.")
@@ -563,6 +724,13 @@ public final class Engine {
             try commit(backup, expecting: try fingerprint(of: backup))
         }
         if point.touchedSettings == true { try restoreSettings(from: point) }
+        if let data = try? Data(contentsOf: restoreDirectory(point.id).appendingPathComponent("dock-history.json")),
+           let history = try? JSONDecoder.iso.decode(DockHistory.self, from: data) {
+            var state = loadState()
+            state.dockKeys = history.keys
+            state.dockEvents = history.events
+            try saveState(state)
+        }
         point.undoneAt = now()
         try writeRestoreInfo(point)
         // The restored Dock counts as a new edit here, so it isn't immediately overwritten again.
@@ -591,6 +759,10 @@ public final class Engine {
         let point = RestorePointInfo(id: id, createdAt: date, sourceMachine: source, summary: summary, installed: [], undoneAt: nil)
         try FileManager.default.createDirectory(at: restoreDirectory(id), withIntermediateDirectories: true)
         try dock.exportPlist().write(to: restoreDirectory(id).appendingPathComponent("dock.plist"), options: .atomic)
+        // This Mac's Dock history as it was, so undo puts this Mac back without counting as removals elsewhere.
+        let state = loadState()
+        let history = DockHistory(keys: state.dockKeys, events: state.dockEvents)
+        try JSONEncoder.iso.encode(history).write(to: restoreDirectory(id).appendingPathComponent("dock-history.json"), options: .atomic)
         try writeRestoreInfo(point)
         return point
     }
@@ -607,6 +779,8 @@ public final class Engine {
             try? FileManager.default.removeItem(at: restoreDirectory(point.id))
         }
     }
+
+    struct DockHistory: Codable { var keys: [String]?; var events: [String: DockEvent]? }
 
     // MARK: Local state
 
@@ -637,4 +811,12 @@ public final class Engine {
         }
         return descriptor
     }
+}
+
+extension JSONEncoder {
+    static var iso: JSONEncoder { let e = JSONEncoder(); e.dateEncodingStrategy = .iso8601; return e }
+}
+
+extension JSONDecoder {
+    static var iso: JSONDecoder { let d = JSONDecoder(); d.dateDecodingStrategy = .iso8601; return d }
 }

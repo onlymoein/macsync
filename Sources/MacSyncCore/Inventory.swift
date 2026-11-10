@@ -4,7 +4,7 @@ import Foundation
 /// What can be installed. Snapshots are input from another machine, so names are checked
 /// before they reach a command line.
 public struct AppRef: Hashable, Codable, Identifiable, Comparable {
-    public enum Source: String, Codable { case cask, formula, appStore }
+    public enum Source: String, Codable { case cask, formula, appStore, direct }
     public var source: Source
     public var name: String
     public var appStoreID: String?
@@ -21,6 +21,7 @@ public struct AppRef: Hashable, Codable, Identifiable, Comparable {
         case .cask: return "cask:\(name)"
         case .formula: return "formula:\(name)"
         case .appStore: return "mas:\(appStoreID ?? name)"
+        case .direct: return "app:\(name)"
         }
     }
 
@@ -33,6 +34,8 @@ public struct AppRef: Hashable, Codable, Identifiable, Comparable {
             return name.range(of: "^[A-Za-z0-9][A-Za-z0-9@+_./-]*$", options: .regularExpression) != nil
         case .appStore:
             return appStoreID?.range(of: "^[0-9]+$", options: .regularExpression) != nil
+        case .direct:
+            return DirectApp.isSafeBundleID(name)
         }
     }
 }
@@ -54,49 +57,96 @@ public struct InventoryReader {
 
     public func read() -> Inventory {
         var inventory = Inventory(appStore: appStoreApps())
-        var storeDetails: [String: AppDetail] = [:]
+        var details: [String: AppDetail] = [:]
         for app in inventory.appStore {
             let ref = AppRef(source: .appStore, name: app.name, appStoreID: app.id)
             let path = env.applicationsDirectory.appendingPathComponent(app.name + ".app").path
-            storeDetails[ref.token] = AppDetail(displayName: app.name, iconID: icons.store(appAt: path, for: ref))
+            details[ref.token] = AppDetail(displayName: app.name, iconID: icons.store(appAt: path, for: ref),
+                                           bundleID: Self.bundleID(at: path))
         }
-        inventory.details = storeDetails.isEmpty ? nil : storeDetails
-        guard let brew = env.brewPath else { return inventory }
-        let brewEnv = Self.brewEnvironment(brew)
-        let casks = runner.run(brew, ["list", "--cask", "-1"], input: nil, environment: brewEnv)
-        // Only what the person asked for, not what those formulae pulled in.
-        let leaves = runner.run(brew, ["leaves", "--installed-on-request"], input: nil, environment: brewEnv)
-        guard casks.status == 0, leaves.status == 0 else { return inventory }
-        inventory.brewAvailable = true
-        inventory.casks = Self.lines(casks.output)
-        inventory.formulae = Self.lines(leaves.output)
-        let info = runner.run(brew, ["info", "--json=v2", "--installed"], input: nil, environment: brewEnv)
-        if info.status == 0 { addBrewDetails(info.output, to: &inventory) }
+        inventory.details = details
+        var caskApps: Set<String> = []
+        if let brew = env.brewPath {
+            let brewEnv = Self.brewEnvironment(brew)
+            let casks = runner.run(brew, ["list", "--cask", "-1"], input: nil, environment: brewEnv)
+            // Only what the person asked for, not what those formulae pulled in.
+            let leaves = runner.run(brew, ["leaves", "--installed-on-request"], input: nil, environment: brewEnv)
+            if casks.status == 0, leaves.status == 0 {
+                inventory.brewAvailable = true
+                inventory.casks = Self.lines(casks.output)
+                inventory.formulae = Self.lines(leaves.output)
+                let info = runner.run(brew, ["info", "--json=v2", "--installed"], input: nil, environment: brewEnv)
+                if info.status == 0 { caskApps = addBrewDetails(info.output, to: &inventory) }
+            }
+        }
+        let direct = directApps(excluding: caskApps.union(inventory.appStore.map { $0.name + ".app" }))
+        for app in direct {
+            let ref = AppRef(source: .direct, name: app.bundleID)
+            let path = env.applicationsDirectory.appendingPathComponent(app.name + ".app").path
+            inventory.details?[ref.token] = AppDetail(displayName: Self.displayName(at: path) ?? app.name,
+                                                      iconID: icons.store(appAt: path, for: ref), bundleID: app.bundleID)
+        }
+        inventory.directApps = direct
+        if inventory.details?.isEmpty == true { inventory.details = nil }
         return inventory
     }
 
     /// Names, descriptions and icons for what this Mac has, so other Macs can show them
     /// for apps they don't have yet. Icons go to the shared `icons` folder, once each.
-    func addBrewDetails(_ json: String, to inventory: inout Inventory) {
+    /// Returns the app bundles Homebrew put in Applications.
+    @discardableResult
+    func addBrewDetails(_ json: String, to inventory: inout Inventory) -> Set<String> {
         guard let data = json.data(using: .utf8),
-              let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
+              let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return [] }
         var details = inventory.details ?? [:]
+        var bundles: Set<String> = []
         let wantedCasks = Set(inventory.casks), wantedFormulae = Set(inventory.formulae)
         for cask in root["casks"] as? [[String: Any]] ?? [] {
-            guard let token = cask["token"] as? String, wantedCasks.contains(token) else { continue }
+            guard let token = cask["token"] as? String else { continue }
+            let appNames = (cask["artifacts"] as? [[String: Any]] ?? [])
+                .compactMap { ($0["app"] as? [Any])?.first as? String }
+            bundles.formUnion(appNames.map { ($0 as NSString).lastPathComponent })
+            guard wantedCasks.contains(token) else { continue }
             let ref = AppRef(source: .cask, name: token)
-            let appName = (cask["artifacts"] as? [[String: Any]] ?? []).lazy
-                .compactMap { ($0["app"] as? [Any])?.first as? String }.first
-            let iconPath = appName.map { env.applicationsDirectory.appendingPathComponent($0).path }
+            let path = appNames.first.map { env.applicationsDirectory.appendingPathComponent($0).path }
             details[ref.token] = AppDetail(displayName: (cask["name"] as? [String])?.first,
                                            summary: cask["desc"] as? String,
-                                           iconID: iconPath.flatMap { icons.store(appAt: $0, for: ref) })
+                                           iconID: path.flatMap { icons.store(appAt: $0, for: ref) },
+                                           bundleID: path.flatMap(Self.bundleID))
         }
         for formula in root["formulae"] as? [[String: Any]] ?? [] {
             guard let name = formula["name"] as? String, wantedFormulae.contains(name) else { continue }
             details[AppRef(source: .formula, name: name).token] = AppDetail(summary: formula["desc"] as? String)
         }
-        inventory.details = details.isEmpty ? nil : details
+        inventory.details = details
+        return bundles
+    }
+
+    /// Apps in Applications that came from neither Homebrew nor the App Store. Apple's own apps
+    /// and MacSync itself are left out: every Mac has them, or they can't be copied.
+    func directApps(excluding managed: Set<String>) -> [DirectApp] {
+        let fm = FileManager.default
+        let names = (try? fm.contentsOfDirectory(atPath: env.applicationsDirectory.path)) ?? []
+        return names.filter { $0.hasSuffix(".app") && !managed.contains($0) }.sorted().compactMap { file in
+            let path = env.applicationsDirectory.appendingPathComponent(file).path
+            guard !fm.fileExists(atPath: path + "/Contents/_MASReceipt/receipt"),
+                  let info = NSDictionary(contentsOfFile: path + "/Contents/Info.plist") as? [String: Any],
+                  let id = info["CFBundleIdentifier"] as? String, DirectApp.isSafeBundleID(id),
+                  !id.hasPrefix("com.apple."), id != "com.onlymehdi.macsync" else { return nil }
+            let name = String(file.dropLast(4))
+            guard DirectApp.isSafeName(name) else { return nil }
+            return DirectApp(bundleID: id, name: name, version: info["CFBundleShortVersionString"] as? String)
+        }
+    }
+
+    static func bundleID(at path: String) -> String? {
+        (NSDictionary(contentsOfFile: path + "/Contents/Info.plist")?["CFBundleIdentifier"] as? String)
+            .flatMap { DirectApp.isSafeBundleID($0) ? $0 : nil }
+    }
+
+    static func displayName(at path: String) -> String? {
+        let info = NSDictionary(contentsOfFile: path + "/Contents/Info.plist")
+        return (info?["CFBundleDisplayName"] as? String) ?? (info?["CFBundleName"] as? String)
     }
 
     var icons: IconStore { IconStore(directory: env.syncDirectory.appendingPathComponent("icons", isDirectory: true)) }

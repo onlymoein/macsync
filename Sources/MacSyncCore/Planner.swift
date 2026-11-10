@@ -46,6 +46,86 @@ public enum Planner {
         }
     }
 
+    /// The shared Dock: every item that any Mac has, minus items someone deliberately removed.
+    /// No Mac is in charge. Order, size and position follow the Mac that changed its Dock last,
+    /// and items it doesn't have go in next to their neighbours from the Mac that has them.
+    public struct MergedDock: Equatable {
+        public var target: DockSection
+        public var events: [String: DockEvent]
+        public var orderSourceID: String
+        public var orderSourceName: String
+    }
+
+    public static func mergedDock(among machines: [MachineSnapshot], preferring local: Set<String> = []) -> MergedDock? {
+        let docked = machines.filter { $0.dock != nil }
+        guard let order = winner(among: docked), let base = order.dock else { return nil }
+        var events: [String: DockEvent] = [:]
+        for machine in docked {
+            for (key, event) in machine.dock?.events ?? startingEvents(machine.dock!) {
+                if let current = events[key], !event.beats(current) { continue }
+                events[key] = event
+            }
+        }
+        let present = Set(events.filter { $0.value.present }.keys)
+        func keep(_ item: DockItem) -> Bool { item.kind == .spacer || present.contains(item.key) }
+        var apps = base.apps.filter(keep)
+        var others = base.others.filter(keep)
+        var placed = Set((apps + others).filter { $0.kind != .spacer }.map(\.key))
+
+        func insert(_ item: DockItem, after previous: String?, inApps: Bool) {
+            var list = inApps ? apps : others
+            if let previous, let index = list.lastIndex(where: { $0.key == previous }) {
+                list.insert(item, at: index + 1)
+            } else if previous == nil {
+                list.insert(item, at: 0)
+            } else {
+                list.append(item)
+            }
+            if inApps { apps = list } else { others = list }
+            placed.insert(item.key)
+        }
+        // Most recently changed Docks first, so the newest neighbours decide where things go.
+        let byRecency = docked.sorted { ($0.dock?.changedAt ?? .distantPast) > ($1.dock?.changedAt ?? .distantPast) }
+        for machine in byRecency where machine.machineID != order.machineID {
+            for (list, inApps) in [(machine.dock?.apps ?? [], true), (machine.dock?.others ?? [], false)] {
+                var previous: String?
+                for item in list where item.kind != .spacer {
+                    if present.contains(item.key), !placed.contains(item.key) { insert(item, after: previous, inApps: inApps) }
+                    if placed.contains(item.key) { previous = item.key }
+                }
+            }
+        }
+        // Kept by an event but in no Mac's Dock right now (for example, left out where it isn't installed).
+        for (key, event) in events.sorted(by: { $0.key < $1.key }) where event.present && !placed.contains(key) {
+            if event.inApps { apps.append(event.item) } else { others.append(event.item) }
+            placed.insert(key)
+        }
+        apps = dedupedByName(apps, preferring: local)
+        let target = DockSection(changedAt: base.changedAt, basedOn: base.basedOn, apps: apps, others: others,
+                                 tileSize: base.tileSize, orientation: base.orientation)
+        return MergedDock(target: target, events: events, orderSourceID: order.machineID, orderSourceName: order.machineName)
+    }
+
+    /// A Dock from before events existed, or a Mac's first look at its Dock: a starting point.
+    public static func startingEvents(_ section: DockSection, at date: Date = Date(timeIntervalSince1970: 0)) -> [String: DockEvent] {
+        var events: [String: DockEvent] = [:]
+        for item in section.apps where item.kind != .spacer { events[item.key] = DockEvent(present: true, at: date, item: item, inApps: true) }
+        for item in section.others where item.kind != .spacer { events[item.key] = DockEvent(present: true, at: date, item: item, inApps: false) }
+        return events
+    }
+
+    /// The same app can carry a different bundle ID on two Macs (a store build and a direct
+    /// download). Show it once, keeping the copy this Mac already has.
+    static func dedupedByName(_ items: [DockItem], preferring local: Set<String>) -> [DockItem] {
+        var chosen: [String: String] = [:]
+        for item in items where item.kind == .app {
+            let name = item.label.lowercased()
+            if let current = chosen[name], local.contains(current) || !local.contains(item.key) { continue }
+            chosen[name] = item.key
+        }
+        return items.filter { $0.kind != .app || chosen[$0.label.lowercased()] == $0.key }
+    }
+
     public static func resolve(_ item: DockItem, locator: AppLocating) -> String? {
         switch item.kind {
         case .spacer, .url: return ""
@@ -128,6 +208,7 @@ public enum Planner {
         let casks = Set(local.casks)
         let formulae = Set(local.formulae)
         let store = Set(local.appStore.map(\.id))
+        let direct = Set((local.directApps ?? []).map(\.bundleID))
         for machine in others {
             guard let inventory = machine.inventory else { continue }
             for (token, detail) in inventory.details ?? [:] where details[token] == nil { details[token] = detail.sanitized }
@@ -139,6 +220,12 @@ public enum Planner {
             }
             for app in inventory.appStore where !store.contains(app.id) {
                 found[AppRef(source: .appStore, name: app.name, appStoreID: app.id), default: []].insert(machine.machineName)
+            }
+            for app in inventory.directApps ?? [] where !direct.contains(app.bundleID) {
+                found[AppRef(source: .direct, name: app.bundleID), default: []].insert(machine.machineName)
+                if details[AppRef(source: .direct, name: app.bundleID).token] == nil {
+                    details[AppRef(source: .direct, name: app.bundleID).token] = AppDetail(displayName: app.name, bundleID: app.bundleID)
+                }
             }
         }
         return found.map { MissingApp(app: $0.key, fromMachines: $0.value.sorted(), detail: details[$0.key.token]) }
@@ -172,6 +259,7 @@ extension AppDetail {
             return String(flat.prefix(limit))
         }
         let icon = iconID.flatMap { $0.range(of: "^[0-9a-f]{16,64}$", options: .regularExpression) != nil ? $0 : nil }
-        return AppDetail(displayName: clean(displayName, 80), summary: clean(summary, 160), iconID: icon)
+        let bundle = bundleID.flatMap { DirectApp.isSafeBundleID($0) ? $0 : nil }
+        return AppDetail(displayName: clean(displayName, 80), summary: clean(summary, 160), iconID: icon, bundleID: bundle)
     }
 }
