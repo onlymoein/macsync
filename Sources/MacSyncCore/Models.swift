@@ -97,11 +97,29 @@ public struct Inventory: Codable, Equatable {
     public var casks: [String]
     public var formulae: [String]
     public var appStore: [AppStoreApp]
-    public init(brewAvailable: Bool = false, casks: [String] = [], formulae: [String] = [], appStore: [AppStoreApp] = []) {
+    /// Display names, one-line descriptions and shared icon IDs, keyed by `AppRef.token`.
+    /// Optional and additive, so older snapshots still read and older Macs ignore it.
+    public var details: [String: AppDetail]?
+    public init(brewAvailable: Bool = false, casks: [String] = [], formulae: [String] = [], appStore: [AppStoreApp] = [],
+                details: [String: AppDetail]? = nil) {
         self.brewAvailable = brewAvailable
         self.casks = casks
         self.formulae = formulae
         self.appStore = appStore
+        self.details = details
+    }
+}
+
+/// How an app looks in the list: its real name ("Android Studio", not "android-studio"),
+/// what it is, and the ID of its icon in the shared `icons` folder.
+public struct AppDetail: Codable, Equatable, Hashable {
+    public var displayName: String?
+    public var summary: String?
+    public var iconID: String?
+    public init(displayName: String? = nil, summary: String? = nil, iconID: String? = nil) {
+        self.displayName = displayName
+        self.summary = summary
+        self.iconID = iconID
     }
 }
 

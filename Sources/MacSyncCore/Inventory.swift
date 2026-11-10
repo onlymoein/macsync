@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 
 /// What can be installed. Snapshots are input from another machine, so names are checked
@@ -53,6 +54,13 @@ public struct InventoryReader {
 
     public func read() -> Inventory {
         var inventory = Inventory(appStore: appStoreApps())
+        var storeDetails: [String: AppDetail] = [:]
+        for app in inventory.appStore {
+            let ref = AppRef(source: .appStore, name: app.name, appStoreID: app.id)
+            let path = env.applicationsDirectory.appendingPathComponent(app.name + ".app").path
+            storeDetails[ref.token] = AppDetail(displayName: app.name, iconID: icons.store(appAt: path, for: ref))
+        }
+        inventory.details = storeDetails.isEmpty ? nil : storeDetails
         guard let brew = env.brewPath else { return inventory }
         let brewEnv = Self.brewEnvironment(brew)
         let casks = runner.run(brew, ["list", "--cask", "-1"], input: nil, environment: brewEnv)
@@ -62,8 +70,36 @@ public struct InventoryReader {
         inventory.brewAvailable = true
         inventory.casks = Self.lines(casks.output)
         inventory.formulae = Self.lines(leaves.output)
+        let info = runner.run(brew, ["info", "--json=v2", "--installed"], input: nil, environment: brewEnv)
+        if info.status == 0 { addBrewDetails(info.output, to: &inventory) }
         return inventory
     }
+
+    /// Names, descriptions and icons for what this Mac has, so other Macs can show them
+    /// for apps they don't have yet. Icons go to the shared `icons` folder, once each.
+    func addBrewDetails(_ json: String, to inventory: inout Inventory) {
+        guard let data = json.data(using: .utf8),
+              let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
+        var details = inventory.details ?? [:]
+        let wantedCasks = Set(inventory.casks), wantedFormulae = Set(inventory.formulae)
+        for cask in root["casks"] as? [[String: Any]] ?? [] {
+            guard let token = cask["token"] as? String, wantedCasks.contains(token) else { continue }
+            let ref = AppRef(source: .cask, name: token)
+            let appName = (cask["artifacts"] as? [[String: Any]] ?? []).lazy
+                .compactMap { ($0["app"] as? [Any])?.first as? String }.first
+            let iconPath = appName.map { env.applicationsDirectory.appendingPathComponent($0).path }
+            details[ref.token] = AppDetail(displayName: (cask["name"] as? [String])?.first,
+                                           summary: cask["desc"] as? String,
+                                           iconID: iconPath.flatMap { icons.store(appAt: $0, for: ref) })
+        }
+        for formula in root["formulae"] as? [[String: Any]] ?? [] {
+            guard let name = formula["name"] as? String, wantedFormulae.contains(name) else { continue }
+            details[AppRef(source: .formula, name: name).token] = AppDetail(summary: formula["desc"] as? String)
+        }
+        inventory.details = details.isEmpty ? nil : details
+    }
+
+    var icons: IconStore { IconStore(directory: env.syncDirectory.appendingPathComponent("icons", isDirectory: true)) }
 
     static func lines(_ text: String) -> [String] {
         text.split(whereSeparator: \.isNewline).map { $0.trimmingCharacters(in: .whitespaces) }
@@ -84,5 +120,43 @@ public struct InventoryReader {
             guard result.status == 0, id.range(of: "^[0-9]+$", options: .regularExpression) != nil else { return nil }
             return AppStoreApp(id: id, name: String(name.dropLast(4)))
         }
+    }
+}
+
+/// App icons shared through iCloud as small PNGs, named by a hash of the app's token.
+/// An icon is only a picture of a public app, so it is safe to sync.
+public struct IconStore {
+    public let directory: URL
+    public init(directory: URL) { self.directory = directory }
+
+    public static func id(for ref: AppRef) -> String { String(Hashing.sha256(Data(ref.token.utf8)).prefix(24)) }
+
+    public func url(for id: String) -> URL? {
+        guard id.range(of: "^[0-9a-f]{16,64}$", options: .regularExpression) != nil else { return nil }
+        return directory.appendingPathComponent(id + ".png")
+    }
+
+    /// Writes the icon if it isn't there yet and returns its ID, or nil when the app isn't found.
+    func store(appAt path: String, for ref: AppRef) -> String? {
+        let fm = FileManager.default
+        guard fm.fileExists(atPath: path) else { return nil }
+        let id = Self.id(for: ref)
+        guard let target = url(for: id) else { return nil }
+        if fm.fileExists(atPath: target.path) { return id }
+        guard let png = Self.png(NSWorkspace.shared.icon(forFile: path), side: 128) else { return nil }
+        try? fm.createDirectory(at: directory, withIntermediateDirectories: true)
+        return (try? png.write(to: target, options: .atomic)) != nil ? id : nil
+    }
+
+    static func png(_ image: NSImage, side: Int) -> Data? {
+        guard let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: side, pixelsHigh: side, bitsPerSample: 8,
+                                         samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB,
+                                         bytesPerRow: 0, bitsPerPixel: 0) else { return nil }
+        rep.size = NSSize(width: side, height: side)
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
+        image.draw(in: NSRect(x: 0, y: 0, width: side, height: side))
+        NSGraphicsContext.restoreGraphicsState()
+        return rep.representation(using: .png, properties: [:])
     }
 }

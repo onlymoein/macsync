@@ -124,11 +124,13 @@ public enum Planner {
     /// Apps on any other Mac that this one lacks. Additive only: MacSync never uninstalls.
     public static func missingApps(local: Inventory, others: [MachineSnapshot]) -> [MissingApp] {
         var found: [AppRef: Set<String>] = [:]
+        var details: [String: AppDetail] = [:]
         let casks = Set(local.casks)
         let formulae = Set(local.formulae)
         let store = Set(local.appStore.map(\.id))
         for machine in others {
             guard let inventory = machine.inventory else { continue }
+            for (token, detail) in inventory.details ?? [:] where details[token] == nil { details[token] = detail.sanitized }
             for name in inventory.casks where !casks.contains(name) {
                 found[AppRef(source: .cask, name: name), default: []].insert(machine.machineName)
             }
@@ -139,7 +141,8 @@ public enum Planner {
                 found[AppRef(source: .appStore, name: app.name, appStoreID: app.id), default: []].insert(machine.machineName)
             }
         }
-        return found.map { MissingApp(app: $0.key, fromMachines: $0.value.sorted()) }.filter { $0.app.isSafe }
+        return found.map { MissingApp(app: $0.key, fromMachines: $0.value.sorted(), detail: details[$0.key.token]) }
+            .filter { $0.app.isSafe }
             .sorted { $0.app < $1.app }
     }
 }
@@ -147,5 +150,28 @@ public enum Planner {
 public struct MissingApp: Equatable, Identifiable, Codable {
     public var app: AppRef
     public var fromMachines: [String]
+    public var detail: AppDetail?
     public var id: String { app.token }
+
+    public init(app: AppRef, fromMachines: [String], detail: AppDetail? = nil) {
+        self.app = app
+        self.fromMachines = fromMachines
+        self.detail = detail
+    }
+
+    /// The name people recognize: "Android Studio" rather than the cask token.
+    public var displayName: String { detail?.displayName ?? app.name }
+}
+
+extension AppDetail {
+    /// Details come from another Mac's file, so keep them short and the icon ID a plain hex name.
+    var sanitized: AppDetail {
+        func clean(_ text: String?, _ limit: Int) -> String? {
+            guard let text = text?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty else { return nil }
+            let flat = text.components(separatedBy: .controlCharacters).joined(separator: " ")
+            return String(flat.prefix(limit))
+        }
+        let icon = iconID.flatMap { $0.range(of: "^[0-9a-f]{16,64}$", options: .regularExpression) != nil ? $0 : nil }
+        return AppDetail(displayName: clean(displayName, 80), summary: clean(summary, 160), iconID: icon)
+    }
 }
