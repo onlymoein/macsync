@@ -20,7 +20,7 @@ public struct MacSyncEnvironment {
     public var applicationsDirectory: URL
     public var homeDirectory: String
 
-    public static let appVersion = "0.2.0"
+    public static let appVersion = "0.3.0"
 
     public var iCloudAvailable: Bool {
         FileManager.default.fileExists(atPath: syncDirectory.deletingLastPathComponent().path)
