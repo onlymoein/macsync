@@ -353,14 +353,35 @@ public final class Engine {
             }
             let url = env.applicationsDirectory.appendingPathComponent(file + ".app")
             guard FileManager.default.fileExists(atPath: url.path) else { return InstallResult(app: ref, outcome: .removed, message: "It was already gone.") }
-            do {
-                try FileManager.default.trashItem(at: url, resultingItemURL: nil)
+            if (try? FileManager.default.trashItem(at: url, resultingItemURL: nil)) != nil {
                 return InstallResult(app: ref, outcome: .removed, message: "Moved to the Trash.")
-            } catch {
-                return InstallResult(app: ref, outcome: .failed,
-                                     message: "macOS didn't let MacSync move \(app.displayName) to the Trash. Drag it there from Applications.")
+            }
+            // App Store apps belong to the system: macOS asks for your password, as when you drag
+            // one to the Trash in Finder.
+            if Self.recycleAskingForPassword(url) {
+                return InstallResult(app: ref, outcome: .removed, message: "Moved to the Trash.")
+            }
+            return InstallResult(app: ref, outcome: .failed,
+                                 message: "\(app.displayName) wasn't moved to the Trash. macOS asks for your password to remove App Store apps; try again and allow it.")
+        }
+    }
+
+    /// Moves a file to the Trash the way Finder does, which asks for an administrator's
+    /// password when the file belongs to the system. Waits for the answer.
+    static func recycleAskingForPassword(_ url: URL) -> Bool {
+        // Waiting on the main thread for work queued on it would never finish.
+        guard !Thread.isMainThread else { return false }
+        let done = DispatchSemaphore(value: 0)
+        var ok = false
+        DispatchQueue.main.async {
+            NSWorkspace.shared.recycle([url]) { trashed, error in
+                ok = error == nil && !trashed.isEmpty
+                done.signal()
             }
         }
+        // The person may take a while to type the password.
+        _ = done.wait(timeout: .now() + 300)
+        return ok && !FileManager.default.fileExists(atPath: url.path)
     }
 
     /// Takes an uninstalled app's tile out of this Mac's Dock. The next sync records it as
