@@ -424,6 +424,8 @@ public struct ExtrasPlan: Codable, Equatable {
     public var removed: [AppRemoval] = []
     public var installedPackages: [PackageItem] = []
     public var installedLoginItems: [LoginItem] = []
+    /// Paths and login items this Mac keeps to itself.
+    public var localOnly: [String] = []
     public var isEmpty: Bool { files.isEmpty && loginItems.isEmpty && packages.isEmpty }
 }
 
@@ -540,7 +542,9 @@ final class Extras {
             }
         }
         saveState(state)
-        return ExtrasSection(files: files, loginItems: state.loginItems ?? [], packages: state.packages ?? [],
+        // Login items this Mac keeps to itself aren't sent.
+        let sharedLogins = (state.loginItems ?? []).filter { !localOnly.contains($0.token) }
+        return ExtrasSection(files: files, loginItems: sharedLogins, packages: state.packages ?? [],
                              packageNames: state.packageNames, marketplaces: state.marketplaces,
                              removals: state.removals.map { Array($0.values).sorted { $0.token < $1.token } })
     }
@@ -679,6 +683,7 @@ final class Extras {
             return PackageItem(token: token, kind: kind, name: state.packageNames?[token] ?? String(token.dropFirst(kind.count + 1)), fromMachines: [])
         }
         plan.installedLoginItems = state.loginItems ?? []
+        plan.localOnly = state.localOnly
         _ = skipped
         return plan
     }

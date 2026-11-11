@@ -157,7 +157,7 @@ final class AppModel: ObservableObject {
                                                      forEventClass: AEEventClass(kCoreEventClass), andEventID: AEEventID(kAEOpenDocuments))
         importedSetups = engine.importedSetups()
         let reopen = engine
-        Task.detached { reopen.reopenLauncherIfLeftClosed() }
+        Blocking { reopen.reopenLauncherIfLeftClosed() }
         syncNow()
         checkForUpdates()
         if CommandLine.arguments.contains("--review") {
@@ -212,7 +212,7 @@ final class AppModel: ObservableObject {
         pollingDock = true
         let engine = engine
         Task {
-            let print = await Task.detached { engine.dockFingerprintNow() }.value
+            let print = await Blocking { engine.dockFingerprintNow() }.value
             pollingDock = false
             guard let print else { return }
             if let last = lastDockFingerprint, last != print { runSync(refreshInventory: false) }
@@ -234,7 +234,7 @@ final class AppModel: ObservableObject {
         isSyncing = true
         let engine = engine
         Task {
-            let result = await Task.detached { Result { try engine.sync(refreshInventory: refreshInventory) } }.value
+            let result = await Blocking { Result { try engine.sync(refreshInventory: refreshInventory) } }.value
             isSyncing = false
             switch result {
             case .success(let overview):
@@ -271,7 +271,7 @@ final class AppModel: ObservableObject {
         isApplying = true
         let engine = engine
         Task {
-            let result = await Task.detached {
+            let result = await Blocking {
                 Result { try engine.apply(ApplyRequest(applyDock: true, apps: [], applySettings: false)) }
             }.value
             isApplying = false
@@ -303,7 +303,7 @@ final class AppModel: ObservableObject {
     func setSelected(_ token: String, _ selected: Bool) {
         if selected { selectedApps.insert(token) } else { selectedApps.remove(token) }
         let engine = engine, chosen = selectedApps
-        Task.detached { try? engine.setSelectedApps(chosen) }
+        Blocking { try? engine.setSelectedApps(chosen) }
     }
 
     func toggleDockRemoval(_ key: String) {
@@ -314,7 +314,7 @@ final class AppModel: ObservableObject {
     func setSelected(_ tokens: [String], _ selected: Bool) {
         if selected { selectedApps.formUnion(tokens) } else { selectedApps.subtract(tokens) }
         let engine = engine, chosen = selectedApps
-        Task.detached { try? engine.setSelectedApps(chosen) }
+        Blocking { try? engine.setSelectedApps(chosen) }
     }
 
     /// The app's own icon, shared through iCloud by the Mac that has it.
@@ -355,7 +355,7 @@ final class AppModel: ObservableObject {
         webIconsAsked.insert(key)
         let engine = engine
         Task {
-            let url = await Task.detached { engine.webIcon(bundleID: bundleID, name: name, missing: missing) }.value
+            let url = await Blocking { engine.webIcon(bundleID: bundleID, name: name, missing: missing) }.value
             if let url, let image = NSImage(contentsOf: url) { webIcons[key] = image }
         }
         return nil
@@ -400,7 +400,7 @@ final class AppModel: ObservableObject {
 
     func setSkipped(tokens: [String], _ skipped: Bool) {
         let engine = engine
-        Task { _ = await Task.detached { try? engine.setSkipped(tokens, skipped) }.value; runSync(refreshInventory: false) }
+        Task { _ = await Blocking { try? engine.setSkipped(tokens, skipped) }.value; runSync(refreshInventory: false) }
         skippedDock = skipped ? skippedDock.union(tokens) : skippedDock.subtracting(tokens)
         guard var current = overview else { return }
         current.skippedApps.removeAll { tokens.contains($0) }
@@ -428,7 +428,7 @@ final class AppModel: ObservableObject {
         let missing = missingApp(for: item)
         let name = name(for: item)
         Task {
-            let url = await Task.detached { engine.downloadPage(bundleID: item.bundleID, name: name, missing: missing) }.value
+            let url = await Blocking { engine.downloadPage(bundleID: item.bundleID, name: name, missing: missing) }.value
             if let url { NSWorkspace.shared.open(url) }
         }
     }
@@ -460,6 +460,8 @@ final class AppModel: ObservableObject {
     @Published var craftLoading = false
     @Published var craftBusy: Set<String> = []
     @Published var craftErrors: [String: String] = [:]
+    /// Well-known AI apps and how each stands on this Mac.
+    @Published var aiApps: [AIAppStatus] = []
     /// Why an ArtCraft app didn't install, kept until it does.
     @Published var craftFailures: [String: String] = [:]
     private var craftRegistered = false
@@ -476,7 +478,7 @@ final class AppModel: ObservableObject {
         craftIconsAsked.insert(app.id)
         let engine = engine
         Task {
-            let url = await Task.detached { engine.craftIconFile(app) }.value
+            let url = await Blocking { engine.craftIconFile(app) }.value
             if let url, let image = NSImage(contentsOf: url) { craftIcons[app.id] = image }
             else {
                 // Offline or slow: try again in a little while instead of leaving a blank tile for good.
@@ -498,14 +500,14 @@ final class AppModel: ObservableObject {
         craftLoading = true
         let engine = engine
         Task {
-            let apps = await Task.detached { engine.craftApps(refresh: refresh) }.value
+            let apps = await Blocking { engine.craftApps(refresh: refresh) }.value
             craftLoading = false
             if !apps.isEmpty { craftApps = apps }
             if craftReloadWanted { craftReloadWanted = false; loadCraft() }
             // Once per launch, and never mid-install: list what's installed but missing from the launcher.
             if !craftRegistered, craftBusy.isEmpty, apps.contains(where: { $0.isInstalled }) {
                 craftRegistered = true
-                _ = await Task.detached { engine.registerUnlistedCraft() }.value
+                _ = await Blocking { engine.registerUnlistedCraft() }.value
             }
         }
     }
@@ -534,8 +536,8 @@ final class AppModel: ObservableObject {
         let folder = craftFolder
         let launcherID = ordered.first?.id
         Task {
-            let results = await Task.detached { () -> [(CraftApp, Result<String, EngineError>)] in
-                engine.installCraft(fresh, into: folder, progress: { message in
+            let results = await Blocking { () -> [(CraftApp, Result<String, EngineError>)] in
+                engine.installCraft(ordered, into: folder, progress: { message in
                     Task { @MainActor [weak self] in self?.advance("craft", message: message, ids: ids) }
                 }, finished: { app, result in
                     Task { @MainActor [weak self] in self?.craftFinished(app, result) }
@@ -546,7 +548,7 @@ final class AppModel: ObservableObject {
             // Installed again here: take back any "removed on another Mac" for it. After the install,
             // because it waits for a sync in progress, and the install must not.
             let installed = results.filter { if case .success = $0.1 { return true }; return false }.map(\.0)
-            if !installed.isEmpty { Task.detached { engine.installCraftAgain(installed) } }
+            if !installed.isEmpty { Blocking { engine.installCraftAgain(installed) } }
             if let launcherID, launcherID == "artcraft-launcher" { craftBusy.remove(launcherID) }
             for (app, result) in results {
                 craftBusy.remove(app.id)
@@ -572,7 +574,7 @@ final class AppModel: ObservableObject {
         Task {
             let ids = Dictionary(fresh.map { ($0.name, $0.id) }, uniquingKeysWith: { a, _ in a })
             work["craftRemove"] = WorkProgress(verb: "Removing ArtCraft apps", names: fresh.map(\.name))
-            let results = await Task.detached { engine.removeCraft(fresh, everywhere: everywhere) { message in
+            let results = await Blocking { engine.removeCraft(fresh, everywhere: everywhere) { message in
                 Task { @MainActor [weak self] in self?.advance("craftRemove", message: message, ids: ids) }
             } }.value
             work["craftRemove"] = nil
@@ -627,7 +629,7 @@ final class AppModel: ObservableObject {
         progress = "Getting \(next.displayName)…"
         Task {
             let folder = installFolders.removeValue(forKey: next.app.token)
-            let result = await Task.detached { engine.getApp(next, into: folder) { status in
+            let result = await Blocking { engine.getApp(next, into: folder) { status in
                 Task { @MainActor [weak self] in
                     self?.work["get"]?.status = status
                     self?.progress = status
@@ -655,7 +657,7 @@ final class AppModel: ObservableObject {
 
     func setDockOrder(_ machineID: String?) {
         let engine = engine
-        Task { _ = await Task.detached { try? engine.setDockOrder(machineID: machineID) }.value; syncNow() }
+        Task { _ = await Blocking { try? engine.setDockOrder(machineID: machineID) }.value; syncNow() }
     }
 
     // MARK: Removing and sharing
@@ -683,7 +685,7 @@ final class AppModel: ObservableObject {
         for app in fresh { removing.insert(app.app.token); removeResults[app.app.token] = nil }
         let engine = engine
         Task {
-            let results = await Task.detached { job(engine, fresh) { message in
+            let results = await Blocking { job(engine, fresh) { message in
                 Task { @MainActor [weak self] in self?.advance("remove", message: message, ids: ids) }
             } }.value
             for result in results { removeResults[result.app.token] = result }
@@ -697,12 +699,12 @@ final class AppModel: ObservableObject {
     func keepHere(_ app: MissingApp) {
         let engine = engine, token = app.app.token
         if var current = overview { current.toRemove.removeAll { $0.app.token == token }; overview = current }
-        Task { _ = await Task.detached { try? engine.keepHere(token) }.value; runSync(refreshInventory: false) }
+        Task { _ = await Blocking { try? engine.keepHere(token) }.value; runSync(refreshInventory: false) }
     }
 
     func cancelRemoval(_ token: String) {
         let engine = engine
-        Task { _ = await Task.detached { try? engine.cancelRemoval(token) }.value; syncNow() }
+        Task { _ = await Blocking { try? engine.cancelRemoval(token) }.value; syncNow() }
     }
 
     func setShared(_ tokens: [String], _ shared: Bool) {
@@ -712,7 +714,7 @@ final class AppModel: ObservableObject {
             overview = current
         }
         let engine = engine
-        Task { _ = await Task.detached { try? engine.setShared(tokens, shared) }.value; runSync(refreshInventory: false) }
+        Task { _ = await Blocking { try? engine.setShared(tokens, shared) }.value; runSync(refreshInventory: false) }
     }
 
     /// Opens a downloaded installer again, or shows it in Finder if it's gone from where it was.
@@ -737,7 +739,7 @@ final class AppModel: ObservableObject {
         let excluded = pendingExcludedSettings.map { Array($0).sorted() }
         let engine = engine
         Task {
-            let result: Result<ApplyReport, Error> = await Task.detached {
+            let result: Result<ApplyReport, Error> = await Blocking {
                 Result {
                     // App settings first: which apps' settings this Mac shares with the others.
                     if let appPrefs { try engine.setAppPrefDomains(appPrefs) }
@@ -769,7 +771,7 @@ final class AppModel: ObservableObject {
         isApplying = true
         progress = "Restoring…"
         Task {
-            let result = await Task.detached { Result { try engine.restore(point.id) } }.value
+            let result = await Blocking { Result { try engine.restore(point.id) } }.value
             isApplying = false
             progress = nil
             switch result {
@@ -790,7 +792,7 @@ final class AppModel: ObservableObject {
         isApplying = true
         progress = "Undoing…"
         Task {
-            let result = await Task.detached { Result { try engine.undoLast() } }.value
+            let result = await Blocking { Result { try engine.undoLast() } }.value
             isApplying = false
             progress = nil
             switch result {
@@ -836,7 +838,7 @@ final class AppModel: ObservableObject {
     func setAppPrefDomains(_ domains: [String]) {
         if var current = overview { current.appPrefDomains = domains.sorted(); overview = current }
         let engine = engine
-        Task { _ = await Task.detached { try? engine.setAppPrefDomains(domains) }.value; runSync(refreshInventory: false) }
+        Task { _ = await Blocking { try? engine.setAppPrefDomains(domains) }.value; runSync(refreshInventory: false) }
     }
     var proEnabled: Bool { overview?.proEnabled ?? ProLicense.isUnlocked }
 
@@ -902,9 +904,9 @@ final class AppModel: ObservableObject {
         guard Bundle.main.bundleURL.pathExtension == "app" else { return }
         lastUpdateCheck = Date()
         let updater = updater
-        Task.detached {
-            let release = updater.check()
-            await MainActor.run {
+        Task { @MainActor in
+            let release = await Blocking { updater.check() }.value
+            do {
                 self.availableUpdate = release
                 if manual { self.updateMessage = release == nil ? "MacSync \(MacSyncEnvironment.appVersion) is the latest version." : nil }
                 if let release, self.autoUpdate, !NSApp.windows.contains(where: { $0.isVisible && $0.level == .normal }) {
@@ -919,9 +921,9 @@ final class AppModel: ObservableObject {
         isUpdating = true
         updateMessage = "Updating to MacSync \(release.version)…"
         let updater = updater
-        Task.detached {
-            let result = updater.install(release)
-            await MainActor.run {
+        Task { @MainActor in
+            let result = await Blocking { updater.install(release) }.value
+            do {
                 self.isUpdating = false
                 switch result {
                 case .success: Self.relaunch()

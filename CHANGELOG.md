@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.8.12
+- **AI apps:** a section of its own with the well-known AI apps (ChatGPT, Claude, Gemini, Grok, Grok Bot, Muse from Meta, Microsoft 365 Copilot, GitHub Copilot, Perplexity, Comet, Codex, Cursor, Dia, Poe, Ollama, LM Studio and more), whether or not you have them. Install one or Install All, on all your Macs or this Mac only. See your version and Update or Update All. Homebrew apps install by themselves; App Store apps open their page.
+- **MacSync no longer stalls when many things load at once.** Slow work (downloads, Homebrew, icons) used to run on Swift's shared threads; twenty icons loading together could take every one, and then syncs and installs couldn't start ("Starting…", "Preparing…"). It now runs on threads of its own.
+- An ArtCraft install starts without looking ArtCraft's catalog up again, and a catalog that comes back incomplete (no icons or signing teams, when GitHub is limiting requests) no longer replaces the saved one. Only the next app says Preparing; the rest say Waiting.
+- Config files, AI setup and Login items have an All on switch for what this Mac shares, and each login item can be kept to this Mac.
+- An installer that needs your Mac password (Adobe Creative Cloud) says so, with Install in Terminal: Terminal opens with the install ready, and you type the password there.
+
 ## 0.8.11
 - A Craft app's signature is read with Apple's codesign first (15 seconds), which doesn't check certificates over the network, and the Security framework second.
 - Why an ArtCraft app didn't install stays on its row until it installs, whatever else refreshes the list.

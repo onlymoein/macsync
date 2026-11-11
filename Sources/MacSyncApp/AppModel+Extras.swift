@@ -27,28 +27,28 @@ extension AppModel {
         extraErrors[token] = nil
         let engine = engine
         Task {
-            let result = await Task.detached { engine.removeExtra(token, name: name, everywhere: everywhere) }.value
+            let result = await Blocking { engine.removeExtra(token, name: name, everywhere: everywhere) }.value
             extraBusy.remove(token)
             if case .failure(let error) = result { extraErrors[token] = error.localizedDescription }
             // Taken off this Mac only: stop offering it here too.
-            else if !everywhere && !token.hasPrefix("file:") { _ = await Task.detached { try? engine.setSkipped([token], true) }.value }
+            else if !everywhere && !token.hasPrefix("file:") { _ = await Blocking { try? engine.setSkipped([token], true) }.value }
             runSync(refreshInventory: false)
         }
     }
 
     func keepExtraHere(_ token: String) {
         let engine = engine
-        Task { _ = await Task.detached { try? engine.keepExtraHere(token) }.value; runSync(refreshInventory: false) }
+        Task { _ = await Blocking { try? engine.keepExtraHere(token) }.value; runSync(refreshInventory: false) }
     }
 
     func cancelExtraRemoval(_ token: String) {
         let engine = engine
-        Task { _ = await Task.detached { try? engine.cancelExtraRemoval(token) }.value; runSync(refreshInventory: false) }
+        Task { _ = await Blocking { try? engine.cancelExtraRemoval(token) }.value; runSync(refreshInventory: false) }
     }
 
     func setFilesLocalOnly(_ paths: [String], _ localOnly: Bool) {
         let engine = engine
-        Task { _ = await Task.detached { try? engine.setFilesLocalOnly(paths, localOnly) }.value; runSync(refreshInventory: false) }
+        Task { _ = await Blocking { try? engine.setFilesLocalOnly(paths, localOnly) }.value; runSync(refreshInventory: false) }
     }
 
     // MARK: Keeping apps and tools up to date
@@ -67,7 +67,7 @@ extension AppModel {
         upgrading = true
         let upgrader = engine.upgrader
         Task {
-            let report = await Task.detached { upgrader.check() }.value
+            let report = await Blocking { upgrader.check() }.value
             upgrading = false
             upgradeReport = report
         }
@@ -82,7 +82,7 @@ extension AppModel {
         let ids = Dictionary(items.map { ($0.name, $0.token) }, uniquingKeysWith: { a, _ in a })
         work["brew"] = WorkProgress(verb: "Updating with Homebrew", names: items.map(\.name))
         Task {
-            let report = await Task.detached { upgrader.upgrade(items) { message in
+            let report = await Blocking { upgrader.upgrade(items) { message in
                 Task { @MainActor [weak self] in self?.advance("brew", message: message, ids: ids) }
             } }.value
             work["brew"] = nil
@@ -100,7 +100,7 @@ extension AppModel {
         upgrading = true
         let upgrader = engine.upgrader
         Task {
-            let report = await Task.detached { upgrader.upgradeAll { message in
+            let report = await Blocking { upgrader.upgradeAll { message in
                 Task { @MainActor [weak self] in self?.progress = message }
             } }.value
             upgrading = false
@@ -116,7 +116,7 @@ extension AppModel {
         upgradeBusy.insert(item.token)
         let upgrader = engine.upgrader
         Task {
-            let result = await Task.detached { upgrader.upgradeNow(item) }.value
+            let result = await Blocking { upgrader.upgradeNow(item) }.value
             upgradeBusy.remove(item.token)
             upgradeReport = upgrader.lastReport()
             if case .failure(let error) = result { upgradeReport?.failures.append("\(item.name): \(error.localizedDescription)") }
@@ -166,7 +166,7 @@ extension AppModel {
     /// Writes a .macsync file with the chosen sections, then saves it or hands it to the share menu.
     func makeSetupFile(name: String, sections: Set<ShareSection>) async -> Result<URL, Error> {
         let engine = engine
-        return await Task.detached {
+        return await Blocking {
             Result {
                 let data = try engine.exportSetup(name: name, sections: sections)
                 let folder = FileManager.default.temporaryDirectory.appendingPathComponent("MacSync Share", isDirectory: true)
@@ -182,7 +182,7 @@ extension AppModel {
     func openSharedSetup(_ url: URL) {
         let engine = engine
         Task {
-            let result = await Task.detached { Result { try engine.importSetup(try Data(contentsOf: url)) } }.value
+            let result = await Blocking { Result { try engine.importSetup(try Data(contentsOf: url)) } }.value
             switch result {
             case .success(let info):
                 importedSetups = engine.importedSetups()
@@ -207,7 +207,7 @@ extension AppModel {
     func removeImportedSetup(_ setup: ImportedSetup) {
         let engine = engine
         Task {
-            _ = await Task.detached { try? engine.removeImportedSetup(setup.id) }.value
+            _ = await Blocking { try? engine.removeImportedSetup(setup.id) }.value
             importedSetups = engine.importedSetups()
             runSync(refreshInventory: false)
         }
@@ -321,4 +321,49 @@ extension AppModel {
 
     /// Whether this row's item is queued but not started yet.
     func isWaiting(_ job: String, _ id: String) -> Bool { work[job] != nil && workCurrent[job] != id }
+}
+
+// MARK: AI apps
+
+extension AppModel {
+    func loadAIApps() {
+        let engine = engine
+        Task {
+            let apps = await Blocking { engine.aiApps() }.value
+            aiApps = apps
+        }
+    }
+
+    /// Installs here; on all Macs it's then offered to your other Macs like any app. This Mac
+    /// only keeps it off the list your other Macs see.
+    func installAI(_ items: [AIAppStatus], everywhere: Bool) {
+        let missing = items.filter { !$0.isInstalled }.map(\.missing)
+        get(missing)
+        if !everywhere { setShared(missing.map(\.app.token), false) }
+    }
+
+    func updateAI(_ items: [AIAppStatus]) {
+        let brewCasks = Set(overview?.installedApps.filter { $0.app.source == .cask }.map(\.app.name) ?? [])
+        let outdated = items.filter(\.needsUpdate).compactMap { status -> OutdatedItem? in
+            guard case .cask(let token) = status.app.source else { return nil }
+            // Already Homebrew's: a normal upgrade. Installed another way: Homebrew takes it over.
+            return OutdatedItem(token: (brewCasks.contains(token) ? "cask:" : "adopt:") + token, name: status.app.name,
+                                from: status.installedVersion ?? "?", to: status.latestVersion ?? "?", bundleID: status.app.bundleIDs.first)
+        }
+        upgrade(outdated)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in self?.loadAIApps() }
+    }
+}
+
+
+extension AppModel {
+    /// For an installer that needs the Mac's password: Terminal opens with the install ready.
+    func installInTerminal(_ missing: MissingApp) {
+        let folder = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0].appendingPathComponent("MacSync")
+        guard let url = Engine.terminalInstall(missing.app, in: folder) else { return }
+        NSWorkspace.shared.open(url)
+        gotten[missing.app.token] = nil
+        // Picks it up once it's installed.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 60) { [weak self] in self?.syncNow() }
+    }
 }

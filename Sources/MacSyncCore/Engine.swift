@@ -1049,6 +1049,24 @@ public final class Engine {
         return nil
     }
 
+    /// Homebrew stopped because the installer wants the Mac's password (Adobe Creative Cloud, Office).
+    public static func needsPassword(_ message: String?) -> Bool {
+        guard let message else { return false }
+        return message.contains("password is required") || message.contains("needs your Mac password") || message.contains("a terminal is required")
+    }
+
+    /// Opens Terminal with a Homebrew install ready to go, where the person types their own password.
+    public static func terminalInstall(_ app: AppRef, in folder: URL) -> URL? {
+        guard app.isSafe, app.source == .cask || app.source == .formula else { return nil }
+        let command = app.source == .cask ? "brew install --cask \(app.name)" : "brew install \(app.name)"
+        let script = "#!/bin/zsh\nexport PATH=/opt/homebrew/bin:/usr/local/bin:$PATH\necho 'MacSync: installing \(app.name). Type your Mac password when asked.'\n\(command)\necho\necho 'Done. You can close this window.'\n"
+        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let url = folder.appendingPathComponent("Install \(app.name).command")
+        guard (try? script.write(to: url, atomically: true, encoding: .utf8)) != nil else { return nil }
+        try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: url.path)
+        return url
+    }
+
     /// Homebrew's error in plain words: "Homebrew no longer has tldr. Did you mean tldx?"
     static func brewProblem(_ stderr: String, name: String, status: Int32) -> String {
         let lines = stderr.split(whereSeparator: \.isNewline).map { String($0).trimmingCharacters(in: .whitespaces) }
@@ -1056,6 +1074,9 @@ public final class Engine {
             let hint = line.range(of: "Did you mean")
                 .map { " " + line[$0.lowerBound...].trimmingCharacters(in: .whitespaces) } ?? ""
             return "Homebrew no longer has \(name), so it can't be installed.\(hint) Switch it off if you don't need it."
+        }
+        if stderr.contains("a password is required") || stderr.contains("a terminal is required to read the password") {
+            return "\(name)'s installer needs your Mac password, which MacSync never types. Use Install in Terminal."
         }
         let last = lines.last { !$0.isEmpty } ?? "brew exited with \(status)."
         return last.replacingOccurrences(of: "^(Error|Warning): ", with: "", options: .regularExpression)

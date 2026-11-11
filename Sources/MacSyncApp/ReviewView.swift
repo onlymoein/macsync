@@ -76,6 +76,7 @@ struct ReviewView: View {
                         if !plan.missing.isEmpty { NotInstalledPanel(items: plan.missing, model: model) }
                     }
                     UpdatesPanel(model: model)
+                    AIAppsPanel(model: model)
                     ArtCraftPanel(model: model)
                     AppsPanel(kind: .apps, model: model)
                     AppsPanel(kind: .appStore, model: model)
@@ -731,7 +732,8 @@ private struct ArtCraftPanel: View {
             if model.craftBusy.contains(app.id) {
                 if model.isWaiting("craft", app.id) || model.isWaiting("craftRemove", app.id) {
                     let ahead = model.work["craft"]?.current ?? model.work["craftRemove"]?.current
-                    Label(ahead.map { "After \($0)" } ?? "Starting…", systemImage: "clock")
+                    let first = (model.work["craft"] ?? model.work["craftRemove"])?.names.first == app.name
+                    Label(ahead.map { "After \($0)" } ?? (first ? "Preparing…" : "Waiting"), systemImage: "clock")
                         .font(.caption).foregroundStyle(.secondary)
                 } else if let percent = model.craftPercent, model.work["craftRemove"] == nil {
                     VStack(alignment: .trailing, spacing: 3) {
@@ -1322,7 +1324,12 @@ private struct AppRow: View {
             case .removed:
                 Label("Removed", systemImage: "trash").font(.callout).foregroundStyle(.secondary)
             case .failed:
-                Button("Try Again") { model.get([missing]) }.glassButton().controlSize(.small)
+                if Engine.needsPassword(result.message) {
+                    Button("Install in Terminal") { model.installInTerminal(missing) }.primaryGlassButton().controlSize(.small)
+                        .help("Opens Terminal with the install ready; type your Mac password there. MacSync never types it.")
+                } else {
+                    Button("Try Again") { model.get([missing]) }.glassButton().controlSize(.small)
+                }
             }
         } else if isSkipped {
             Text("Not needed").font(.callout).foregroundStyle(.secondary)
@@ -1528,7 +1535,7 @@ private struct SettingsPanel: View {
 /// Test builds only: one section of the sync window on its own, for the website's pictures.
 extension ReviewView {
     static let probeSections = ["dock", "notInstalled", "artcraft", "apps", "appStore", "tools", "toRemove", "settings", "history",
-                                "config", "ai", "signin", "updates", "share", "artcraftBusy"]
+                                "config", "ai", "signin", "updates", "share", "artcraftBusy", "ai-apps"]
 
     @MainActor static func probeSection(_ key: String, model: AppModel) -> AnyView? {
         let o = model.overview
@@ -1556,6 +1563,9 @@ extension ReviewView {
             panel = o?.settingsPlan.map { AnyView(SettingsPanel(plan: $0, model: model)) } ?? AnyView(SettingsMatchPanel(model: model))
         case "history": panel = AnyView(HistoryPanel(model: model))
         case "share": panel = AnyView(ShareSheet(model: model, demoName: "Alex").background(Color(nsColor: .windowBackgroundColor)))
+        case "ai-apps":
+            model.aiApps = model.engine.aiApps()
+            panel = AnyView(AIAppsPanel(model: model))
         case "updates":
             model.upgradeReport = UpgradeReport(ranAt: Date().addingTimeInterval(-180), upgraded: [], waiting: [], failures: [], outdated: [
                 OutdatedItem(token: "cask:visual-studio-code", name: "Visual Studio Code", from: "1.106.0", to: "1.106.2", bundleID: "com.microsoft.VSCode"),

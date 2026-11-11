@@ -94,6 +94,11 @@ struct FilesPanel: View {
                             isExpanded: $open) {
                     if !changes.isEmpty {
                         AllSwitch(onCount: on, total: changes.count) { model.setSkipped(tokens: changes.map(\.token), !$0) }
+                    } else if !shared.isEmpty {
+                        // Nothing incoming: the switch is for what this Mac shares.
+                        AllSwitch(onCount: shared.filter { !$0.localOnly }.count, total: shared.count) { on in
+                            model.setFilesLocalOnly(shared.map(\.path), !on)
+                        }
                     }
                 }
                 if open {
@@ -307,6 +312,7 @@ struct LoginItemsPanel: View {
     private var mine: [LoginItem] { model.overview?.extras.installedLoginItems ?? [] }
     private var skipped: Set<String> { Set(model.overview?.skippedApps ?? []) }
     private var issue: String? { model.overview?.extras.issues.first { $0.hasPrefix("Login items") } }
+    private var localOnly: Set<String> { Set(model.overview?.extras.localOnly ?? []) }
 
     var body: some View {
         if !missing.isEmpty || !mine.isEmpty || issue != nil {
@@ -318,6 +324,11 @@ struct LoginItemsPanel: View {
                     if !missing.isEmpty {
                         AllSwitch(onCount: missing.filter { !skipped.contains($0.token) }.count, total: missing.count) {
                             model.setSkipped(tokens: missing.map(\.token), !$0)
+                        }
+                    } else if !mine.isEmpty {
+                        // Nothing incoming: the switch is for what this Mac shares.
+                        AllSwitch(onCount: mine.filter { !localOnly.contains($0.token) }.count, total: mine.count) { on in
+                            model.setFilesLocalOnly(mine.map(\.token), !on)
                         }
                     }
                 }
@@ -352,6 +363,10 @@ struct LoginItemsPanel: View {
                                 Text(item.name).font(.body)
                                 Spacer()
                                 BusyOrError(model: model, token: item.token)
+                                Toggle("", isOn: Binding(get: { !localOnly.contains(item.token) },
+                                                         set: { model.setFilesLocalOnly([item.token], !$0) }))
+                                    .toggleStyle(.switch).labelsHidden().controlSize(.mini)
+                                    .help(localOnly.contains(item.token) ? "Only on this Mac" : "Sent to your other Macs")
                                 Button { remove = RemoveTarget(token: item.token, name: item.name) } label: { Image(systemName: "trash") }
                                     .buttonStyle(.plain).foregroundStyle(.secondary).help("Remove from this Mac or all Macs")
                             }
@@ -609,5 +624,98 @@ struct UpdatesPanel: View {
         }
         .padding(18)
         .glassPanel()
+    }
+}
+
+// MARK: AI apps
+
+struct AIAppsPanel: View {
+    @ObservedObject var model: AppModel
+    @AppStorage("review.ai.open") private var open = true
+    @State private var showInstalled = true
+
+    private var missing: [AIAppStatus] { model.aiApps.filter { !$0.isInstalled } }
+    private var installed: [AIAppStatus] { model.aiApps.filter(\.isInstalled) }
+    private var toUpdate: [AIAppStatus] { installed.filter(\.needsUpdate) }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            PanelHeader(symbol: "sparkles", title: "AI apps",
+                        subtitle: model.aiApps.isEmpty ? "Loading the well-known AI apps…"
+                            : "\(installed.count) of \(model.aiApps.count) on this Mac" + (toUpdate.isEmpty ? "" : " · \(toUpdate.count) to update")
+                            + " · ChatGPT, Claude, Gemini, Grok, Copilot, Perplexity and more",
+                        isExpanded: $open) {
+                if !toUpdate.isEmpty {
+                    Button("Update All \(toUpdate.count)") { model.updateAI(toUpdate) }.glassButton().controlSize(.small)
+                }
+                if !missing.isEmpty {
+                    Menu("Install All \(missing.count)") {
+                        Button("On All Macs") { model.installAI(missing, everywhere: true) }
+                        Button("On This Mac Only") { model.installAI(missing, everywhere: false) }
+                    }
+                    .menuStyle(.button).fixedSize().controlSize(.small)
+                }
+            }
+            if open {
+                Text("Homebrew apps install by themselves; App Store apps open their page. Installed on all Macs, an app is offered on your other Macs too, and Updates keeps it current.")
+                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                if !installed.isEmpty {
+                    Text("On this Mac").font(.caption.weight(.semibold)).foregroundStyle(.secondary).textCase(.uppercase)
+                    ForEach(installed) { row($0) }
+                }
+                if !missing.isEmpty {
+                    Text("Not on this Mac yet").font(.caption.weight(.semibold)).foregroundStyle(.secondary).textCase(.uppercase).padding(.top, 4)
+                    ForEach(missing) { row($0) }
+                }
+            }
+        }
+        .padding(18)
+        .glassPanel()
+        .onAppear { if model.aiApps.isEmpty { model.loadAIApps() } }
+    }
+
+    private func row(_ status: AIAppStatus) -> some View {
+        let token = status.missing.app.token
+        return HStack(spacing: 12) {
+            Group {
+                if let path = status.installedPath { Image(nsImage: NSWorkspace.shared.icon(forFile: path)).resizable() }
+                else if let image = model.icon(for: status.missing) { Image(nsImage: image).resizable() }
+                else {
+                    Text(String(status.app.name.prefix(1))).font(.system(size: 15, weight: .bold, design: .rounded)).foregroundStyle(.white)
+                        .frame(width: 30, height: 30)
+                        .background(LinearGradient(colors: [Color(red: 0.55, green: 0.36, blue: 0.97), Color(red: 0.2, green: 0.5, blue: 1.0)],
+                                                   startPoint: .topLeading, endPoint: .bottomTrailing), in: RoundedRectangle(cornerRadius: 7))
+                }
+            }
+            .frame(width: 30, height: 30)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(status.app.name).font(.body.weight(.medium)).lineLimit(1)
+                Text([status.app.maker,
+                      status.isInstalled ? status.installedVersion.map { "Installed \($0)" } : nil,
+                      status.needsUpdate ? status.latestVersion.map { "\($0) available" } : nil,
+                      { if case .appStore = status.app.source { return "App Store" }; return nil }()]
+                        .compactMap { $0 }.joined(separator: " · "))
+                    .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+            }
+            Spacer(minLength: 8)
+            if model.getting.contains(token) || model.upgradeBusy.contains("cask:" + status.app.id) || model.upgradeBusy.contains("adopt:" + status.app.id) {
+                ProgressView().controlSize(.small)
+            } else if let result = model.gotten[token], !status.isInstalled, result.outcome == .failed {
+                Text(result.message ?? "Didn't install").font(.caption).foregroundStyle(Color.warning).lineLimit(2).frame(maxWidth: 200)
+            } else if status.needsUpdate {
+                Button("Update") { model.updateAI([status]) }.primaryGlassButton().controlSize(.small)
+            } else if status.isInstalled {
+                Label("Installed", systemImage: "checkmark.circle.fill").font(.callout).foregroundStyle(.green)
+            } else {
+                Menu {
+                    Button("Install on All Macs") { model.installAI([status], everywhere: true) }
+                    Button("Install on This Mac Only") { model.installAI([status], everywhere: false) }
+                } label: {
+                    Text({ if case .appStore = status.app.source { return "Get" }; return "Install" }())
+                } primaryAction: { model.installAI([status], everywhere: true) }
+                .menuStyle(.button).fixedSize().controlSize(.small)
+            }
+        }
+        .padding(.horizontal, 8).padding(.vertical, 3)
     }
 }

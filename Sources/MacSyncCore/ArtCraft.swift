@@ -107,9 +107,12 @@ public struct ArtCraft {
 
         // The launcher itself is in the release list but not in its own catalog.
         var apps: [CraftApp] = known["artcraft-launcher"].map { [$0] } ?? []
+        let saved = Dictionary((cached ?? []).map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
         for listing in listings {
             let f = listing.fields
+            // When the newest release can't be looked up (GitHub's limit), the last good one is kept.
             var app = known[listing.id] ?? latestFromGitHub(id: listing.id, repo: f["repo"])
+                ?? saved[listing.id].flatMap { $0.dmgURL.isEmpty ? nil : $0 }
                 ?? CraftApp(id: listing.id, name: listing.name, version: "", dmgURL: "")
             app.name = listing.name
             app.tagline = f["tagline"].map { String($0.prefix(80)) }
@@ -124,7 +127,12 @@ public struct ArtCraft {
             if app.team == nil, (app.publisher ?? "ArtCraft") != "ArtCraft" { app.dmgURL = "" }
             apps.append(app)
         }
-        if listings.isEmpty { apps = Array(known.values) }  // catalog unreachable: the release list alone
+        // ArtCraft's catalog (names, icons, signing teams) unreachable: the saved list is better than the
+        // bare release list, and the bare list is never saved over it, so the next look tries again.
+        if listings.isEmpty {
+            if let cached, !cached.isEmpty { return cached }
+            return Array(known.values).sorted { $0.name < $1.name }
+        }
         guard !apps.isEmpty else { return cached ?? [] }
         apps.sort { a, b in (a.id == "artcraft-launcher" ? 0 : 1, a.name) < (b.id == "artcraft-launcher" ? 0 : 1, b.name) }
         try? fm.createDirectory(at: env.dataDirectory, withIntermediateDirectories: true)
@@ -603,12 +611,8 @@ extension Engine {
                              finished: (CraftApp, Result<String, EngineError>) -> Void = { _, _ in }) -> [(CraftApp, Result<String, EngineError>)] {
         var craft = ArtCraft(env: env, runner: runner, now: now)
         craft.chosenFolder = folder
-        var apps = apps
-        // A Craft app without the launcher: get the launcher too, first.
-        if !apps.contains(where: { $0.id == "artcraft-launcher" }),
-           let launcher = craft.status().first(where: { $0.id == "artcraft-launcher" }), !launcher.isInstalled, launcher.availableOnMac {
-            apps.insert(launcher, at: 0)
-        }
+        // The caller passes the launcher when it's missing (the window already knows), so nothing here
+        // has to look the catalog up again before the first app starts.
         return craft.install(apps, progress: progress, finished: finished)
     }
 

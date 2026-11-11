@@ -141,3 +141,18 @@ final class UnlistedCraftTests: XCTestCase {
         XCTAssertEqual(craft.registerUnlisted(), [], "listed once")
     }
 }
+
+final class LiveCraftIconTests: XCTestCase {
+    func testFetchesAnIconFromTheCatalog() throws {
+        try XCTSkipUnless(ProcessInfo.processInfo.environment["MACSYNC_LIVE_CRAFT"] == "1", "live test")
+        let cached = URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Library/Application Support/MacSync/artcraft-catalog.json")
+        let apps = try JSONDecoder().decode([CraftApp].self, from: Data(contentsOf: cached))
+        let deck = try XCTUnwrap(apps.first { $0.id == "deckcraft" })
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("macsync-icon-\(UUID().uuidString.prefix(6))")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let env = MacSyncEnvironment(syncDirectory: root, dataDirectory: root.appendingPathComponent("data"), machineID: "t", machineName: "T",
+                                     dockFile: nil, brewPath: nil, applicationsDirectory: root, homeDirectory: root.path)
+        let file = ArtCraft(env: env, runner: SystemCommandRunner(), now: Date.init).iconFile(for: deck)
+        XCTAssertNotNil(file, "icon \(deck.iconURL ?? "-") sha \(deck.iconSHA256 ?? "-")")
+    }
+}

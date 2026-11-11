@@ -164,6 +164,13 @@
   .progress .pill { background: color-mix(in srgb, #28b858 16%, transparent); }
   .progress-shots { display:grid; grid-template-columns: 1.5fr 1fr; gap: 14px; align-items:start; }
 
+
+  .aiapps { background: radial-gradient(120% 90% at 100% 100%, color-mix(in srgb, #8e5cf7 14%, transparent), transparent 60%), var(--card); }
+  .aiapps .mug { background: linear-gradient(140deg, #8e5cf7, #0a84ff); box-shadow: 0 10px 24px -8px #8e5cf7aa; }
+  .aiapps .pill { background: color-mix(in srgb, #8e5cf7 16%, transparent); }
+  .ai-names { display:flex; flex-wrap:wrap; gap:6px; margin: 14px 0 0; }
+  .ai-names span { font-size: 13px; border:1px solid var(--line); border-radius: 999px; padding: 3px 10px; color: var(--muted); background: var(--card); }
+
   @media (max-width: 820px) {
     .progress-shots { grid-template-columns: 1fr; }
     .share { grid-template-columns: 1fr; padding: 22px; }
@@ -183,6 +190,7 @@
     <div class="links">
       <a href="#features">Features</a>
       <a href="#homebrew">Homebrew</a>
+      <a href="#ai">AI apps</a>
       <a href="#share">Share</a>
       <a href="#tour">Inside</a>
       <a href="#artcraft">ArtCraft</a>
@@ -383,6 +391,29 @@ brew install --cask macsync</pre>
       <div>
         <img class="shot shot-light" src="assets/section-updates-light.png" alt="The Homebrew updates section of the MacSync window" loading="lazy">
         <img class="shot shot-dark" src="assets/section-updates-dark.png" alt="The Homebrew updates section of the MacSync window" loading="lazy">
+      </div>
+    </div>
+  </section>
+
+  <section id="ai">
+    <div class="brew aiapps">
+      <div>
+        <span class="mug"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M18.5 15.5l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8z"/></svg></span>
+        <p class="eyebrow">AI apps</p>
+        <h2>Every well-known AI app, on all your Macs, always current</h2>
+        <ul class="ticks">
+          <li>One list of the AI apps people use, whether or not you have them yet</li>
+          <li>Install one, or Install All, on all your Macs or just this one</li>
+          <li>Homebrew apps install by themselves; App Store apps (Grok, Muse from Meta) open their page</li>
+          <li>See which version you have, and Update or Update All when a newer one is out</li>
+          <li>Apps that update themselves (ChatGPT, Claude) are handed to Homebrew so they stay current too</li>
+          <li>An app you install on one Mac is offered on the others</li>
+        </ul>
+        <div class="ai-names"><span>ChatGPT</span><span>Claude</span><span>Gemini</span><span>Grok</span><span>Grok Bot</span><span>Muse from Meta</span><span>Microsoft 365 Copilot</span><span>GitHub Copilot</span><span>Perplexity</span><span>Comet</span><span>ChatGPT Atlas</span><span>Codex</span><span>Cursor</span><span>Dia</span><span>Poe</span><span>HuggingChat</span><span>Ollama</span><span>LM Studio</span><span>Msty</span><span>Jan</span><span>GPT4All</span><span>Diffusion Bee</span><span>Draw Things</span><span>Superwhisper</span><span>MacWhisper</span><span>Granola</span></div>
+      </div>
+      <div>
+        <img class="shot shot-light" src="assets/section-aiapps-light.png" alt="The AI apps section of MacSync" loading="lazy">
+        <img class="shot shot-dark" src="assets/section-aiapps-dark.png" alt="The AI apps section of MacSync" loading="lazy">
       </div>
     </div>
   </section>
