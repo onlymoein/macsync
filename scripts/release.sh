@@ -11,6 +11,13 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+# Optional: SIGN_KEYCHAIN, a signing-only keychain holding the Developer ID and the notarization
+# login, unlocked with the password in SIGN_KEYCHAIN_PASSWORD_FILE, so nothing asks for the
+# login password.
+if [ -n "${SIGN_KEYCHAIN:-}" ] && [ -n "${SIGN_KEYCHAIN_PASSWORD_FILE:-}" ]; then
+  security unlock-keychain -p "$(cat "$SIGN_KEYCHAIN_PASSWORD_FILE")" "$SIGN_KEYCHAIN"
+fi
+
 : "${SIGN_IDENTITY:?Set SIGN_IDENTITY to your 'Developer ID Application: ...' certificate name}"
 : "${NOTARY_PROFILE:?Set NOTARY_PROFILE to a keychain profile made with 'xcrun notarytool store-credentials'}"
 case "$SIGN_IDENTITY" in
@@ -19,7 +26,7 @@ case "$SIGN_IDENTITY" in
 esac
 security find-identity -v -p codesigning ${SIGN_KEYCHAIN:+"$SIGN_KEYCHAIN"} | grep -qF "$SIGN_IDENTITY" \
   || { echo "No signing identity matching '$SIGN_IDENTITY' in your keychain." >&2; exit 1; }
-xcrun notarytool history --keychain-profile "$NOTARY_PROFILE" >/dev/null 2>&1 \
+xcrun notarytool history --keychain-profile "$NOTARY_PROFILE" ${SIGN_KEYCHAIN:+--keychain "$SIGN_KEYCHAIN"} >/dev/null 2>&1 \
   || { echo "Notary profile '$NOTARY_PROFILE' not found or not working. Run: xcrun notarytool store-credentials $NOTARY_PROFILE" >&2; exit 1; }
 
 VERSION=$(sed -n 's/.*appVersion = "\(.*\)"/\1/p' Sources/MacSyncCore/Environment.swift)
@@ -31,17 +38,12 @@ echo "==> Tests"
 swift test 2>&1 | tail -3
 
 echo "==> Build and sign $VERSION"
-# Optional: SIGN_KEYCHAIN, a signing-only keychain (unlocked with SIGN_KEYCHAIN_PASSWORD_FILE),
-# so codesign doesn't ask for the login password.
-if [ -n "${SIGN_KEYCHAIN:-}" ] && [ -n "${SIGN_KEYCHAIN_PASSWORD_FILE:-}" ]; then
-  security unlock-keychain -p "$(cat "$SIGN_KEYCHAIN_PASSWORD_FILE")" "$SIGN_KEYCHAIN"
-fi
 SIGN_IDENTITY="$SIGN_IDENTITY" SIGN_KEYCHAIN="${SIGN_KEYCHAIN:-}" scripts/build-app.sh
 codesign --verify --strict --deep --verbose=2 build/MacSync.app
 
 echo "==> Notarize (this waits for Apple, usually a few minutes)"
 ditto -c -k --keepParent build/MacSync.app "$OUT/notarize.zip"
-xcrun notarytool submit "$OUT/notarize.zip" --keychain-profile "$NOTARY_PROFILE" --wait
+xcrun notarytool submit "$OUT/notarize.zip" --keychain-profile "$NOTARY_PROFILE" ${SIGN_KEYCHAIN:+--keychain "$SIGN_KEYCHAIN"} --wait
 rm "$OUT/notarize.zip"
 
 echo "==> Staple and verify"
