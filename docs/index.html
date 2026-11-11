@@ -3,281 +3,123 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>MacSync: every Mac, set up the same</title>
-<meta name="description" content="MacSync keeps your Dock, apps and settings identical across every Mac you own. It syncs through your own iCloud Drive, previews every change and undoes in one click.">
-<meta property="og:title" content="MacSync: every Mac, set up the same">
-<meta property="og:description" content="Dock, apps and settings, identical on every Mac. Through your own iCloud Drive. Preview first, undo in one click.">
-<meta property="og:image" content="assets/icon.png">
-<meta name="theme-color" content="#0a0b14">
-<link rel="icon" type="image/png" href="assets/favicon.png">
+<title>MacSync — keep your Macs set up the same way</title>
+<meta name="description" content="MacSync keeps the Dock, apps and settings the same on all your Macs, through your own iCloud Drive. Free and open source.">
+<link rel="icon" href="assets/favicon.png">
 <style>
-:root{
-  --bg:#f6f7fb; --surface:#ffffff; --surface2:#eef0f7; --fg:#0c0e1a; --mute:#5b6075; --line:#dfe2ee;
-  --brand:#4f46f5; --brand2:#1a73ff; --glow:rgba(79,70,245,.18); --ok:#12a150; --shadow:0 30px 80px -30px rgba(30,40,120,.35);
-}
-@media (prefers-color-scheme:dark){
-  :root{
-    --bg:#0a0b14; --surface:#12141f; --surface2:#171a29; --fg:#f3f4fa; --mute:#9aa0b8; --line:#23263a;
-    --brand:#7c78ff; --brand2:#3b8cff; --glow:rgba(100,92,255,.28); --ok:#3ddc84; --shadow:0 40px 90px -30px rgba(0,0,0,.8);
+  :root { --bg:#f6f7fb; --fg:#16182f; --muted:#5c6080; --line:#e1e3ef; --card:#fff; --code:#16182f; --codefg:#e9ebff; --accent:#3a2cd6; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#0e1024; --fg:#eceeff; --muted:#a2a6cf; --line:#252957; --card:#161939; --code:#05060f; --codefg:#e9ebff; --accent:#8b97ff; } }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:17px/1.6 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif; }
+  main { max-width: 860px; margin: 0 auto; padding: 56px 20px 40px; }
+  header { text-align:center; }
+  header img { width:128px; height:128px; }
+  h1 { font-size: 56px; line-height:1; margin: 12px 0 8px; letter-spacing:-0.02em; }
+  .tagline { font-size: 22px; color: var(--muted); margin: 0 0 36px; }
+  h2 { font-size: 26px; margin: 0 0 8px; }
+  .install { display:flex; align-items:center; gap:12px; background:var(--code); color:var(--codefg); border-radius:12px; padding:16px 18px;
+             font:15px/1.5 ui-monospace, "SF Mono", Menlo, monospace; text-align:left; overflow-x:auto; }
+  .install pre { margin:0; flex:1; white-space:pre; }
+  .install button { flex:none; font:600 14px -apple-system, sans-serif; background:#ffffff1a; color:inherit; border:1px solid #ffffff33; border-radius:8px; padding:8px 12px; cursor:pointer; }
+  .install button:hover { background:#ffffff2e; }
+  .hint { color:var(--muted); font-size:15px; margin:10px 0 0; text-align:center; }
+  section { margin-top: 64px; }
+  .row { display:grid; grid-template-columns: 1fr 1fr; gap: 32px; align-items:center; margin-top: 40px; }
+  .row.flip > :first-child { order:2; }
+  .row p { margin: 0; color: var(--muted); }
+  .row h3 { margin: 0 0 6px; font-size: 20px; }
+  .shot { width:100%; border-radius:14px; box-shadow: 0 18px 50px #0003; border:1px solid var(--line); }
+  .grid { display:grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 24px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:18px; }
+  .card b { display:block; margin-bottom:4px; }
+  .card span { color:var(--muted); font-size:15px; }
+  code.inline { font: 14px ui-monospace, "SF Mono", Menlo, monospace; background: var(--card); border:1px solid var(--line); border-radius:6px; padding:1px 6px; }
+  footer { margin-top: 72px; padding-top: 24px; border-top:1px solid var(--line); color:var(--muted); font-size:15px; text-align:center; }
+  a { color: var(--accent); }
+  .shot-light { display:block; } .shot-dark { display:none; }
+  @media (prefers-color-scheme: dark) { .shot-light { display:none; } .shot-dark { display:block; } }
+  @media (max-width: 700px) {
+    h1 { font-size: 42px; } .tagline { font-size: 19px; }
+    .row { grid-template-columns: 1fr; } .row.flip > :first-child { order:0; }
+    .grid { grid-template-columns: 1fr; }
   }
-}
-*{box-sizing:border-box}
-html{scroll-behavior:smooth}
-body{margin:0;background:var(--bg);color:var(--fg);font:17px/1.6 -apple-system,BlinkMacSystemFont,"SF Pro Text","Inter",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
-a{color:inherit}
-:focus-visible{outline:2px solid var(--brand2);outline-offset:3px;border-radius:6px}
-.wrap{max-width:1080px;margin:0 auto;padding:0 24px}
-.glow{position:absolute;inset:0 0 auto 0;height:720px;background:radial-gradient(60% 55% at 50% 0%,var(--glow),transparent 70%);pointer-events:none;z-index:-1}
-header{position:relative}
-nav{display:flex;align-items:center;justify-content:space-between;padding:22px 0}
-.brand{display:flex;align-items:center;gap:10px;font-weight:700;letter-spacing:-.02em;text-decoration:none}
-.brand img{width:30px;height:30px;border-radius:7px}
-nav ul{display:flex;gap:26px;list-style:none;margin:0;padding:0}
-nav a.link{color:var(--mute);text-decoration:none;font-size:15px}
-nav a.link:hover{color:var(--fg)}
-.btn{display:inline-flex;align-items:center;gap:8px;padding:12px 20px;border-radius:12px;font-weight:600;font-size:16px;text-decoration:none;border:1px solid var(--line);background:var(--surface);transition:transform .15s,box-shadow .15s}
-.btn:hover{transform:translateY(-1px)}
-.btn.primary{background:linear-gradient(135deg,var(--brand),var(--brand2));color:#fff;border-color:transparent;box-shadow:0 10px 30px -10px var(--brand)}
-.hero{text-align:center;padding:56px 0 0}
-.pill{display:inline-block;padding:6px 14px;border:1px solid var(--line);border-radius:99px;background:var(--surface);color:var(--mute);font-size:13.5px;font-weight:500}
-.pill b{color:var(--brand);font-weight:600}
-h1{font-size:clamp(40px,7.4vw,76px);line-height:1.02;letter-spacing:-.045em;margin:22px auto 20px;max-width:15ch}
-h1 em{font-style:normal;background:linear-gradient(100deg,var(--brand),var(--brand2));-webkit-background-clip:text;background-clip:text;color:transparent}
-.sub{font-size:clamp(18px,2.4vw,22px);color:var(--mute);max-width:36em;margin:0 auto 34px}
-.cta{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
-.install{margin:26px auto 0;display:inline-flex;align-items:center;gap:12px;max-width:100%;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:8px 8px 8px 16px;font:14.5px ui-monospace,SFMono-Regular,Menlo,monospace}
-.install code{overflow-x:auto;white-space:nowrap}
-.install button{font:600 13px -apple-system,system-ui,sans-serif;border:0;border-radius:8px;padding:8px 13px;background:var(--fg);color:var(--bg);cursor:pointer}
-.fine{color:var(--mute);font-size:13.5px;margin:10px 0 0}
-/* product shots */
-.stage{position:relative;margin:64px auto 0;max-width:760px}
-.win{border:1px solid var(--line);border-radius:14px;background:var(--surface);box-shadow:var(--shadow);overflow:hidden}
-.win .bar{display:flex;align-items:center;gap:7px;padding:11px 14px;border-bottom:1px solid var(--line);background:var(--surface2)}
-.win .bar i{width:12px;height:12px;border-radius:50%;background:#ff5f57}
-.win .bar i:nth-child(2){background:#febc2e}.win .bar i:nth-child(3){background:#28c840}
-.win .bar span{margin:0 auto;padding-right:50px;font-size:13px;color:var(--mute);font-weight:500}
-.win img{display:block;width:100%;height:auto}
-.crop{max-height:640px;overflow:hidden;position:relative}
-.crop:after{content:"";position:absolute;inset:auto 0 0 0;height:140px;background:linear-gradient(to top,var(--surface),transparent)}
-.menu{position:absolute;width:300px;left:-70px;bottom:-60px;border:1px solid var(--line);border-radius:14px;overflow:hidden;box-shadow:var(--shadow);background:var(--surface)}
-.menu img{display:block;width:100%;height:auto}
-section{padding:96px 0 0}
-h2{font-size:clamp(30px,4.6vw,48px);line-height:1.08;letter-spacing:-.035em;margin:0 0 14px}
-.lead{color:var(--mute);font-size:19px;max-width:34em;margin:0}
-.center{text-align:center}.center .lead{margin:0 auto}
-.steps{display:grid;gap:18px;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));margin-top:44px;counter-reset:s}
-.step{background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:26px}
-.step:before{counter-increment:s;content:counter(s);display:grid;place-items:center;width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,var(--brand),var(--brand2));color:#fff;font-weight:700;margin-bottom:16px}
-.step h3,.card h3{margin:0 0 6px;font-size:20px;letter-spacing:-.015em}
-.step p,.card p{margin:0;color:var(--mute);font-size:16px}
-.grid{display:grid;gap:18px;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));margin-top:44px}
-.card{background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:26px}
-.card svg{width:28px;height:28px;margin-bottom:14px;stroke:var(--brand);fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
-.tag{font-size:11.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--brand);margin-left:8px;vertical-align:middle}
-.split{display:grid;gap:48px;grid-template-columns:1.05fr .95fr;align-items:center}
-.split .win{max-width:340px;margin:0 auto}
-.checks{list-style:none;padding:0;margin:26px 0 0;display:grid;gap:12px}
-.checks li{display:flex;gap:12px;color:var(--mute)}
-.checks li:before{content:"";flex:none;width:22px;height:22px;margin-top:2px;border-radius:50%;background:color-mix(in srgb,var(--ok) 18%,transparent) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2312a150' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 12.5l4 4 8-9'/%3E%3C/svg%3E") center/14px no-repeat}
-.checks b{color:var(--fg);font-weight:600}
-.two{display:grid;gap:18px;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));margin-top:44px}
-.list{margin:12px 0 0;padding:0;list-style:none;display:grid;gap:8px;color:var(--mute);font-size:16px}
-.list li{padding-left:22px;position:relative}
-.list.yes li:before{content:"+";position:absolute;left:0;color:var(--ok);font-weight:700}
-.list.no li:before{content:"\2715";position:absolute;left:0;color:#e5484d;font-size:13px;top:1px}
-.tiers{display:grid;gap:18px;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));margin-top:44px;max-width:780px;margin-left:auto;margin-right:auto}
-.tier{background:var(--surface);border:1px solid var(--line);border-radius:20px;padding:30px}
-.tier.pro{border-color:var(--brand);box-shadow:0 0 0 4px var(--glow)}
-.tier h3{margin:0;font-size:22px}
-.tier .price{font-size:15px;color:var(--mute);margin:4px 0 18px}
-details{border-top:1px solid var(--line);padding:18px 0}
-details:last-of-type{border-bottom:1px solid var(--line)}
-summary{cursor:pointer;font-weight:600;font-size:18px;list-style:none;display:flex;justify-content:space-between;gap:16px}
-summary::-webkit-details-marker{display:none}
-summary:after{content:"+";color:var(--mute);font-weight:400;font-size:22px;line-height:1}
-details[open] summary:after{content:"\2212"}
-details p{color:var(--mute);margin:10px 0 0;max-width:46em}
-.faq{max-width:760px;margin:40px auto 0}
-.final{margin-top:96px;text-align:center;padding:64px 24px;border:1px solid var(--line);border-radius:28px;background:radial-gradient(70% 90% at 50% 0%,var(--glow),transparent 70%),var(--surface)}
-.final img{width:76px;height:76px;border-radius:18px;box-shadow:0 14px 40px -12px var(--brand)}
-.final h2{margin-top:20px}
-footer{padding:48px 0 56px;color:var(--mute);font-size:14.5px;display:flex;flex-wrap:wrap;gap:14px 28px;justify-content:space-between}
-footer a{text-decoration:none}footer a:hover{color:var(--fg)}
-@media (max-width:860px){
-  nav ul{display:none}
-  .menu{display:none}
-  .split{grid-template-columns:1fr;gap:32px}
-  section{padding-top:72px}
-}
-@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}.btn{transition:none}}
 </style>
 </head>
 <body>
-<div class="glow" aria-hidden="true"></div>
-<header>
-  <div class="wrap">
-    <nav aria-label="Main">
-      <a class="brand" href="#"><img src="assets/icon.png" alt="" width="30" height="30">MacSync</a>
-      <ul>
-        <li><a class="link" href="#how">How it works</a></li>
-        <li><a class="link" href="#features">Features</a></li>
-        <li><a class="link" href="#privacy">Privacy</a></li>
-        <li><a class="link" href="#pricing">Pricing</a></li>
-        <li><a class="link" href="#faq">FAQ</a></li>
-      </ul>
-      <a class="btn" href="https://github.com/onlymoein/macsync">GitHub</a>
-    </nav>
+<main>
+  <header>
+    <img src="assets/icon.png" alt="MacSync app icon">
+    <h1>MacSync</h1>
+    <p class="tagline">Keep all your Macs set up the same way.</p>
+  </header>
 
-    <div class="hero">
-      <span class="pill"><b>Early access</b> · for macOS 13 and later</span>
-      <h1>Every Mac you own, <em>set up the same.</em></h1>
-      <p class="sub">MacSync keeps your Dock, apps and settings identical across your MacBook, Mac Studio and Mac Pro. It syncs through your own iCloud Drive, shows you every change first, and undoes in one click.</p>
-      <div class="cta">
-        <a class="btn primary" href="https://github.com/onlymoein/macsync">Get MacSync</a>
-        <a class="btn" href="#how">See how it works</a>
-      </div>
-      <div class="install"><code id="cmd">brew tap onlymoein/tap && brew trust onlymoein/tap && brew install --cask macsync</code><button type="button" id="copy" aria-label="Copy the install command">Copy</button></div>
-      <p class="fine">Homebrew install arrives with the first signed release. Until then, build it from source.</p>
-
-      <div class="stage">
-        <div class="win">
-          <div class="bar" aria-hidden="true"><i></i><i></i><i></i><span>Review Changes</span></div>
-          <div class="crop">
-            <picture>
-              <source media="(prefers-color-scheme: dark)" srcset="assets/review-dark.png">
-              <img src="assets/review-light.png" width="1360" height="2060" alt="The MacSync Review Changes window comparing a MacBook Air's Dock with the Mac Studio's, with the new Dock layout, a list of setting changes and apps to install.">
-            </picture>
-          </div>
-        </div>
-        <div class="menu">
-          <picture>
-            <source media="(prefers-color-scheme: dark)" srcset="assets/menu-dark.png">
-            <img src="assets/menu-light.png" width="680" height="546" alt="The MacSync menu bar panel listing a MacBook Air that is behind and a Mac Studio with the latest layout, with a Review Changes button.">
-          </picture>
-        </div>
-      </div>
-    </div>
+  <div class="install">
+    <pre id="cmd">brew tap onlymoein/tap
+brew trust onlymoein/tap
+brew install --cask macsync</pre>
+    <button type="button" id="copy">Copy</button>
   </div>
-</header>
+  <p class="hint">Paste that in Terminal. No Homebrew? <a href="https://github.com/onlymoein/macsync/releases/latest">Download the app</a> and drag it into Applications.</p>
 
-<main class="wrap">
-  <section id="how">
-    <div class="center">
-      <h2>Set it up once. Match everywhere.</h2>
-      <p class="lead">Migration Assistant runs one time. MacSync keeps going, so a new Mac feels like your Mac in minutes and stays that way.</p>
-    </div>
-    <div class="steps">
-      <div class="step"><h3>Each Mac saves its setup</h3><p>MacSync writes a small file about this Mac to your iCloud Drive: Dock, apps and, with Pro, settings. No server and no account.</p></div>
-      <div class="step"><h3>Review what would change</h3><p>Another Mac has a newer layout? You see the Dock before and after, the settings that differ and the apps you're missing. Nothing changes until you press Apply.</p></div>
-      <div class="step"><h3>Apply, or undo</h3><p>A restore point is saved first. If you don't like the result, Undo puts the Dock and settings back exactly as they were.</p></div>
-    </div>
-  </section>
+  <section>
+    <h2>What does MacSync do?</h2>
+    <p style="color:var(--muted)">MacSync lives in your menu bar. It saves each Mac's Dock, apps and settings to your own iCloud Drive, and shows every other Mac what would change, so they all end up the same. There's no server and no account.</p>
 
-  <section id="features">
-    <div class="center"><h2>Everything that makes a Mac yours.</h2></div>
-    <div class="grid">
-      <article class="card">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="14" width="18" height="6" rx="2"/><rect x="6" y="16" width="2" height="2" rx=".5"/><rect x="11" y="16" width="2" height="2" rx=".5"/><rect x="16" y="16" width="2" height="2" rx=".5"/><path d="M12 3v7M9 7l3 3 3-3"/></svg>
-        <h3>Your Dock, exactly</h3><p>Apps, folders, spacers and links, in order, with size and position. Apps are matched by identity, so they line up even when their paths differ between Macs.</p>
-      </article>
-      <article class="card">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M4 7.5l8 4.5 8-4.5M12 12v9"/></svg>
-        <h3>Your apps</h3><p>Homebrew apps and tools, and Mac App Store apps. You tick what you want on each Mac. MacSync adds, and never uninstalls anything.</p>
-      </article>
-      <article class="card">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/></svg>
-        <h3>Your settings <span class="tag">Pro</span></h3><p>Trackpad, keyboard, Finder, Dock behavior, appearance and screenshots, plus the preferences of the apps you pick. A setting left at its default stays at its default.</p>
-      </article>
-      <article class="card">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>
-        <h3>Preview before every apply</h3><p>See the changes as icons and plain words, and untick anything you don't want. Syncing in the background only saves and checks. It never changes a Mac on its own.</p>
-      </article>
-      <article class="card">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 14L4 9l5-5"/><path d="M4 9h10a6 6 0 010 12h-3"/></svg>
-        <h3>One-click undo</h3><p>Every apply saves a restore point first. Undo brings back the Dock and settings exactly, and tells you which installed apps stay.</p>
-      </article>
-      <article class="card">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="10" width="16" height="11" rx="3"/><path d="M8 10V7a4 4 0 018 0v3"/></svg>
-        <h3>Private by design</h3><p>Your setup goes to your own iCloud Drive and nowhere else. Passwords, tokens and keys are never copied, and the code is open for you to read.</p>
-      </article>
+    <div class="row">
+      <div>
+        <h3>One Dock on every Mac</h3>
+        <p>Your Macs' Docks are combined, so an app you add on one shows up on the others, in the same order. Remove one and it leaves every Dock. Drag icons into a new order right in the window.</p>
+      </div>
+      <div>
+        <img class="shot shot-light" src="assets/window-light.png" alt="The MacSync window showing the combined Dock">
+        <img class="shot shot-dark" src="assets/window-dark.png" alt="The MacSync window showing the combined Dock">
+      </div>
+    </div>
+
+    <div class="row flip">
+      <div>
+        <h3>Every Mac at a glance</h3>
+        <p>The menu bar shows each Mac, when it last saved, and whether it's in sync. Moving a Dock icon is saved to iCloud within seconds.</p>
+      </div>
+      <div>
+        <img class="shot shot-light" src="assets/menu-light.png" alt="The MacSync menu listing two Macs">
+        <img class="shot shot-dark" src="assets/menu-dark.png" alt="The MacSync menu listing two Macs">
+      </div>
     </div>
   </section>
 
   <section>
-    <div class="split">
-      <div>
-        <h2>Two Macs disagree? The latest change wins.</h2>
-        <p class="lead">No merge screens. MacSync picks the most recent edit, and it saves a restore point before it applies, so the other Mac's version is never lost.</p>
-        <ul class="checks">
-          <li><span><b>A new Mac never overwrites an old one.</b> Its default Dock isn't an edit, so your established setup wins.</span></li>
-          <li><span><b>Missing apps don't break anything.</b> If an app in the layout isn't on this Mac, it's left out and listed.</span></li>
-          <li><span><b>It settles.</b> After an apply, Macs that match stop offering each other changes.</span></li>
-        </ul>
-      </div>
-      <div class="win">
-        <div class="bar" aria-hidden="true"><i></i><i></i><i></i><span>MacSync</span></div>
-        <picture>
-          <source media="(prefers-color-scheme: dark)" srcset="assets/menu-applied-dark.png">
-          <img src="assets/menu-applied-light.png" width="680" height="546" alt="The MacSync menu after applying: both Macs show as in sync and Undo Last Apply is available.">
-        </picture>
-      </div>
+    <h2>It handles the rest too</h2>
+    <div class="grid">
+      <div class="card"><b>Apps</b><span>Apps on your other Macs, one click each: Homebrew installs them, App Store apps open their page, others download from the developer.</span></div>
+      <div class="card"><b>Settings</b><span>Trackpad, keyboard, Finder, Dock and screenshot settings, plus the apps' own settings you choose.</span></div>
+      <div class="card"><b>Remove everywhere</b><span>Take an app off every Mac at once. Homebrew uninstalls it; anything else goes to the Trash.</span></div>
+      <div class="card"><b>Preview first</b><span>Nothing changes until you press Apply. Each Apply saves a restore point, and History goes back to any of the last 20.</span></div>
+      <div class="card"><b>Never your secrets</b><span>Passwords, tokens, license keys and window positions are never copied.</span></div>
+      <div class="card"><b>Raycast and Terminal</b><span>A Raycast extension and a <code class="inline">macsync</code> command do the same from the keyboard.</span></div>
     </div>
   </section>
 
-  <section id="privacy">
-    <div class="center"><h2>Only what's needed. Never secrets.</h2><p class="lead">MacSync copies an allowlist of fields, not whole preference files.</p></div>
-    <div class="two">
-      <div class="card"><h3>Synced</h3>
-        <ul class="list yes"><li>Dock apps, folders, spacers, links and their order</li><li>Names and identifiers of your apps</li><li>A curated list of macOS settings (Pro)</li><li>Preferences of apps you choose (Pro)</li></ul></div>
-      <div class="card"><h3>Never synced</h3>
-        <ul class="list no"><li>Passwords, tokens, license keys and API keys</li><li>Keychain items and logins in Dock links</li><li>Anything that looks like a secret, even in a chosen app</li><li>Window positions and other machine-specific state</li></ul></div>
-    </div>
+  <section>
+    <h2>Get started</h2>
+    <p style="color:var(--muted)">Install MacSync on each Mac, signed in to the same Apple Account with iCloud Drive on. Each Mac saves its setup by itself. Open the menu on any Mac and press <b>Review Changes</b>. MacSync updates itself.</p>
   </section>
 
-  <section id="pricing">
-    <div class="center"><h2>Free for the essentials.</h2><p class="lead">Dock and apps are free. Pro adds settings sync. Pricing isn't set yet, and until it is, Pro is switched on for everyone.</p></div>
-    <div class="tiers">
-      <div class="tier"><h3>Free</h3><p class="price">Always</p>
-        <ul class="list yes"><li>Dock layout, order, size and position</li><li>Homebrew and Mac App Store apps</li><li>Preview, restore points and undo</li><li>Menu bar app, command line and Raycast</li></ul></div>
-      <div class="tier pro"><h3>Pro</h3><p class="price">One-time purchase, price to be announced</p>
-        <ul class="list yes"><li>Everything in Free</li><li>Trackpad, keyboard, Finder and Dock behavior</li><li>Appearance and screenshot settings</li><li>Preferences of the apps you pick</li></ul></div>
-    </div>
-  </section>
-
-  <section id="faq">
-    <div class="center"><h2>Questions</h2></div>
-    <div class="faq">
-      <details><summary>Do I need an account?</summary><p>No. MacSync uses the iCloud Drive you're already signed in to. Every Mac needs iCloud Drive turned on and the same Apple Account.</p></details>
-      <details><summary>Will it uninstall my apps?</summary><p>Never. MacSync only adds apps you tick, and undo restores your Dock and settings, not your app list.</p></details>
-      <details><summary>How do Mac App Store apps install?</summary><p>MacSync opens each app's App Store page so you can click Get. The command-line tool for the App Store needs administrator rights, so MacSync doesn't use it.</p></details>
-      <details><summary>Does it change my Mac in the background?</summary><p>No. In the background it only saves this Mac's setup and checks the others. Changes are applied when you review and press Apply.</p></details>
-      <details><summary>Which Macs does it support?</summary><p>macOS 13 and later, on Apple silicon and Intel. It has been tested on a single Mac so far. Early access means it needs your feedback.</p></details>
-      <details><summary>Is it open source?</summary><p>Yes, under the MIT license. You can read every line on <a href="https://github.com/onlymoein/macsync">GitHub</a>.</p></details>
-    </div>
-  </section>
-
-  <div class="final">
-    <img src="assets/icon.png" alt="" width="76" height="76">
-    <h2>Make your next Mac feel familiar.</h2>
-    <p class="lead">Free to start. Your setup stays in your iCloud.</p>
-    <p style="margin-top:28px"><a class="btn primary" href="https://github.com/onlymoein/macsync">Get MacSync</a></p>
-  </div>
+  <footer>
+    <a href="https://github.com/onlymoein/macsync">GitHub</a> ·
+    <a href="https://github.com/onlymoein/macsync/releases/latest">Download</a> ·
+    <a href="https://github.com/onlymoein/macsync/blob/main/CHANGELOG.md">Changelog</a> ·
+    Free and open source under the MIT license. macOS 13 or later.
+  </footer>
 </main>
-
-<footer class="wrap">
-  <span>MacSync · MIT license · Made for people with more than one Mac.</span>
-  <span><a href="https://github.com/onlymoein/macsync">GitHub</a> · <a href="https://github.com/onlymoein/homebrew-tap">Homebrew tap</a></span>
-</footer>
-
 <script>
-(function(){
-  var b=document.getElementById('copy'),c=document.getElementById('cmd');
-  if(!b||!c)return;
-  b.addEventListener('click',function(){
-    var done=function(){b.textContent='Copied';setTimeout(function(){b.textContent='Copy'},1600)};
-    try{navigator.clipboard.writeText(c.textContent).then(done,function(){})}catch(e){}
+  document.getElementById("copy").addEventListener("click", async function () {
+    try {
+      await navigator.clipboard.writeText(document.getElementById("cmd").textContent);
+      this.textContent = "Copied";
+      setTimeout(() => { this.textContent = "Copy"; }, 1500);
+    } catch (e) { this.textContent = "Select and copy"; }
   });
-})();
 </script>
 </body>
 </html>

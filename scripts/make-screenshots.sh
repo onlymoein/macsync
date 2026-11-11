@@ -41,7 +41,7 @@ values = {
 }
 snap = {
     "schemaVersion": 2, "machineID": "demo-studio", "machineName": "Mac Studio", "osVersion": "macOS 26",
-    "appVersion": "0.2.0", "firstSeenAt": iso(now - datetime.timedelta(days=30)), "savedAt": iso(now),
+    "appVersion": "0.5.4", "firstSeenAt": iso(now - datetime.timedelta(days=30)), "savedAt": iso(now),
     "dock": {"changedAt": iso(now + datetime.timedelta(minutes=1)), "apps": studio, "tileSize": 48, "orientation": "bottom",
              "others": [{"kind": "folder", "label": "Downloads", "path": "~/Downloads",
                          "folder": {"arrangement": 2, "displayAs": 0, "showAs": 1, "preferredItemSize": -1}}]},
