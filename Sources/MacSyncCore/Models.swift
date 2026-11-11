@@ -91,6 +91,20 @@ public struct DockSection: Codable, Equatable {
 /// One item's latest known state. A Mac's starting Dock counts as present at the epoch, so it never
 /// beats a deliberate removal on another Mac. Removing an item on any Mac removes it everywhere;
 /// adding it back on any Mac brings it back everywhere.
+/// "Remove this app from all my Macs", or that request taken back. The latest one wins.
+public struct AppRemoval: Codable, Equatable, Hashable {
+    public var token: String
+    public var name: String
+    public var bundleID: String?
+    public var at: Date
+    /// False once someone brought the app back.
+    public var active: Bool
+    public var fromMachine: String
+    public init(token: String, name: String, bundleID: String?, at: Date, active: Bool, fromMachine: String) {
+        self.token = token; self.name = name; self.bundleID = bundleID; self.at = at; self.active = active; self.fromMachine = fromMachine
+    }
+}
+
 public struct DockEvent: Codable, Equatable, Hashable {
     public var present: Bool
     public var at: Date
@@ -165,9 +179,13 @@ public struct MachineSnapshot: Codable, Equatable {
     public var inventory: Inventory?
     /// Pro. Optional and additive, so it needs no new schema version.
     public var settings: PrefsSection?
+    /// Apps someone chose to remove from every Mac, as this Mac knows them.
+    public var removals: [AppRemoval]?
 
     public init(machineID: String, machineName: String, osVersion: String, appVersion: String,
-                firstSeenAt: Date, savedAt: Date, dock: DockSection?, inventory: Inventory?, settings: PrefsSection? = nil) {
+                firstSeenAt: Date, savedAt: Date, dock: DockSection?, inventory: Inventory?, settings: PrefsSection? = nil,
+                removals: [AppRemoval]? = nil) {
+        self.removals = removals
         self.schemaVersion = SnapshotCodec.currentVersion
         self.machineID = machineID
         self.machineName = machineName

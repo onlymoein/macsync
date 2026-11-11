@@ -28,6 +28,19 @@ public struct AppRef: Hashable, Codable, Identifiable, Comparable {
     public var id: String { token }
     public static func < (a: AppRef, b: AppRef) -> Bool { a.token < b.token }
 
+    /// A token from another Mac, before it is trusted: cask:x, formula:x, mas:123, app:bundle.id.
+    static func isSafeToken(_ token: String) -> Bool {
+        let parts = token.split(separator: ":", maxSplits: 1).map(String.init)
+        guard parts.count == 2 else { return false }
+        switch parts[0] {
+        case "cask": return AppRef(source: .cask, name: parts[1]).isSafe
+        case "formula": return AppRef(source: .formula, name: parts[1]).isSafe
+        case "mas": return AppRef(source: .appStore, name: "", appStoreID: parts[1]).isSafe
+        case "app": return AppRef(source: .direct, name: parts[1]).isSafe
+        default: return false
+        }
+    }
+
     public var isSafe: Bool {
         switch source {
         case .cask, .formula:

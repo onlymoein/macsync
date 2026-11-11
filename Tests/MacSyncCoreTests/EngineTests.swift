@@ -451,6 +451,63 @@ final class EngineTests: XCTestCase {
         XCTAssertEqual(try air.engine.sync().wantedApps.map(\.app.token), ["cask:ghostty"])
     }
 
+    func testRemoveFromAllMacsUninstallsHereAndAsksTheOthers() throws {
+        let world = try TestWorld()
+        let studio = try world.mac("studio", dock: ["a"])
+        studio.runner.casks = ["blender"]
+        try studio.engine.sync()
+        let air = try world.mac("air", dock: ["a"])
+        air.runner.casks = ["blender"]
+        try air.engine.sync()
+        world.tick()
+
+        let blender = try XCTUnwrap(try studio.engine.sync().installedApps.first { $0.app.token == "cask:blender" })
+        let results = studio.engine.removeEverywhere([blender])
+        XCTAssertEqual(results.first?.outcome, .removed)
+        XCTAssertTrue(studio.runner.calls.contains(["/fake/brew", "uninstall", "--cask", "blender"]))
+
+        world.tick()
+        let onAir = try air.engine.sync()
+        XCTAssertEqual(onAir.toRemove.map(\.app.token), ["cask:blender"])
+        XCTAssertTrue(onAir.hasPendingChanges)
+        _ = air.engine.uninstallHere(onAir.toRemove)
+        XCTAssertTrue(air.runner.calls.contains(["/fake/brew", "uninstall", "--cask", "blender"]))
+    }
+
+    func testRemovedAppIsNotOfferedAndCanBeBroughtBack() throws {
+        let world = try TestWorld()
+        let studio = try world.mac("studio", dock: ["a"])
+        studio.runner.casks = ["blender"]
+        try studio.engine.sync()
+        let air = try world.mac("air", dock: ["a"])
+        try air.engine.sync()
+        world.tick()
+        // Removed from all Macs on the Air, which never had it: the Studio is asked, the Air stops offering it.
+        let offered = try XCTUnwrap(try air.engine.sync().missingApps.first { $0.app.token == "cask:blender" })
+        _ = air.engine.removeEverywhere([offered])
+        world.tick()
+        XCTAssertFalse(try air.engine.sync().missingApps.contains { $0.app.token == "cask:blender" })
+        XCTAssertEqual(try studio.engine.sync().toRemove.map(\.app.token), ["cask:blender"])
+        world.tick()
+        try air.engine.cancelRemoval("cask:blender")
+        world.tick()
+        XCTAssertTrue(try studio.engine.sync().toRemove.isEmpty)
+        XCTAssertTrue(try air.engine.sync().missingApps.contains { $0.app.token == "cask:blender" })
+    }
+
+    func testAppSwitchedOffIsNotSentToOtherMacs() throws {
+        let world = try TestWorld()
+        let studio = try world.mac("studio", dock: ["a"])
+        studio.runner.casks = ["blender", "ghostty"]
+        try studio.engine.sync()
+        try studio.engine.setShared(["cask:blender"], false)
+        let air = try world.mac("air", dock: ["a"])
+        let offered = try air.engine.sync().missingApps.map(\.app.token)
+        XCTAssertEqual(offered, ["cask:ghostty"])
+        try studio.engine.setShared(["cask:blender"], true)
+        XCTAssertEqual(try air.engine.sync().missingApps.map(\.app.token), ["cask:blender", "cask:ghostty"])
+    }
+
     func testOldICloudCopiesAreDeleted() throws {
         let world = try TestWorld()
         let old = world.sync.appendingPathComponent("apps/packages")

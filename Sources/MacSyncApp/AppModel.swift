@@ -255,6 +255,47 @@ final class AppModel: ObservableObject {
         }
     }
 
+    // MARK: Removing and sharing
+
+    @Published var removing: Set<String> = []
+    @Published var removeResults: [String: InstallResult] = [:]
+
+    func removeEverywhere(_ app: MissingApp) { runRemoval([app]) { engine, apps in engine.removeEverywhere(apps) } }
+    func uninstallHere(_ apps: [MissingApp]) { runRemoval(apps) { engine, apps in engine.uninstallHere(apps) } }
+
+    private func runRemoval(_ apps: [MissingApp], _ work: @escaping @Sendable (Engine, [MissingApp]) -> [InstallResult]) {
+        let fresh = apps.filter { !removing.contains($0.app.token) }
+        guard !fresh.isEmpty else { return }
+        for app in fresh { removing.insert(app.app.token); removeResults[app.app.token] = nil }
+        let engine = engine
+        Task {
+            let results = await Task.detached { work(engine, fresh) }.value
+            for result in results { removeResults[result.app.token] = result }
+            for app in fresh { removing.remove(app.app.token) }
+            syncNow()
+        }
+    }
+
+    func keepHere(_ app: MissingApp) {
+        try? engine.keepHere(app.app.token)
+        syncNow()
+    }
+
+    func cancelRemoval(_ token: String) {
+        let engine = engine
+        Task { _ = await Task.detached { try? engine.cancelRemoval(token) }.value; syncNow() }
+    }
+
+    func setShared(_ tokens: [String], _ shared: Bool) {
+        if var current = overview {
+            current.unshared.removeAll { tokens.contains($0) }
+            if !shared { current.unshared += tokens }
+            overview = current
+        }
+        let engine = engine
+        Task { _ = await Task.detached { try? engine.setShared(tokens, shared) }.value }
+    }
+
     /// Opens a downloaded installer again, or shows it in Finder if it's gone from where it was.
     func openDownload(_ result: InstallResult) {
         guard let path = result.path else { return }

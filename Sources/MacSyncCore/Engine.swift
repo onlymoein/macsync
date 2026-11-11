@@ -42,14 +42,22 @@ public struct SyncOverview: Codable, Equatable {
     public var appPrefDomains: [String]
     /// Apps from other Macs the person said this Mac doesn't need. Remembered on this Mac only.
     public var skippedApps: [String] = []
+    /// Apps on this Mac that MacSync can remove from every Mac.
+    public var installedApps: [MissingApp] = []
+    /// Apps removed on another Mac that are still on this one.
+    public var toRemove: [MissingApp] = []
+    /// Apps removed from all Macs, newest first, so a removal can be taken back.
+    public var removed: [AppRemoval] = []
+    /// This Mac's apps it doesn't offer the other Macs.
+    public var unshared: [String] = []
 
-    public var hasPendingChanges: Bool { dockPlan != nil || settingsPlan != nil || !wantedApps.isEmpty }
+    public var hasPendingChanges: Bool { dockPlan != nil || settingsPlan != nil || !wantedApps.isEmpty || !toRemove.isEmpty }
     /// Missing apps, minus the ones this Mac doesn't need.
     public var wantedApps: [MissingApp] { missingApps.filter { !skippedApps.contains($0.app.token) } }
 }
 
 public struct InstallResult: Codable, Equatable, Identifiable {
-    public enum Outcome: String, Codable { case installed, openedInAppStore, downloaded, failed }
+    public enum Outcome: String, Codable { case installed, openedInAppStore, downloaded, removed, failed }
     public var app: AppRef
     public var outcome: Outcome
     public var message: String?
@@ -115,6 +123,12 @@ public final class Engine {
         /// Non-spacer Dock keys at the last capture, and this Mac's view of every item's history.
         var dockKeys: [String]?
         var dockEvents: [String: DockEvent]?
+        /// Every Mac's "remove from all Macs" requests, by app token, merged.
+        var removals: [String: AppRemoval]?
+        /// Apps removed elsewhere that this Mac keeps anyway.
+        var keptHere: [String]?
+        /// This Mac's apps that it doesn't offer to the other Macs.
+        var unshared: [String]?
         var publishedHash: String?
         var publishedAt: Date?
         var settingsHash: String?
@@ -172,6 +186,7 @@ public final class Engine {
             state.inventoryAt = now()
         }
         let settings = capturePrefs(&state)
+        mergeRemovals(&state)
         let snapshot = makeSnapshot(state: state, dock: local, settings: settings)
         var issues: [String] = []
         do {
@@ -191,6 +206,156 @@ public final class Engine {
     private func removeOldCopies() {
         let old = env.syncDirectory.appendingPathComponent("apps", isDirectory: true)
         if FileManager.default.fileExists(atPath: old.path) { try? FileManager.default.removeItem(at: old) }
+    }
+
+    // MARK: Removing from all Macs, and what this Mac shares
+
+    /// Takes in every other Mac's removal requests. The newest request for an app wins.
+    private func mergeRemovals(_ state: inout LocalState) {
+        var merged = state.removals ?? [:]
+        for machine in store.load().machines where machine.machineID != env.machineID {
+            for removal in machine.removals ?? [] where AppRef.isSafeToken(removal.token) {
+                if let mine = merged[removal.token], mine.at >= removal.at { continue }
+                var clean = removal
+                clean.name = String(removal.name.prefix(80))
+                clean.fromMachine = String(removal.fromMachine.prefix(80))
+                merged[removal.token] = clean
+            }
+        }
+        state.removals = merged.isEmpty ? nil : merged
+    }
+
+    /// The apps this Mac offers the others: everything, minus what the person switched off.
+    private func sharedInventory(_ state: LocalState) -> Inventory? {
+        guard var inventory = state.inventory else { return nil }
+        let hidden = Set(state.unshared ?? [])
+        guard !hidden.isEmpty else { return inventory }
+        inventory.casks.removeAll { hidden.contains(AppRef(source: .cask, name: $0).token) }
+        inventory.formulae.removeAll { hidden.contains(AppRef(source: .formula, name: $0).token) }
+        inventory.appStore.removeAll { hidden.contains(AppRef(source: .appStore, name: $0.name, appStoreID: $0.id).token) }
+        inventory.directApps?.removeAll { hidden.contains(AppRef(source: .direct, name: $0.bundleID).token) }
+        inventory.details = inventory.details?.filter { !hidden.contains($0.key) }
+        return inventory
+    }
+
+    /// This Mac's apps as rows, with their names and icons.
+    private func localApps(_ state: LocalState) -> [MissingApp] {
+        guard let inventory = state.inventory else { return [] }
+        var refs: [AppRef] = inventory.casks.map { AppRef(source: .cask, name: $0) }
+            + inventory.appStore.map { AppRef(source: .appStore, name: $0.name, appStoreID: $0.id) }
+            + (inventory.directApps ?? []).map { AppRef(source: .direct, name: $0.bundleID) }
+        refs += inventory.formulae.map { AppRef(source: .formula, name: $0) }
+        let direct = Dictionary((inventory.directApps ?? []).map { ($0.bundleID, $0) }, uniquingKeysWith: { a, _ in a })
+        return refs.filter(\.isSafe).map { ref in
+            var detail = inventory.details?[ref.token]
+            if detail == nil, ref.source == .direct { detail = AppDetail(displayName: direct[ref.name]?.name, bundleID: ref.name) }
+            return MissingApp(app: ref, fromMachines: [env.machineName], detail: detail,
+                              download: ref.source == .direct ? direct[ref.name] : nil)
+        }
+    }
+
+    /// Stops offering an app to the other Macs, or starts again.
+    public func setShared(_ tokens: [String], _ shared: Bool) throws {
+        var state = loadState()
+        var set = Set(state.unshared ?? [])
+        if shared { set.subtract(tokens) } else { set.formUnion(tokens) }
+        state.unshared = set.isEmpty ? nil : set.sorted()
+        try saveState(state)
+        try sync(refreshInventory: false)
+    }
+
+    /// Removes apps from this Mac now, and asks every other Mac to remove them too.
+    public func removeEverywhere(_ apps: [MissingApp], progress: (String) -> Void = { _ in }) -> [InstallResult] {
+        var state = loadState()
+        var removals = state.removals ?? [:]
+        for app in apps where app.app.isSafe {
+            removals[app.app.token] = AppRemoval(token: app.app.token, name: app.displayName, bundleID: app.detail?.bundleID,
+                                                 at: now(), active: true, fromMachine: env.machineName)
+        }
+        state.removals = removals
+        try? saveState(state)
+        let results = uninstallHere(apps, progress: progress)
+        _ = try? sync()
+        return results
+    }
+
+    /// Takes back a removal, so the app is offered to Macs that lack it again.
+    public func cancelRemoval(_ token: String) throws {
+        var state = loadState()
+        guard var removal = state.removals?[token] else { return }
+        removal.active = false
+        removal.at = now()
+        removal.fromMachine = env.machineName
+        state.removals?[token] = removal
+        state.keptHere = (state.keptHere ?? []).filter { $0 != token }
+        try saveState(state)
+        try sync(refreshInventory: false)
+    }
+
+    /// Leaves an app removed elsewhere on this Mac, and stops asking.
+    public func keepHere(_ token: String) throws {
+        var state = loadState()
+        state.keptHere = Array(Set(state.keptHere ?? []).union([token])).sorted()
+        try saveState(state)
+    }
+
+    /// Uninstalls apps from this Mac: Homebrew uninstalls its own, anything else goes to the Trash,
+    /// where it can be put back. The app also leaves this Mac's Dock.
+    public func uninstallHere(_ apps: [MissingApp], progress: (String) -> Void = { _ in }) -> [InstallResult] {
+        var results: [InstallResult] = []
+        for app in apps where app.app.isSafe {
+            progress("Removing \(app.displayName)…")
+            var result = uninstall(app)
+            result.displayName = app.displayName
+            results.append(result)
+            if result.outcome == .removed, let id = app.detail?.bundleID ?? (app.app.source == .direct ? app.app.name : nil) {
+                removeDockTiles(bundleID: id)
+            }
+        }
+        var state = loadState()
+        state.inventory = InventoryReader(runner: runner, env: env).read()
+        state.inventoryAt = now()
+        try? saveState(state)
+        _ = try? sync(refreshInventory: false)
+        return results
+    }
+
+    private func uninstall(_ app: MissingApp) -> InstallResult {
+        let ref = app.app
+        switch ref.source {
+        case .cask, .formula:
+            guard let brew = env.brewPath else { return InstallResult(app: ref, outcome: .failed, message: "Homebrew isn't installed.") }
+            let args = ref.source == .cask ? ["uninstall", "--cask", ref.name] : ["uninstall", ref.name]
+            let result = runner.run(brew, args, input: nil, environment: InventoryReader.brewEnvironment(brew))
+            if result.status == 0 { return InstallResult(app: ref, outcome: .removed, message: nil) }
+            return InstallResult(app: ref, outcome: .failed,
+                                 message: result.stderr.split(whereSeparator: \.isNewline).last.map(String.init) ?? "brew exited with \(result.status).")
+        case .appStore, .direct:
+            let file: String? = ref.source == .appStore ? ref.name : (app.download?.name ?? loadState().inventory?.directApps?.first { $0.bundleID == ref.name }?.name)
+            guard let file, DirectApp.isSafeName(file) else {
+                return InstallResult(app: ref, outcome: .failed, message: "MacSync couldn't find \(app.displayName) in Applications.")
+            }
+            let url = env.applicationsDirectory.appendingPathComponent(file + ".app")
+            guard FileManager.default.fileExists(atPath: url.path) else { return InstallResult(app: ref, outcome: .removed, message: "It was already gone.") }
+            do {
+                try FileManager.default.trashItem(at: url, resultingItemURL: nil)
+                return InstallResult(app: ref, outcome: .removed, message: "Moved to the Trash.")
+            } catch {
+                return InstallResult(app: ref, outcome: .failed,
+                                     message: "macOS didn't let MacSync move \(app.displayName) to the Trash. Drag it there from Applications.")
+            }
+        }
+    }
+
+    /// Takes an uninstalled app's tile out of this Mac's Dock. The next sync records it as
+    /// removed, so the other Macs drop it too.
+    private func removeDockTiles(bundleID: String) {
+        guard var raw = try? dock.readRaw(), let tiles = raw["persistent-apps"] as? [[String: Any]] else { return }
+        let kept = tiles.filter { (($0["tile-data"] as? [String: Any])?["bundle-identifier"] as? String) != bundleID }
+        guard kept.count != tiles.count else { return }
+        raw["persistent-apps"] = kept
+        guard let data = try? PropertyListSerialization.data(fromPropertyList: raw, format: .xml, options: 0) else { return }
+        try? commit(data, expecting: fingerprint(of: data))
     }
 
     /// Shares the icon of every app in this Dock, so other Macs can show apps they don't have yet.
@@ -397,7 +562,8 @@ public final class Engine {
         MachineSnapshot(machineID: env.machineID, machineName: env.machineName,
                         osVersion: ProcessInfo.processInfo.operatingSystemVersionString,
                         appVersion: MacSyncEnvironment.appVersion, firstSeenAt: state.firstSeenAt,
-                        savedAt: now(), dock: dock, inventory: state.inventory, settings: settings)
+                        savedAt: now(), dock: dock, inventory: sharedInventory(state), settings: settings,
+                        removals: state.removals.map { Array($0.values).sorted { $0.token < $1.token } })
     }
 
     private func publishIfNeeded(_ snapshot: MachineSnapshot, state: inout LocalState) throws {
@@ -429,8 +595,17 @@ public final class Engine {
             settingsPlan = SettingsPlanner.plan(target: target, source: sw.machineName, sourceID: sw.machineID,
                                                 prefs: prefs, home: env.homeDirectory)
         }
-        let missing = missingApps(state, others: others)
+        let active = Set((state.removals ?? [:]).values.filter(\.active).map(\.token))
+        let missing = missingApps(state, others: others).filter { !active.contains($0.app.token) }
         let deselected = Set(state.deselectedApps ?? [])
+        let local = localApps(state)
+        let kept = Set(state.keptHere ?? [])
+        let toRemove = local.filter { active.contains($0.app.token) && !kept.contains($0.app.token) }
+            .map { app -> MissingApp in
+                var copy = app
+                if let from = state.removals?[app.app.token]?.fromMachine { copy.fromMachines = [from] }
+                return copy
+            }
         func keys(_ section: DockSection?) -> [String] { ((section?.apps ?? []) + (section?.others ?? [])).map(\.key) }
         let summaries = everyone.map { machine -> MachineSummary in
             let isSource = machine.machineID == winner?.machineID
@@ -462,7 +637,11 @@ public final class Engine {
             settingsPlan: settingsPlan?.hasChanges == true ? settingsPlan : nil,
             settingsSkipped: settingsPlan?.skipped ?? [],
             appPrefDomains: state.appPrefDomains ?? [],
-            skippedApps: missing.map(\.app.token).filter { deselected.contains($0) })
+            skippedApps: missing.map(\.app.token).filter { deselected.contains($0) },
+            installedApps: local.filter { !active.contains($0.app.token) },
+            toRemove: toRemove,
+            removed: (state.removals ?? [:]).values.filter(\.active).sorted { $0.at > $1.at },
+            unshared: state.unshared ?? [])
     }
 
     /// Apps on other Macs that this one lacks, leaving out any this Mac already has under another

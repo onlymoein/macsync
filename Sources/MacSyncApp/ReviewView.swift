@@ -55,6 +55,7 @@ struct ReviewView: View {
                         Label(message, systemImage: "arrow.uturn.backward.circle.fill")
                             .foregroundStyle(.green).padding(14).frame(maxWidth: .infinity, alignment: .leading).glassPanel()
                     }
+                    ToRemovePanel(model: model)
                     if let plan = model.overview?.dockPlan {
                         DockPanel(plan: plan, model: model)
                         if !plan.missing.isEmpty { NotInstalledPanel(items: plan.missing, model: model) }
@@ -63,6 +64,8 @@ struct ReviewView: View {
                     if model.proEnabled { AppSettingsPanel(model: model) }
                     AppsPanel(kind: .apps, model: model)
                     AppsPanel(kind: .tools, model: model)
+                    ThisMacPanel(kind: .apps, model: model)
+                    ThisMacPanel(kind: .tools, model: model)
                     if model.overview?.hasPendingChanges != true, model.lastReport == nil {
                         VStack(spacing: 8) {
                             Image(systemName: "checkmark.seal.fill").font(.system(size: 34)).foregroundStyle(.green)
@@ -406,6 +409,151 @@ private struct DockIcon: View {
 // MARK: - Apps
 
 /// Apps, or command-line tools, from the other Macs: each in its own section.
+/// Apps removed on another Mac that are still here: uninstall them in one click, or keep them.
+private struct ToRemovePanel: View {
+    @ObservedObject var model: AppModel
+    @AppStorage("review.toRemove.open") private var open = true
+    @State private var confirmAll = false
+
+    private var list: [MissingApp] { model.overview?.toRemove ?? [] }
+
+    var body: some View {
+        if !list.isEmpty {
+            VStack(alignment: .leading, spacing: 12) {
+                PanelHeader(symbol: "trash.fill", title: "Removed on your other Macs",
+                            subtitle: "\(list.count) still on this Mac · Homebrew uninstalls them, others go to the Trash",
+                            isExpanded: $open) {
+                    Button("Uninstall All") { confirmAll = true }
+                        .glassButton().controlSize(.small)
+                        .disabled(!model.removing.isEmpty)
+                }
+                if open {
+                    VStack(spacing: 2) {
+                        ForEach(list) { app in
+                            HStack(spacing: 12) {
+                                AppIcon(missing: app, image: model.icon(for: app))
+                                VStack(alignment: .leading, spacing: 1) {
+                                    Text(app.displayName).font(.body.weight(.medium)).lineLimit(1)
+                                    Text("Removed on \(app.fromMachines.first ?? "another Mac")").font(.caption).foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                if model.removing.contains(app.app.token) {
+                                    ProgressView().controlSize(.small)
+                                } else if let result = model.removeResults[app.app.token], result.outcome == .failed {
+                                    Text(result.message ?? "Didn't uninstall").font(.caption).foregroundStyle(.orange).lineLimit(2)
+                                } else {
+                                    Button("Keep Here") { model.keepHere(app) }.glassButton().controlSize(.small)
+                                    Button("Uninstall") { model.uninstallHere([app]) }.primaryGlassButton().controlSize(.small)
+                                }
+                            }
+                            .padding(.horizontal, 8).padding(.vertical, 5)
+                        }
+                    }
+                }
+            }
+            .padding(18)
+            .glassPanel()
+            .confirmationDialog("Uninstall \(list.count) app\(list.count == 1 ? "" : "s") from this Mac?", isPresented: $confirmAll) {
+                Button("Uninstall All", role: .destructive) { model.uninstallHere(list) }
+            } message: {
+                Text("Homebrew apps are uninstalled. Other apps are moved to the Trash, where you can put them back.")
+            }
+        }
+    }
+}
+
+/// What this Mac offers the others. Switch an app off to stop sending it; remove an app to take
+/// it off every Mac.
+private struct ThisMacPanel: View {
+    enum Kind { case apps, tools }
+    let kind: Kind
+    @ObservedObject var model: AppModel
+    @AppStorage private var open: Bool
+    @State private var search = ""
+    @State private var confirm: MissingApp?
+
+    init(kind: Kind, model: AppModel) {
+        self.kind = kind
+        self.model = model
+        _open = AppStorage(wrappedValue: false, kind == .apps ? "review.thisMac.open" : "review.thisMacTools.open")
+    }
+
+    private var list: [MissingApp] {
+        (model.overview?.installedApps ?? [])
+            .filter { ($0.app.source == .formula) == (kind == .tools) }
+            .sorted { $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending }
+    }
+    private var hidden: Set<String> { Set(model.overview?.unshared ?? []) }
+    private var shown: [MissingApp] { search.isEmpty ? list : list.filter { $0.displayName.localizedCaseInsensitiveContains(search) } }
+
+    var body: some View {
+        if !list.isEmpty {
+            VStack(alignment: .leading, spacing: 12) {
+                let shared = list.filter { !hidden.contains($0.app.token) }.count
+                PanelHeader(symbol: kind == .apps ? "arrow.up.circle.fill" : "terminal",
+                            title: kind == .apps ? "Shared from this Mac" : "Command-line tools shared from this Mac",
+                            subtitle: "\(shared) of \(list.count) sent to your other Macs", isExpanded: $open) {
+                    AllSwitch(onCount: shared, total: list.count) { on in model.setShared(list.map(\.app.token), on) }
+                }
+                if open {
+                    Text("Switch off what your other Macs shouldn't get. Remove one to take it off every Mac.")
+                        .font(.caption).foregroundStyle(.secondary)
+                    TextField("Search", text: $search).textFieldStyle(.roundedBorder)
+                    VStack(spacing: 2) { ForEach(shown) { row($0) } }
+                    if kind == .apps, let removed = model.overview?.removed, !removed.isEmpty {
+                        Divider().padding(.vertical, 4)
+                        Text("Removed from all Macs").font(.callout.weight(.medium))
+                        ForEach(removed, id: \.token) { removal in
+                            HStack {
+                                Text(removal.name).foregroundStyle(.secondary)
+                                Text("by \(removal.fromMachine)").font(.caption).foregroundStyle(.tertiary)
+                                Spacer()
+                                Button("Bring Back") { model.cancelRemoval(removal.token) }.glassButton().controlSize(.small)
+                            }
+                            .padding(.horizontal, 8)
+                        }
+                    }
+                }
+            }
+            .padding(18)
+            .glassPanel()
+            .confirmationDialog("Remove \(confirm?.displayName ?? "this app") from all your Macs?",
+                                isPresented: Binding(get: { confirm != nil }, set: { if !$0 { confirm = nil } })) {
+                Button("Remove from All Macs", role: .destructive) { if let app = confirm { model.removeEverywhere(app) } }
+            } message: {
+                Text("It's removed from this Mac now. Each other Mac lists it under Removed and uninstalls it when you click there. Homebrew apps are uninstalled; others go to the Trash.")
+            }
+        }
+    }
+
+    private func row(_ app: MissingApp) -> some View {
+        let token = app.app.token
+        let isShared = !hidden.contains(token)
+        return HStack(spacing: 12) {
+            AppIcon(missing: app, image: model.icon(for: app))
+            VStack(alignment: .leading, spacing: 1) {
+                Text(app.displayName).font(.body.weight(.medium)).lineLimit(1)
+                Text(isShared ? "Sent to your other Macs" : "Only on this Mac").font(.caption).foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 8)
+            if model.removing.contains(token) {
+                ProgressView().controlSize(.small)
+            } else if let result = model.removeResults[token], result.outcome == .failed {
+                Text(result.message ?? "Didn't uninstall").font(.caption).foregroundStyle(.orange).lineLimit(2).frame(maxWidth: 220)
+            } else {
+                Button { confirm = app } label: { Label("Remove", systemImage: "trash") }
+                    .glassButton().controlSize(.small)
+                    .help("Remove from this Mac and all your other Macs")
+            }
+            Toggle("", isOn: Binding(get: { isShared }, set: { model.setShared([token], $0) }))
+                .toggleStyle(.switch).labelsHidden().controlSize(.small)
+                .help(isShared ? "Switch off to stop sending it to your other Macs" : "Switch on to send it to your other Macs")
+        }
+        .padding(.horizontal, 8).padding(.vertical, 4)
+        .opacity(isShared ? 1 : 0.6)
+    }
+}
+
 /// Which apps' own settings match on every Mac. Passwords, tokens and keys never sync.
 private struct AppSettingsPanel: View {
     @ObservedObject var model: AppModel
@@ -592,6 +740,8 @@ private struct AppRow: View {
                     .help("Open the installer in Downloads")
             case .openedInAppStore:
                 Label("In App Store", systemImage: "bag").font(.callout).foregroundStyle(.secondary)
+            case .removed:
+                Label("Removed", systemImage: "trash").font(.callout).foregroundStyle(.secondary)
             case .failed:
                 Button("Try Again") { model.get([missing]) }.glassButton().controlSize(.small)
             }
