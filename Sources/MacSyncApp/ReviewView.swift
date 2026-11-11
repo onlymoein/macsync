@@ -238,30 +238,69 @@ private struct IconRow: View {
     }
 }
 
-/// Dock items from another Mac whose apps aren't on this one yet, shown with their synced icons
-/// and names so it's clear what they are.
+/// Dock items from another Mac whose apps aren't on this one yet: their icon and name, a link to
+/// where to get each one, and a switch for the ones this Mac doesn't need (remembered).
 private struct WaitingRow: View {
     let items: [DockItem]
     @ObservedObject var model: AppModel
-    private let columns = [GridItem(.adaptive(minimum: 68, maximum: 68), spacing: 8)]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             VStack(alignment: .leading, spacing: 2) {
                 Text("In the Dock on your other Mac, not installed here").font(.callout.weight(.medium))
-                Text("Get them in the apps list below. Each one joins this Dock once it is installed.")
+                Text("Click one to open its download page. Switch off what this Mac doesn't need. Each one joins this Dock once it's installed.")
                     .font(.caption).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-            LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
-                ForEach(items) { item in
-                    VStack(spacing: 3) {
-                        DockIcon(item: item, image: model.icon(for: item), badge: .waiting)
-                        Text(model.name(for: item)).font(.caption2).foregroundStyle(.secondary)
-                            .lineLimit(1).truncationMode(.tail).frame(width: 68)
-                    }
-                }
+            VStack(spacing: 2) {
+                ForEach(items) { item in WaitingItem(item: item, model: model) }
             }
         }
+    }
+}
+
+private struct WaitingItem: View {
+    let item: DockItem
+    @ObservedObject var model: AppModel
+
+    var body: some View {
+        let skipped = model.isSkipped(item)
+        HStack(spacing: 12) {
+            Button { model.openDownloadPage(for: item) } label: {
+                HStack(spacing: 12) {
+                    Group {
+                        if let image = model.icon(for: item) { Image(nsImage: image).resizable().scaledToFit() }
+                        else {
+                            Image(systemName: "app.fill").font(.system(size: 15, weight: .semibold)).foregroundStyle(.white)
+                                .frame(width: 30, height: 30)
+                                .background(Color.accentColor.opacity(0.8), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                        }
+                    }
+                    .frame(width: 34, height: 34)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(model.name(for: item)).font(.body.weight(.medium)).lineLimit(1)
+                        Text(skipped ? "Not needed on this Mac" : "Open download page")
+                            .font(.caption).foregroundStyle(skipped ? Color.secondary : Color.accentColor)
+                    }
+                    Spacer(minLength: 8)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(skipped)
+            .help("Open the page where you can get \(model.name(for: item))")
+            if !skipped {
+                Button { model.openDownloadPage(for: item) } label: { Image(systemName: "arrow.up.right.square") }
+                    .buttonStyle(.borderless)
+                    .accessibilityLabel("Open download page")
+            }
+            Toggle("", isOn: Binding(get: { !skipped }, set: { model.setSkipped(token: model.skipToken(for: item), !$0) }))
+                .toggleStyle(.switch).labelsHidden().controlSize(.small)
+                .help(skipped ? "Switch on if this Mac needs it" : "Switch off if this Mac doesn't need it. MacSync remembers.")
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
+        .opacity(skipped ? 0.5 : 1)
     }
 }
 

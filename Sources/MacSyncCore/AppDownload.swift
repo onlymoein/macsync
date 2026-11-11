@@ -65,7 +65,7 @@ struct CaskCatalog {
 
     struct Entry {
         var token: String; var url: String; var sha256: String?; var intelURL: String?; var intelSHA256: String?
-        var name: String? = nil; var desc: String? = nil
+        var name: String? = nil; var desc: String? = nil; var homepage: String? = nil
     }
 
     let byApp: [String: [String]]
@@ -125,7 +125,8 @@ struct CaskCatalog {
                 .filter { $0.key.hasPrefix("x86_64") }.sorted { $0.key > $1.key }.first?.value
             entries[token] = Entry(token: token, url: url, sha256: cask["sha256"] as? String,
                                    intelURL: intel?["url"] as? String, intelSHA256: intel?["sha256"] as? String,
-                                   name: (cask["name"] as? [String])?.first, desc: cask["desc"] as? String)
+                                   name: (cask["name"] as? [String])?.first, desc: cask["desc"] as? String,
+                                   homepage: cask["homepage"] as? String)
         }
         return CaskCatalog(byApp: byApp, entries: entries)
     }

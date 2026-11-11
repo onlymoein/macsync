@@ -165,6 +165,7 @@ public final class Engine {
     public func sync(refreshInventory: Bool = true) throws -> SyncOverview {
         var state = loadState()
         let local = try captureDock(&state)
+        if env.iCloudAvailable { storeDockIcons(local) }
         if refreshInventory || state.inventory == nil {
             state.inventory = InventoryReader(runner: runner, env: env).read()
             state.inventoryAt = now()
@@ -189,6 +190,47 @@ public final class Engine {
     private func removeOldCopies() {
         let old = env.syncDirectory.appendingPathComponent("apps", isDirectory: true)
         if FileManager.default.fileExists(atPath: old.path) { try? FileManager.default.removeItem(at: old) }
+    }
+
+    /// Shares the icon of every app in this Dock, so other Macs can show apps they don't have yet.
+    private func storeDockIcons(_ dock: DockSection) {
+        let icons = IconStore(directory: env.syncDirectory.appendingPathComponent("icons", isDirectory: true))
+        for item in dock.apps where item.kind == .app {
+            guard let id = item.bundleID, DirectApp.isSafeBundleID(id), let path = locator.path(forBundleID: id) ?? item.path else { continue }
+            _ = icons.store(appAt: path, id: IconStore.id(bundleID: id))
+        }
+    }
+
+    /// Where a person can get an app this Mac doesn't have: its App Store page, or the
+    /// developer's site as Homebrew lists it, or the App Store found by its bundle ID.
+    /// Uses the network, so call it off the main thread.
+    public func downloadPage(bundleID: String?, name: String, missing: MissingApp?) -> URL? {
+        if let missing, missing.app.source == .appStore, let id = missing.app.appStoreID {
+            return URL(string: "macappstore://apps.apple.com/app/id\(id)")
+        }
+        let catalog = CaskCatalog.load(env: env, runner: runner, now: now())
+        let token: String? = {
+            if let missing, missing.app.source == .cask { return missing.app.name }
+            if let cask = missing?.download?.cask { return cask }
+            return catalog?.cask(forApp: name + ".app")
+        }()
+        if let token, let page = catalog?.entries[token]?.homepage, DirectApp.isSafeURL(page) { return URL(string: page) }
+        if let bundleID, DirectApp.isSafeBundleID(bundleID) {
+            let lookup = runner.run("/usr/bin/curl", ["-fsSL", "--proto", "=https", "--max-time", "15",
+                                                      "https://itunes.apple.com/lookup?entity=macSoftware&bundleId=\(bundleID)"],
+                                    input: nil, environment: [:])
+            if lookup.status == 0,
+               let root = try? JSONSerialization.jsonObject(with: lookup.stdout) as? [String: Any],
+               let first = (root["results"] as? [[String: Any]])?.first, let id = first["trackId"] as? Int {
+                return URL(string: "macappstore://apps.apple.com/app/id\(id)")
+            }
+        }
+        if let feed = missing?.download?.feed, let url = URL(string: feed), let host = url.host {
+            return URL(string: "https://\(host)")
+        }
+        var search = URLComponents(string: "https://duckduckgo.com/")!
+        search.queryItems = [URLQueryItem(name: "q", value: "\(name) Mac app download")]
+        return search.url
     }
 
     /// Marks an app as not needed on this Mac, or brings it back. Kept even after it stops being

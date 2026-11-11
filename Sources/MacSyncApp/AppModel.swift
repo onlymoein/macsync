@@ -143,9 +143,18 @@ final class AppModel: ObservableObject {
     }
 
     func icon(for missing: MissingApp) -> NSImage? {
-        guard let id = missing.detail?.iconID else { return nil }
+        if let id = missing.detail?.iconID, let image = cachedIcon(id) { return image }
+        return missing.detail?.bundleID.flatMap { cachedIcon(IconStore.id(bundleID: $0)) }
+    }
+
+    private func cachedIcon(_ id: String) -> NSImage? {
         if let cached = iconCache[id] { return cached }
-        guard let url = iconStore.url(for: id), let image = NSImage(contentsOf: url) else { return nil }
+        guard let url = iconStore.url(for: id) else { return nil }
+        guard let image = NSImage(contentsOf: url) else {
+            // Still in iCloud only: fetch it, and it shows on the next refresh.
+            try? FileManager.default.startDownloadingUbiquitousItem(at: url)
+            return nil
+        }
         iconCache[id] = image
         return image
     }
@@ -165,11 +174,40 @@ final class AppModel: ObservableObject {
     private var getQueue: [MissingApp] = []
 
     /// Hides an app this Mac doesn't need, or brings it back. Remembered across syncs.
-    func setSkipped(_ app: MissingApp, _ skipped: Bool) {
-        try? engine.setSkipped(app.app.token, skipped)
+    func setSkipped(_ app: MissingApp, _ skipped: Bool) { setSkipped(token: app.app.token, skipped) }
+
+    func setSkipped(token: String, _ skipped: Bool) {
+        try? engine.setSkipped(token, skipped)
+        skippedDock = skipped ? skippedDock.union([token]) : skippedDock.subtracting([token])
         guard var current = overview else { return }
-        if skipped { current.skippedApps.append(app.app.token) } else { current.skippedApps.removeAll { $0 == app.app.token } }
+        current.skippedApps.removeAll { $0 == token }
+        if skipped { current.skippedApps.append(token) }
         overview = current
+    }
+
+    /// A Dock item's key for "not needed": its app's when MacSync knows it, else its bundle ID.
+    func skipToken(for item: DockItem) -> String {
+        missingApp(for: item)?.app.token ?? "dock:\(item.bundleID ?? item.label)"
+    }
+
+    func isSkipped(_ item: DockItem) -> Bool {
+        let token = skipToken(for: item)
+        return overview?.skippedApps.contains(token) == true || skippedDock.contains(token)
+    }
+
+    @Published private var skippedDock: Set<String> = Set(UserDefaults.standard.stringArray(forKey: "skippedDock") ?? []) {
+        didSet { UserDefaults.standard.set(Array(skippedDock), forKey: "skippedDock") }
+    }
+
+    /// Opens where the person can get a Dock app this Mac doesn't have.
+    func openDownloadPage(for item: DockItem) {
+        let engine = engine
+        let missing = missingApp(for: item)
+        let name = name(for: item)
+        Task {
+            let url = await Task.detached { engine.downloadPage(bundleID: item.bundleID, name: name, missing: missing) }.value
+            if let url { NSWorkspace.shared.open(url) }
+        }
     }
 
     func get(_ apps: [MissingApp]) {
@@ -277,7 +315,8 @@ final class AppModel: ObservableObject {
         case .app, .file, .folder:
             if let path = Planner.resolve(item, locator: locator) { return NSWorkspace.shared.icon(forFile: path) }
             // Not on this Mac: use the icon the other Mac synced for that app.
-            return missingApp(for: item).flatMap { icon(for: $0) }
+            if let image = missingApp(for: item).flatMap({ icon(for: $0) }) { return image }
+            return item.bundleID.flatMap { cachedIcon(IconStore.id(bundleID: $0)) }
         }
     }
 

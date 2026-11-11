@@ -197,11 +197,15 @@ public struct IconStore {
         return directory.appendingPathComponent(id + ".png")
     }
 
+    /// The icon of a Dock app, by bundle ID, so a Mac without the app can still show it.
+    public static func id(bundleID: String) -> String { String(Hashing.sha256(Data("bundle:\(bundleID)".utf8)).prefix(24)) }
+
     /// Writes the icon if it isn't there yet and returns its ID, or nil when the app isn't found.
-    func store(appAt path: String, for ref: AppRef) -> String? {
+    func store(appAt path: String, for ref: AppRef) -> String? { store(appAt: path, id: Self.id(for: ref)) }
+
+    func store(appAt path: String, id: String) -> String? {
         let fm = FileManager.default
         guard fm.fileExists(atPath: path) else { return nil }
-        let id = Self.id(for: ref)
         guard let target = url(for: id) else { return nil }
         if fm.fileExists(atPath: target.path) { return id }
         guard let png = Self.png(NSWorkspace.shared.icon(forFile: path), side: 128) else { return nil }
