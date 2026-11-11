@@ -69,13 +69,13 @@ struct ReviewView: View {
                             .foregroundStyle(.green).padding(14).frame(maxWidth: .infinity, alignment: .leading).glassPanel()
                     }
                     SharedSetupsPanel(model: model)
-                    UpdatesPanel(model: model)
                     ToRemovePanel(model: model)
                     ExtrasRemovedPanel(model: model)
                     if let plan = model.overview?.dockPlan ?? model.overview?.dockPreview {
                         DockPanel(plan: plan, model: model, matches: model.overview?.dockPlan == nil)
                         if !plan.missing.isEmpty { NotInstalledPanel(items: plan.missing, model: model) }
                     }
+                    UpdatesPanel(model: model)
                     ArtCraftPanel(model: model)
                     AppsPanel(kind: .apps, model: model)
                     AppsPanel(kind: .appStore, model: model)
@@ -173,9 +173,18 @@ struct ReviewView: View {
     private var footer: some View {
         HStack(spacing: 10) {
             Group {
-                if model.isApplying {
+                if let job = model.activeWork {
+                    VStack(alignment: .leading, spacing: 4) {
+                        ProgressView(value: Double(min(job.done, job.total)), total: Double(max(job.total, 1)))
+                            .progressViewStyle(.linear).frame(maxWidth: 260)
+                        Text(job.line).font(.caption).lineLimit(1).truncationMode(.middle)
+                    }
+                } else if model.isApplying {
                     ProgressView().controlSize(.small)
                     Text(model.progress ?? "Applying…").lineLimit(1)
+                } else if model.upgrading {
+                    ProgressView().controlSize(.small)
+                    Text(model.progress ?? "Checking Homebrew…").lineLimit(1)
                 } else if let error = model.actionError ?? model.errorMessage {
                     Label(error, systemImage: "exclamationmark.triangle.fill").foregroundStyle(Color.warning).lineLimit(2)
                 } else if model.canApply {
@@ -673,7 +682,14 @@ private struct ArtCraftPanel: View {
         return HStack(spacing: 12) {
             Group {
                 if let image = model.craftIcon(app) { Image(nsImage: image).resizable().scaledToFit() }
-                else { Image(systemName: "app.fill").font(.title2).foregroundStyle(.secondary) }
+                else {
+                    // Until its icon arrives: its first letter on ArtCraft blue, not a grey square.
+                    Text(String(app.name.prefix(1))).font(.system(size: 16, weight: .bold, design: .rounded)).foregroundStyle(.white)
+                        .frame(width: 34, height: 34)
+                        .background(LinearGradient(colors: [Color(red: 0.31, green: 0.47, blue: 1.0), Color(red: 0.2, green: 0.35, blue: 0.9)],
+                                                   startPoint: .topLeading, endPoint: .bottomTrailing),
+                                    in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                }
             }
             .frame(width: 34, height: 34)
             VStack(alignment: .leading, spacing: 1) {
@@ -694,7 +710,15 @@ private struct ArtCraftPanel: View {
             }
             Spacer(minLength: 8)
             if model.craftBusy.contains(app.id) {
-                ProgressView().controlSize(.small)
+                if model.isWaiting("craft", app.id) && model.isWaiting("craftRemove", app.id) {
+                    Label("Waiting", systemImage: "clock").font(.caption).foregroundStyle(.secondary)
+                } else {
+                    HStack(spacing: 6) {
+                        ProgressView().controlSize(.small)
+                        Text(model.work["craftRemove"] != nil ? "Removing" : app.isInstalled ? "Updating" : "Downloading and installing")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                }
             } else if app.needsUpdate {
                 Button("Update") { model.installCraft([app]) }.primaryGlassButton().controlSize(.small)
             } else if app.isInstalled {
@@ -857,8 +881,10 @@ private struct ToRemovePanel: View {
                                     Text("Removed on \(app.fromMachines.first ?? "another Mac")").font(.caption).foregroundStyle(.secondary)
                                 }
                                 Spacer()
-                                if model.removing.contains(app.app.token) {
-                                    ProgressView().controlSize(.small)
+                                if model.removing.contains(app.app.token) && model.isWaiting("remove", app.app.token) {
+                                    Label("Waiting", systemImage: "clock").font(.caption).foregroundStyle(.secondary)
+                                } else if model.removing.contains(app.app.token) {
+                                    HStack(spacing: 6) { ProgressView().controlSize(.small); Text("Removing").font(.caption).foregroundStyle(.secondary) }
                                 } else if let result = model.removeResults[app.app.token], result.outcome == .failed {
                                     Text(result.message ?? "Didn't uninstall").font(.caption).foregroundStyle(Color.warning).lineLimit(2)
                                     Button("Keep Here") { model.keepHere(app) }.glassButton().controlSize(.small)
@@ -959,8 +985,10 @@ private struct ThisMacPanel: View {
                 Text(isShared ? "Sent to your other Macs" : "Only on this Mac").font(.caption).foregroundStyle(.secondary)
             }
             Spacer(minLength: 8)
-            if model.removing.contains(token) {
-                ProgressView().controlSize(.small)
+            if model.removing.contains(token) && model.isWaiting("remove", token) {
+                Label("Waiting", systemImage: "clock").font(.caption).foregroundStyle(.secondary)
+            } else if model.removing.contains(token) {
+                HStack(spacing: 6) { ProgressView().controlSize(.small); Text("Removing").font(.caption).foregroundStyle(.secondary) }
             } else if let result = model.removeResults[token], result.outcome == .failed {
                 Text(result.message ?? "Didn't uninstall").font(.caption).foregroundStyle(Color.warning).lineLimit(2).frame(maxWidth: 220)
                 Button("Try Again") { model.removeEverywhere(app) }.glassButton().controlSize(.small)
@@ -1242,7 +1270,9 @@ private struct AppRow: View {
     }
 
     @ViewBuilder private var action: some View {
-        if model.getting.contains(token) {
+        if model.getting.contains(token) && model.isWaiting("get", token) {
+            Label("Waiting", systemImage: "clock").font(.caption).foregroundStyle(.secondary)
+        } else if model.getting.contains(token) {
             HStack(spacing: 6) {
                 ProgressView().controlSize(.small)
                 Text(missing.app.source == .direct ? "Downloading" : "Installing").font(.caption).foregroundStyle(.secondary)

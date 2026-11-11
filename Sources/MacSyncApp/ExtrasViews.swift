@@ -479,39 +479,41 @@ struct SignInPanel: View {
     @AppStorage("review.signIn.open") private var open = true
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            PanelHeader(symbol: "person.badge.key.fill", title: "Sign in to your apps",
-                        subtitle: model.signInQueue.isEmpty ? "Apps that need an account show up here after they install"
-                            : "\(model.signInQueue.count) to go · password manager first, so it can fill in the rest",
-                        isExpanded: $open) {
-                Button("Find Apps") { model.findAppsToSignIn() }.glassButton().controlSize(.small)
-                    .help("Add every app on this Mac that needs an account or a license")
-            }
-            if open && !model.signInQueue.isEmpty {
-                ForEach(model.signInQueue) { item in
-                    HStack(spacing: 12) {
-                        if let image = model.icon(forApp: item.bundleID) {
-                            Image(nsImage: image).resizable().frame(width: 30, height: 30)
-                        } else {
-                            RowIcon(symbol: "person.crop.circle")
-                        }
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text(item.name).font(.body.weight(.medium))
-                            Text(item.hint).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                        }
-                        Spacer()
-                        Button("Open") { model.openForSignIn(item) }.primaryGlassButton().controlSize(.small)
-                        Button { model.signInDone(item) } label: { Label("Done", systemImage: "checkmark") }
-                            .glassButton().controlSize(.small)
-                    }
-                    .padding(.horizontal, 8).padding(.vertical, 3)
+        if !model.signInQueue.isEmpty {
+            VStack(alignment: .leading, spacing: 12) {
+                PanelHeader(symbol: "person.badge.key.fill", title: "Sign in to new apps",
+                            subtitle: "\(model.signInQueue.count) app\(model.signInQueue.count == 1 ? "" : "s") MacSync installed need\(model.signInQueue.count == 1 ? "s" : "") your account",
+                            isExpanded: $open) {
+                    Button("Clear") { for item in model.signInQueue { model.signInDone(item) } }
+                        .glassButton().controlSize(.small).help("Take them all off this list")
                 }
-                Text("MacSync never types passwords or license keys. It only opens each app for you.")
-                    .font(.caption).foregroundStyle(.secondary)
+                if open {
+                    ForEach(model.signInQueue) { item in
+                        HStack(spacing: 12) {
+                            if let image = model.icon(forApp: item.bundleID) {
+                                Image(nsImage: image).resizable().frame(width: 30, height: 30)
+                            } else {
+                                RowIcon(symbol: "person.crop.circle")
+                            }
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(item.name).font(.body.weight(.medium))
+                                Text(item.hint).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                            }
+                            Spacer()
+                            Button("Sign In") { model.openForSignIn(item) }.primaryGlassButton().controlSize(.small)
+                                .help("Opens \(item.name) so you can sign in")
+                            Button { model.signInDone(item) } label: { Image(systemName: "checkmark") }
+                                .glassButton().controlSize(.small).help("Signed in: take it off the list")
+                        }
+                        .padding(.horizontal, 8).padding(.vertical, 3)
+                    }
+                    Text("Your password manager is first, so it can fill in the rest. MacSync only opens each app; it never types a password.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
             }
+            .padding(18)
+            .glassPanel()
         }
-        .padding(18)
-        .glassPanel()
     }
 }
 
@@ -535,7 +537,7 @@ struct UpdatesPanel: View {
         VStack(alignment: .leading, spacing: 12) {
             let report = model.upgradeReport
             PanelHeader(symbol: "mug.fill", title: "Homebrew updates",
-                        subtitle: model.upgrading ? (model.progress ?? "Checking Homebrew…")
+                        subtitle: model.upgrading ? (model.work["brew"]?.line ?? "Checking Homebrew for newer versions…")
                             : report.map { "\($0.summary) · checked \($0.ranAt.formatted(.relative(presentation: .named)))" }
                             ?? "Checks Homebrew for newer apps and tools, plus npm and uv",
                         isExpanded: $open) {
@@ -550,14 +552,14 @@ struct UpdatesPanel: View {
                     .help(model.autoUpgrade ? "Look for newer versions and install them" : "Look for newer versions")
                     .glassButton().controlSize(.small).disabled(model.upgrading)
             }
-            if open || !(model.upgradeReport?.outdated ?? []).isEmpty {
+            if open {
                 Label(model.autoUpgrade
                       ? "Checks when MacSync opens and every six hours, and installs every new version. Apps you have open wait until you quit them."
                       : "Checks when MacSync opens and every six hours, and lists new versions here for you to update.",
                       systemImage: model.autoUpgrade ? "checkmark.circle" : "list.bullet")
                     .font(.caption).foregroundStyle(.secondary)
             }
-            if open || !(model.upgradeReport?.outdated ?? []).isEmpty, let report {
+            if open, let report {
                 let outdated = report.outdated ?? []
                 if !outdated.isEmpty {
                     Text("Newer versions are out. Update them one at a time, or all at once.")

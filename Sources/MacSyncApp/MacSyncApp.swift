@@ -6,8 +6,11 @@ import SwiftUI
 struct MacSyncApp: App {
     @StateObject private var model = AppModel()
 
+    /// The copy that draws the website's pictures stays out of the menu bar.
+    @State private var inMenuBar = ProcessInfo.processInfo.environment["MACSYNC_UI_PROBE"] == nil
+
     var body: some Scene {
-        MenuBarExtra {
+        MenuBarExtra(isInserted: $inMenuBar) {
             MenuView(model: model)
         } label: {
             Image(systemName: model.menuBarSymbol)
@@ -25,6 +28,14 @@ final class ReviewWindow {
     var isVisible: Bool { window?.isVisible == true }
 
     func show(model: AppModel) {
+        // Every section starts folded each time the window opens; you open what you want.
+        if window?.isVisible != true {
+            let defaults = UserDefaults.standard
+            for key in defaults.dictionaryRepresentation().keys where key.hasPrefix("review.") && key.hasSuffix(".open") {
+                defaults.set(false, forKey: key)
+            }
+            for key in ReviewWindow.sectionKeys { defaults.set(false, forKey: key) }
+        }
         if window == nil {
             let host = NSHostingController(rootView: ReviewView(model: model))
             let window = NSWindow(contentViewController: host)
@@ -52,4 +63,8 @@ final class ReviewWindow {
     }
 
     func close() { window?.close() }
+
+    static let sectionKeys = ["dock", "notInstalled", "artcraft", "apps", "appStore", "tools", "thisMac", "thisMacTools", "toRemove",
+                              "extrasRemoved", "settings", "appSettings", "history", "homebrew", "signIn", "loginItems", "packages",
+                              "files.config", "files.ai", "files.appData"].map { "review.\($0).open" }
 }

@@ -8,7 +8,8 @@ struct SignInItem: Codable, Equatable, Identifiable {
     var hint: String
     var id: String { bundleID ?? name }
 
-    static let key = "signIn.queue"
+    /// v2: only apps MacSync itself installed. The first list also held every app on the Mac.
+    static let key = "signIn.queue.v2"
     static func load() -> [SignInItem] {
         (UserDefaults.standard.data(forKey: key)).flatMap { try? JSONDecoder().decode([SignInItem].self, from: $0) } ?? []
     }
@@ -77,10 +78,14 @@ extension AppModel {
         upgrading = true
         for item in items { upgradeBusy.insert(item.token) }
         let upgrader = engine.upgrader
+        let ids = Dictionary(items.map { ($0.name, $0.token) }, uniquingKeysWith: { a, _ in a })
+        work["brew"] = WorkProgress(verb: "Updating with Homebrew", names: items.map(\.name))
         Task {
             let report = await Task.detached { upgrader.upgrade(items) { message in
-                Task { @MainActor [weak self] in self?.progress = message }
+                Task { @MainActor [weak self] in self?.advance("brew", message: message, ids: ids) }
             } }.value
+            work["brew"] = nil
+            workCurrent["brew"] = nil
             for item in items { upgradeBusy.remove(item.token) }
             upgrading = false
             progress = nil
@@ -119,22 +124,15 @@ extension AppModel {
 
     // MARK: Signing in
 
+    /// After MacSync installs an app that needs an account, it's listed so you can sign in.
     func addToSignIn(name: String, bundleID: String?) {
-        guard let hint = SignIn.hint(for: name) ?? bundleID.flatMap({ SignIn.hint(for: $0) }),
+        let lower = name.lowercased()
+        // Helpers and command-line parts of an app (1Password CLI, 1Password for Safari) sign in through the app.
+        guard !["cli", "for safari", "helper", "extension", "code"].contains(where: { lower.hasSuffix($0) }),
+              let hint = SignIn.hint(for: name) ?? bundleID.flatMap({ SignIn.hint(for: $0) }),
               !signInQueue.contains(where: { $0.name == name }) else { return }
         signInQueue.append(SignInItem(name: name, bundleID: bundleID, hint: hint))
         sortSignIn()
-    }
-
-    /// Adds every app on this Mac that needs signing in to.
-    func findAppsToSignIn() {
-        for app in overview?.installedApps ?? [] { addToSignIn(name: app.displayName, bundleID: app.detail?.bundleID) }
-        for name in ((try? FileManager.default.contentsOfDirectory(atPath: "/Applications")) ?? []) where name.hasSuffix(".app") {
-            let path = "/Applications/" + name
-            let bundle = Bundle(path: path)?.bundleIdentifier
-            if bundle?.hasPrefix("com.apple.") == true { continue }
-            addToSignIn(name: String(name.dropLast(4)), bundleID: bundle)
-        }
     }
 
     func signInDone(_ item: SignInItem) {
@@ -213,4 +211,51 @@ extension AppModel {
             runSync(refreshInventory: false)
         }
     }
+}
+
+
+/// How far a long job has got.
+struct WorkProgress: Equatable {
+    var verb: String
+    var names: [String]
+    var done = 0
+    var failed = 0
+    var current: String?
+    var total: Int { names.count }
+    var next: String? {
+        guard let current, let i = names.firstIndex(of: current), i + 1 < names.count else { return nil }
+        return names[i + 1]
+    }
+    var line: String {
+        let step = min(done + 1, max(total, 1))
+        var text = total > 1 ? "\(verb): \(step) of \(total)" : verb
+        if let current { text += " · \(current)" }
+        if let next { text += " · next: \(next)" }
+        if failed > 0 { text += " · \(failed) failed" }
+        return text
+    }
+}
+
+extension AppModel {
+    /// A job's progress message ("Installing AniCraft…") moves its bar to that item.
+    func advance(_ job: String, message: String, ids: [String: String]) {
+        guard var w = work[job] else { return }
+        let name = w.names.first { message.contains($0) }
+        if let name, let index = w.names.firstIndex(of: name) {
+            w.done = index
+            w.current = name
+            workCurrent[job] = ids[name]
+        }
+        work[job] = w
+        progress = message
+    }
+
+    /// The job to show in the footer: installs first.
+    var activeWork: WorkProgress? {
+        for key in ["get", "craft", "remove", "craftRemove", "brew"] { if let w = work[key] { return w } }
+        return nil
+    }
+
+    /// Whether this row's item is queued but not started yet.
+    func isWaiting(_ job: String, _ id: String) -> Bool { work[job] != nil && workCurrent[job] != id }
 }

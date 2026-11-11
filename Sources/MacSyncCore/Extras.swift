@@ -460,6 +460,9 @@ final class Extras {
     let locator: AppLocating
     let now: () -> Date
     private(set) var kept: [KeptFile] = []
+    /// What a change looks like (lines added and removed), by path, incoming content and this Mac's copy.
+    /// Working it out reads and compares both files, so it's done once per version, not on every sync.
+    private var described: [String: (detail: String, preview: [String])] = [:]
 
     init(env: MacSyncEnvironment, runner: CommandRunning, locator: AppLocating, now: @escaping () -> Date) {
         self.env = env; self.runner = runner; self.locator = locator; self.now = now
@@ -620,8 +623,14 @@ final class Extras {
                                     sourceMachine: source, entry: entry, detail: "", preview: [], waiting: false)
             if let link = entry.link {
                 change.detail = "link to \(link)"
-            } else if let sha = entry.sha, blobReady(sha), let data = fm.contents(atPath: blobs.appendingPathComponent(sha).path) {
-                describe(&change, new: data, oldPath: exists ? full : nil, group: group)
+            } else if let sha = entry.sha, blobReady(sha) {
+                let key = "\(path)|\(sha)|\(exists ? Self.stamp(path, home: home) ?? "?" : "none")"
+                if let known = described[key] {
+                    change.detail = known.detail; change.preview = known.preview
+                } else if let data = fm.contents(atPath: blobs.appendingPathComponent(sha).path) {
+                    describe(&change, new: data, oldPath: exists ? full : nil, group: group)
+                    described[key] = (change.detail, change.preview)
+                }
             } else {
                 change.waiting = true
                 change.detail = "still arriving through iCloud"
@@ -1115,13 +1124,13 @@ public enum SignIn {
         ("adobe", "Sign in to Creative Cloud.", false), ("photoshop", "Sign in to Creative Cloud.", false),
         ("chrome", "Sign in to Chrome to bring back bookmarks and passwords.", false),
         ("slack", "Sign in to each workspace.", false), ("discord", "Scan the QR code with your phone.", false),
-        ("zoom", "Sign in.", false), ("spotify", "Sign in.", false), ("dropbox", "Sign in and choose what to sync.", false),
-        ("google drive", "Sign in and choose what to sync.", false), ("notion", "Sign in.", false), ("figma", "Sign in.", false),
-        ("steam", "Sign in; approve it in the Steam app on your phone.", false), ("chatgpt", "Sign in.", false),
-        ("claude", "Sign in.", false), ("cursor", "Sign in.", false), ("arc", "Sign in to bring back your spaces.", false),
-        ("nordvpn", "Sign in.", false), ("expressvpn", "Enter your activation code.", false), ("tailscale", "Sign in.", false),
+        ("zoom", "Sign in with your account.", false), ("spotify", "Sign in with your account.", false), ("dropbox", "Sign in and choose what to sync.", false),
+        ("google drive", "Sign in and choose what to sync.", false), ("notion", "Sign in with your account.", false), ("figma", "Sign in with your account.", false),
+        ("steam", "Sign in; approve it in the Steam app on your phone.", false), ("chatgpt", "Sign in with your account.", false),
+        ("claude", "Sign in with your Anthropic account.", false), ("cursor", "Sign in with your account.", false), ("arc", "Sign in to bring back your spaces.", false),
+        ("nordvpn", "Sign in with your account.", false), ("expressvpn", "Enter your activation code.", false), ("tailscale", "Sign in with your account.", false),
         ("istat", "Enter your license from the Bjango email.", false), ("cleanshot", "Enter your license.", false),
-        ("bartender", "Enter your license.", false), ("setapp", "Sign in to Setapp.", false), ("linear", "Sign in.", false),
+        ("bartender", "Enter your license.", false), ("setapp", "Sign in to Setapp.", false), ("linear", "Sign in with your account.", false),
         ("github desktop", "Sign in to GitHub.", false), ("docker", "Sign in to Docker Hub if you use it.", false),
     ]
 

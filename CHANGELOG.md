@@ -3,6 +3,11 @@
 ## 0.8.0
 - **Share My Setup:** the Share button in the sync window (or the settings menu) makes a .macsync file for a friend. Switch on the sections to give: apps, App Store apps, command-line tools and taps, extensions and plugins, settings, config files, AI setup, login items. Save it, or send it with AirDrop, Messages or Mail.
 - Your friend double-clicks the file (or uses Open a Shared Setup…): everything in it shows up as "Your name's setup", with the usual preview and a switch on each item. Apps download from where they're published. A Shared with you section lists it, with Remove.
+- **You can see it working:** installs, removals, ArtCraft and Homebrew updates show a progress bar with how many are done, what's happening now and what's next. Rows waiting their turn say Waiting; the one in progress says what it's doing. "Nothing to apply" no longer shows while something is running.
+- ArtCraft apps whose icons haven't arrived yet show their first letter on blue instead of a grey square.
+- Comparing shared files is worked out once per version instead of on every sync, so a big folder of skills doesn't keep the Mac busy or hold up installs.
+- **Sign in to new apps** lists only apps MacSync installed that need an account (not every app on the Mac), with Sign In, a check mark and Clear; it hides when empty.
+- Every section starts folded each time the window opens. Homebrew updates sits right after the Dock.
 - Never in a shared setup: passwords, keys, tokens or any file with one, your fonts, app data, your Dock, your history, or apps' own preferences.
 
 ## 0.7.6

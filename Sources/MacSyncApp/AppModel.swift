@@ -9,6 +9,10 @@ final class AppModel: ObservableObject {
     @Published var isSyncing = false
     @Published var isApplying = false
     @Published var progress: String?
+    /// Long jobs (installing, removing, updating), so the window can show a bar and what's next.
+    @Published var work: [String: WorkProgress] = [:]
+    /// The one item each job is working on right now, by job.
+    @Published var workCurrent: [String: String] = [:]
     @Published var errorMessage: String?
     @Published var lastReport: ApplyReport?
     @Published var undoMessage: String?
@@ -489,11 +493,17 @@ final class AppModel: ObservableObject {
         guard !fresh.isEmpty else { return }
         for app in fresh { craftBusy.insert(app.id); craftErrors[app.id] = nil }
         let engine = engine
+        let ids = Dictionary(fresh.map { ($0.name, $0.id) }, uniquingKeysWith: { a, _ in a })
+        work["craft"] = WorkProgress(verb: "Installing ArtCraft apps", names: fresh.filter(\.availableOnMac).map(\.name))
         Task {
             let results = await Task.detached { () -> [(CraftApp, Result<String, EngineError>)] in
                 engine.installCraftAgain(fresh)
-                return engine.installCraft(fresh)
+                return engine.installCraft(fresh) { message in
+                    Task { @MainActor [weak self] in self?.advance("craft", message: message, ids: ids) }
+                }
             }.value
+            work["craft"] = nil
+            workCurrent["craft"] = nil
             for (app, result) in results {
                 craftBusy.remove(app.id)
                 if case .failure(let error) = result { craftErrors[app.id] = error.localizedDescription }
@@ -510,7 +520,13 @@ final class AppModel: ObservableObject {
         for app in fresh { craftBusy.insert(app.id); craftErrors[app.id] = nil }
         let engine = engine
         Task {
-            let results = await Task.detached { engine.removeCraft(fresh, everywhere: everywhere) }.value
+            let ids = Dictionary(fresh.map { ($0.name, $0.id) }, uniquingKeysWith: { a, _ in a })
+            work["craftRemove"] = WorkProgress(verb: "Removing ArtCraft apps", names: fresh.map(\.name))
+            let results = await Task.detached { engine.removeCraft(fresh, everywhere: everywhere) { message in
+                Task { @MainActor [weak self] in self?.advance("craftRemove", message: message, ids: ids) }
+            } }.value
+            work["craftRemove"] = nil
+            workCurrent["craftRemove"] = nil
             for (app, result) in results {
                 craftBusy.remove(app.id)
                 if case .failure(let error) = result { craftErrors[app.id] = error.localizedDescription }
@@ -543,13 +559,18 @@ final class AppModel: ObservableObject {
                                   && gotten[$0.app.token]?.outcome != .downloaded }
         guard !fresh.isEmpty else { return }
         for app in fresh { getting.insert(app.app.token); gotten[app.app.token] = nil }
+        var job = work["get"] ?? WorkProgress(verb: "Getting apps", names: [])
+        job.names += fresh.map(\.displayName)
+        work["get"] = job
         let wasIdle = getQueue.isEmpty
         getQueue += fresh
         if wasIdle { getNext() }
     }
 
     private func getNext() {
-        guard let next = getQueue.first else { syncNow(); return }
+        guard let next = getQueue.first else { work["get"] = nil; workCurrent["get"] = nil; syncNow(); return }
+        workCurrent["get"] = next.app.token
+        work["get"]?.current = next.displayName
         let engine = engine
         progress = "Getting \(next.displayName)…"
         Task {
@@ -557,6 +578,8 @@ final class AppModel: ObservableObject {
             let result = await Task.detached { engine.getApp(next, into: folder) }.value
             getQueue.removeFirst()
             getting.remove(next.app.token)
+            work["get"]?.done += 1
+            if result.outcome == .failed { work["get"]?.failed += 1 }
             gotten[next.app.token] = result
             if result.outcome == .installed || result.outcome == .downloaded {
                 addToSignIn(name: next.displayName, bundleID: next.detail?.bundleID ?? (next.app.source == .direct ? next.app.name : nil))
@@ -583,27 +606,33 @@ final class AppModel: ObservableObject {
     @Published var removing: Set<String> = []
     @Published var removeResults: [String: InstallResult] = [:]
 
-    func removeEverywhere(_ app: MissingApp) { runRemoval([app]) { engine, apps in engine.removeEverywhere(apps) } }
-    func uninstallHere(_ apps: [MissingApp]) { runRemoval(apps) { engine, apps in engine.uninstallHere(apps) } }
+    func removeEverywhere(_ app: MissingApp) { runRemoval([app]) { engine, apps, progress in engine.removeEverywhere(apps, progress: progress) } }
+    func uninstallHere(_ apps: [MissingApp]) { runRemoval(apps) { engine, apps, progress in engine.uninstallHere(apps, progress: progress) } }
     /// Uninstalls it here only, and stops offering it here, so the other Macs keep it.
     func removeHereOnly(_ app: MissingApp) {
         let token = app.app.token
-        runRemoval([app]) { engine, apps in
-            let results = engine.uninstallHere(apps)
+        runRemoval([app]) { engine, apps, progress in
+            let results = engine.uninstallHere(apps, progress: progress)
             if results.allSatisfy({ $0.outcome != .failed }) { try? engine.setSkipped([token], true) }
             return results
         }
     }
 
-    private func runRemoval(_ apps: [MissingApp], _ work: @escaping @Sendable (Engine, [MissingApp]) -> [InstallResult]) {
+    private func runRemoval(_ apps: [MissingApp], _ job: @escaping @Sendable (Engine, [MissingApp], @escaping (String) -> Void) -> [InstallResult]) {
         let fresh = apps.filter { !removing.contains($0.app.token) }
         guard !fresh.isEmpty else { return }
+        let ids = Dictionary(fresh.map { ($0.displayName, $0.app.token) }, uniquingKeysWith: { a, _ in a })
+        work["remove"] = WorkProgress(verb: "Removing apps", names: fresh.map(\.displayName))
         for app in fresh { removing.insert(app.app.token); removeResults[app.app.token] = nil }
         let engine = engine
         Task {
-            let results = await Task.detached { work(engine, fresh) }.value
+            let results = await Task.detached { job(engine, fresh) { message in
+                Task { @MainActor [weak self] in self?.advance("remove", message: message, ids: ids) }
+            } }.value
             for result in results { removeResults[result.app.token] = result }
             for app in fresh { removing.remove(app.app.token) }
+            work["remove"] = nil
+            workCurrent["remove"] = nil
             syncNow()
         }
     }

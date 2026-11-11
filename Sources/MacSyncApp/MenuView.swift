@@ -220,7 +220,7 @@ private struct HomebrewRow: View {
     }
 
     private func title(_ report: UpgradeReport, _ outdated: [OutdatedItem]) -> String {
-        if model.upgrading { return model.progress ?? "Checking Homebrew…" }
+        if model.upgrading { return model.work["brew"]?.current.map { "Updating \($0)…" } ?? "Checking Homebrew…" }
         if !outdated.isEmpty { return "\(outdated.count) Homebrew update\(outdated.count == 1 ? "" : "s")" }
         if !report.upgraded.isEmpty { return "Updated \(report.upgraded.count) with Homebrew" }
         return "Homebrew is up to date"

@@ -32,7 +32,12 @@ enum UIProbe {
             for token in tokens { model.setSelected(token, true) }
             model.loadCraft()
             try? await Task.sleep(nanoseconds: 6_000_000_000)
+            if env["MACSYNC_UI_PROBE_SECTIONS"] != nil {
+                // A job in progress, to show the footer's bar.
+                model.work["get"] = WorkProgress(verb: "Getting apps", names: ["Ghostty", "Raycast", "btop", "ripgrep"], done: 1, current: "Raycast")
+            }
             shoot(dir, "review-\(suffix)", "menu-\(suffix)", model, height)
+            model.work = [:]
             print("before: canApply=\(model.canApply) status=\(model.statusLine)")
             if env["MACSYNC_UI_PROBE_NOAPPLY"] == nil {
                 model.apply()
