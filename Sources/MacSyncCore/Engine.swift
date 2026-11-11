@@ -301,16 +301,20 @@ public final class Engine {
 
     /// Removes apps from this Mac now, and asks every other Mac to remove them too.
     public func removeEverywhere(_ apps: [MissingApp], progress: (String) -> Void = { _ in }) -> [InstallResult] {
+        let installed = Set(localApps(loadState()).map(\.app.token))
+        // Uninstall here first. Only an app that is really gone from this Mac (or was never on it)
+        // is recorded as removed, so a failed uninstall doesn't hide the app or ask the others.
+        let results = uninstallHere(apps.filter { installed.contains($0.app.token) }, progress: progress)
+        let failed = Set(results.filter { $0.outcome == .failed }.map(\.app.token))
         var state = loadState()
         var removals = state.removals ?? [:]
-        for app in apps where app.app.isSafe {
+        for app in apps where app.app.isSafe && !failed.contains(app.app.token) {
             removals[app.app.token] = AppRemoval(token: app.app.token, name: app.displayName, bundleID: app.detail?.bundleID,
                                                  at: now(), active: true, fromMachine: env.machineName)
         }
-        state.removals = removals
+        state.removals = removals.isEmpty ? nil : removals
         try? saveState(state)
-        let results = uninstallHere(apps, progress: progress)
-        _ = try? sync()
+        _ = try? sync(refreshInventory: false)
         return results
     }
 
