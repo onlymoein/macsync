@@ -42,7 +42,15 @@ struct MenuView: View {
     }
 
     @ViewBuilder private var notices: some View {
-        let messages = [model.errorMessage, model.undoMessage].compactMap { $0 } + (model.overview?.issues ?? [])
+        let messages = [model.errorMessage, model.undoMessage, model.updateMessage].compactMap { $0 } + (model.overview?.issues ?? [])
+        if let update = model.availableUpdate, !model.isUpdating {
+            Button { model.installUpdate(update) } label: {
+                Label("Update to MacSync \(update.version)", systemImage: "arrow.down.circle.fill").frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            .padding(12)
+            Divider()
+        }
         if !messages.isEmpty {
             VStack(alignment: .leading, spacing: 6) {
                 ForEach(messages, id: \.self) { message in
@@ -90,6 +98,8 @@ struct MenuView: View {
                 }
                 Toggle("Sync Automatically", isOn: $model.autoSync)
                 Toggle("Open at Login", isOn: Binding(get: { model.openAtLogin }, set: { model.setOpenAtLogin($0) }))
+                Toggle("Update Automatically", isOn: $model.autoUpdate)
+                Button("Check for Updates") { model.checkForUpdates(manual: true) }
             } label: {
                 Image(systemName: "gearshape")
             }

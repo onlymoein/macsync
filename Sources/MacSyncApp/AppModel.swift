@@ -24,6 +24,15 @@ final class AppModel: ObservableObject {
         }
     }
     @Published var openAtLogin = SMAppService.mainApp.status == .enabled
+    /// A newer MacSync release, when one is out.
+    @Published var availableUpdate: SelfUpdater.Release?
+    @Published var updateMessage: String?
+    @Published var isUpdating = false
+    @Published var autoUpdate: Bool {
+        didSet { UserDefaults.standard.set(autoUpdate, forKey: "autoUpdate") }
+    }
+    private var lastUpdateCheck = Date.distantPast
+    private static let updateInterval: TimeInterval = 24 * 3600
 
     private let engine = Engine.live()
     private let locator = SystemAppLocator()
@@ -38,12 +47,14 @@ final class AppModel: ObservableObject {
 
     init() {
         autoSync = UserDefaults.standard.object(forKey: "autoSync") as? Bool ?? true
+        autoUpdate = UserDefaults.standard.object(forKey: "autoUpdate") as? Bool ?? true
         scheduleTimer()
         wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
             Task { @MainActor in self?.backgroundSync() }
         }
         syncNow()
+        checkForUpdates()
         if CommandLine.arguments.contains("--review") {
             // This init runs inside a SwiftUI update, and opening a window there aborts the app.
             DispatchQueue.main.async { [self] in ReviewWindow.shared.show(model: self) }
@@ -81,6 +92,7 @@ final class AppModel: ObservableObject {
     func syncNow() { runSync(refreshInventory: true) }
 
     private func backgroundSync() {
+        checkForUpdates()
         guard autoSync, !isApplying else { return }
         runSync(refreshInventory: Date().timeIntervalSince(lastInventoryRefresh) > Self.inventoryInterval)
     }
@@ -221,5 +233,57 @@ final class AppModel: ObservableObject {
         timer = Timer.scheduledTimer(withTimeInterval: Self.syncInterval, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.backgroundSync() }
         }
+    }
+
+    // MARK: Updates
+
+    private var updater: SelfUpdater {
+        SelfUpdater(runner: SystemCommandRunner(), brewPath: MacSyncEnvironment.current().brewPath, appURL: Bundle.main.bundleURL)
+    }
+
+    /// Looks for a new release once a day, or now when asked. With automatic updates on, a
+    /// release is installed straight away unless a MacSync window is open.
+    func checkForUpdates(manual: Bool = false) {
+        guard !isUpdating, manual || Date().timeIntervalSince(lastUpdateCheck) > Self.updateInterval else { return }
+        // A build run from the project folder isn't an installed copy, so it never replaces itself.
+        guard Bundle.main.bundleURL.pathExtension == "app" else { return }
+        lastUpdateCheck = Date()
+        let updater = updater
+        Task.detached {
+            let release = updater.check()
+            await MainActor.run {
+                self.availableUpdate = release
+                if manual { self.updateMessage = release == nil ? "MacSync \(MacSyncEnvironment.appVersion) is the latest version." : nil }
+                if let release, self.autoUpdate, !NSApp.windows.contains(where: { $0.isVisible && $0.level == .normal }) {
+                    self.installUpdate(release)
+                }
+            }
+        }
+    }
+
+    func installUpdate(_ release: SelfUpdater.Release) {
+        guard !isUpdating else { return }
+        isUpdating = true
+        updateMessage = "Updating to MacSync \(release.version)…"
+        let updater = updater
+        Task.detached {
+            let result = updater.install(release)
+            await MainActor.run {
+                self.isUpdating = false
+                switch result {
+                case .success: Self.relaunch()
+                case .failure(let error): self.updateMessage = error.localizedDescription
+                }
+            }
+        }
+    }
+
+    private static func relaunch() {
+        let path = Bundle.main.bundleURL.path
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/bin/sh")
+        task.arguments = ["-c", "sleep 1; /usr/bin/open \"$0\"", path]
+        try? task.run()
+        NSApp.terminate(nil)
     }
 }
