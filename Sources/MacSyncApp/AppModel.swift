@@ -255,6 +255,11 @@ final class AppModel: ObservableObject {
         }
     }
 
+    func setDockOrder(_ machineID: String?) {
+        let engine = engine
+        Task { _ = await Task.detached { try? engine.setDockOrder(machineID: machineID) }.value; syncNow() }
+    }
+
     // MARK: Removing and sharing
 
     @Published var removing: Set<String> = []

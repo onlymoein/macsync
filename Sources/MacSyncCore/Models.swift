@@ -91,6 +91,13 @@ public struct DockSection: Codable, Equatable {
 /// One item's latest known state. A Mac's starting Dock counts as present at the epoch, so it never
 /// beats a deliberate removal on another Mac. Removing an item on any Mac removes it everywhere;
 /// adding it back on any Mac brings it back everywhere.
+/// "Every Dock follows this Mac's order", or nil for whichever Dock changed last.
+public struct DockOrderChoice: Codable, Equatable, Hashable {
+    public var machineID: String?
+    public var at: Date
+    public init(machineID: String?, at: Date) { self.machineID = machineID; self.at = at }
+}
+
 /// "Remove this app from all my Macs", or that request taken back. The latest one wins.
 public struct AppRemoval: Codable, Equatable, Hashable {
     public var token: String
@@ -181,11 +188,14 @@ public struct MachineSnapshot: Codable, Equatable {
     public var settings: PrefsSection?
     /// Apps someone chose to remove from every Mac, as this Mac knows them.
     public var removals: [AppRemoval]?
+    /// Which Mac's Dock order every Mac follows, as last chosen on any Mac.
+    public var dockOrder: DockOrderChoice?
 
     public init(machineID: String, machineName: String, osVersion: String, appVersion: String,
                 firstSeenAt: Date, savedAt: Date, dock: DockSection?, inventory: Inventory?, settings: PrefsSection? = nil,
-                removals: [AppRemoval]? = nil) {
+                removals: [AppRemoval]? = nil, dockOrder: DockOrderChoice? = nil) {
         self.removals = removals
+        self.dockOrder = dockOrder
         self.schemaVersion = SnapshotCodec.currentVersion
         self.machineID = machineID
         self.machineName = machineName

@@ -508,6 +508,22 @@ final class EngineTests: XCTestCase {
         XCTAssertEqual(try air.engine.sync().missingApps.map(\.app.token), ["cask:blender", "cask:ghostty"])
     }
 
+    func testChosenMacsDockOrderIsKeptEvenWhenAnotherChangesLater() throws {
+        let world = try TestWorld()
+        let studio = try world.mac("studio", dock: ["a", "b", "c"])
+        try studio.engine.sync()
+        world.tick()
+        let air = try world.mac("air", dock: ["c", "b", "a"])
+        try air.engine.sync()
+        world.tick()
+        try air.engine.setDockOrder(machineID: "studio")
+        world.tick()
+        let plan = try XCTUnwrap(try air.engine.sync().dockPlan)
+        XCTAssertEqual(plan.targetApps.compactMap(\.bundleID), ["a", "b", "c"])
+        // The choice reaches the other Macs too.
+        XCTAssertEqual(try studio.engine.sync().dockOrderFrom, "studio")
+    }
+
     func testOldICloudCopiesAreDeleted() throws {
         let world = try TestWorld()
         let old = world.sync.appendingPathComponent("apps/packages")

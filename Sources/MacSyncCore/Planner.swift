@@ -56,9 +56,11 @@ public enum Planner {
         public var orderSourceName: String
     }
 
-    public static func mergedDock(among machines: [MachineSnapshot], preferring local: Set<String> = []) -> MergedDock? {
+    public static func mergedDock(among machines: [MachineSnapshot], preferring local: Set<String> = [],
+                                  orderFrom chosen: String? = nil) -> MergedDock? {
         let docked = machines.filter { $0.dock != nil }
-        guard let order = winner(among: docked), let base = order.dock else { return nil }
+        let pinned = chosen.flatMap { id in docked.first { $0.machineID == id } }
+        guard let order = pinned ?? winner(among: docked), let base = order.dock else { return nil }
         var events: [String: DockEvent] = [:]
         for machine in docked {
             for (key, event) in machine.dock?.events ?? startingEvents(machine.dock!) {

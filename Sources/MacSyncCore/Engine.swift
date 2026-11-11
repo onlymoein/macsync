@@ -50,6 +50,8 @@ public struct SyncOverview: Codable, Equatable {
     public var removed: [AppRemoval] = []
     /// This Mac's apps it doesn't offer the other Macs.
     public var unshared: [String] = []
+    /// The Mac whose Dock order every Mac follows; nil means whichever changed last.
+    public var dockOrderFrom: String?
 
     public var hasPendingChanges: Bool { dockPlan != nil || settingsPlan != nil || !wantedApps.isEmpty || !toRemove.isEmpty }
     /// Missing apps, minus the ones this Mac doesn't need.
@@ -129,6 +131,7 @@ public final class Engine {
         var keptHere: [String]?
         /// This Mac's apps that it doesn't offer to the other Macs.
         var unshared: [String]?
+        var dockOrder: DockOrderChoice?
         var publishedHash: String?
         var publishedAt: Date?
         var settingsHash: String?
@@ -209,6 +212,19 @@ public final class Engine {
     }
 
     // MARK: Removing from all Macs, and what this Mac shares
+
+    /// The latest "follow this Mac's Dock order" choice made on any Mac.
+    private func dockOrder(_ state: LocalState, _ everyone: [MachineSnapshot]) -> DockOrderChoice? {
+        (everyone.compactMap(\.dockOrder) + [state.dockOrder].compactMap { $0 }).max { $0.at < $1.at }
+    }
+
+    /// Makes every Mac's Dock follow one Mac's order, or nil for whichever Dock changed last.
+    public func setDockOrder(machineID: String?) throws {
+        var state = loadState()
+        state.dockOrder = DockOrderChoice(machineID: machineID, at: now())
+        try saveState(state)
+        try sync(refreshInventory: false)
+    }
 
     /// Takes in every other Mac's removal requests. The newest request for an app wins.
     private func mergeRemovals(_ state: inout LocalState) {
@@ -563,7 +579,8 @@ public final class Engine {
                         osVersion: ProcessInfo.processInfo.operatingSystemVersionString,
                         appVersion: MacSyncEnvironment.appVersion, firstSeenAt: state.firstSeenAt,
                         savedAt: now(), dock: dock, inventory: sharedInventory(state), settings: settings,
-                        removals: state.removals.map { Array($0.values).sorted { $0.token < $1.token } })
+                        removals: state.removals.map { Array($0.values).sorted { $0.token < $1.token } },
+                        dockOrder: state.dockOrder)
     }
 
     private func publishIfNeeded(_ snapshot: MachineSnapshot, state: inout LocalState) throws {
@@ -585,7 +602,8 @@ public final class Engine {
         var plan: DockPlan?
         var mergedTarget: DockSection?
         if let local = snapshot.dock,
-           let merged = Planner.mergedDock(among: everyone, preferring: Set((local.apps + local.others).map(\.key))) {
+           let merged = Planner.mergedDock(among: everyone, preferring: Set((local.apps + local.others).map(\.key)),
+                                                orderFrom: dockOrder(state, everyone)?.machineID) {
             mergedTarget = merged.target
             plan = Planner.dockPlan(current: local, target: merged.target, source: Self.sourceLabel(merged, everyone: everyone),
                                     locator: locator)
@@ -641,7 +659,8 @@ public final class Engine {
             installedApps: local.filter { !active.contains($0.app.token) },
             toRemove: toRemove,
             removed: (state.removals ?? [:]).values.filter(\.active).sorted { $0.at > $1.at },
-            unshared: state.unshared ?? [])
+            unshared: state.unshared ?? [],
+            dockOrderFrom: dockOrder(state, everyone)?.machineID)
     }
 
     /// Apps on other Macs that this one lacks, leaving out any this Mac already has under another
@@ -743,7 +762,7 @@ public final class Engine {
             let everyone = store.load().machines.filter { $0.machineID != env.machineID }
                 + [makeSnapshot(state: state, dock: snapshotDock)]
             let localKeys = Set((snapshotDock.apps + snapshotDock.others).map(\.key))
-            if let merged = Planner.mergedDock(among: everyone, preferring: localKeys) {
+            if let merged = Planner.mergedDock(among: everyone, preferring: localKeys, orderFrom: dockOrder(state, everyone)?.machineID) {
                 let target = merged.target
                 let plan = Planner.dockPlan(current: snapshotDock, target: target, source: Self.sourceLabel(merged, everyone: everyone),
                                             locator: locator)

@@ -212,7 +212,29 @@ private struct DockPanel: View {
         .opacity(model.applyDock ? 1 : 0.55)
     }
 
+    private var orderLabel: String {
+        guard let id = model.overview?.dockOrderFrom,
+              let mac = model.overview?.machines.first(where: { $0.id == id }) else { return "Whichever Mac changed last" }
+        return mac.name + (mac.isThisMac ? " (this Mac)" : "")
+    }
+
     @ViewBuilder private var content: some View {
+            HStack(spacing: 8) {
+                Text("Order on every Mac").font(.callout).foregroundStyle(.secondary)
+                Menu {
+                    Button("Whichever Mac changed last") { model.setDockOrder(nil) }
+                    Divider()
+                    ForEach(model.overview?.machines ?? []) { mac in
+                        Button(mac.name + (mac.isThisMac ? " (this Mac)" : "")) { model.setDockOrder(mac.id) }
+                    }
+                } label: {
+                    Text(orderLabel).font(.callout.weight(.medium))
+                }
+                .menuStyle(.borderlessButton)
+                .fixedSize()
+                .help("Every Mac's Dock keeps this order. Apps the other Macs add go next to their neighbours.")
+                Spacer()
+            }
             DockStrip(items: plan.targetApps + plan.targetOthers, model: model, added: Set(plan.added.map(\.key)))
             Text(model.dockRemovals.isEmpty
                  ? "Click an icon to remove it from the Dock on every Mac."
