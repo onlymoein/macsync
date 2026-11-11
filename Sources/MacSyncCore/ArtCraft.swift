@@ -492,7 +492,9 @@ extension Engine {
     }
 
     /// Installing a removed Craft app again brings it back on every Mac.
+    /// Installing a Craft app again takes back a "remove from all Macs" for it, when there is one.
     public func installCraftAgain(_ apps: [CraftApp]) {
-        for app in apps { try? cancelRemoval(app.skipToken) }
+        let removed = Set(currentRemovals().filter(\.active).map(\.token))
+        for app in apps where removed.contains(app.skipToken) { try? cancelRemoval(app.skipToken) }
     }
 }

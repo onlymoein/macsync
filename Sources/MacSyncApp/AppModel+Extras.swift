@@ -233,9 +233,10 @@ struct WorkProgress: Equatable {
     }
     var line: String {
         let step = min(done + 1, max(total, 1))
-        var text = total > 1 ? "\(verb): \(step) of \(total)" : verb
+        var text = "\(verb): \(step) of \(total)"
         if let status { text += " · " + status.replacingOccurrences(of: "…", with: "") }
         else if let current { text += " · \(current)" }
+        else if let first = names.dropFirst(min(done, names.count)).first { text += " · \(first) · starting" }
         if let next { text += " · next: \(next)" }
         if failed > 0 { text += " · \(failed) failed" }
         return text

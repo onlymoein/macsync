@@ -730,7 +730,9 @@ private struct ArtCraftPanel: View {
             Spacer(minLength: 8)
             if model.craftBusy.contains(app.id) {
                 if model.isWaiting("craft", app.id) || model.isWaiting("craftRemove", app.id) {
-                    Label("Waiting", systemImage: "clock").font(.caption).foregroundStyle(.secondary)
+                    let ahead = model.work["craft"]?.current ?? model.work["craftRemove"]?.current
+                    Label(ahead.map { "After \($0)" } ?? "Starting…", systemImage: "clock")
+                        .font(.caption).foregroundStyle(.secondary)
                 } else if let percent = model.craftPercent, model.work["craftRemove"] == nil {
                     VStack(alignment: .trailing, spacing: 3) {
                         ProgressView(value: Double(percent), total: 100).progressViewStyle(.linear).frame(width: 120)
@@ -1299,7 +1301,8 @@ private struct AppRow: View {
 
     @ViewBuilder private var action: some View {
         if model.getting.contains(token) && model.isWaiting("get", token) {
-            Label("Waiting", systemImage: "clock").font(.caption).foregroundStyle(.secondary)
+            Label(model.work["get"]?.current.map { "After \($0)" } ?? "Starting…", systemImage: "clock")
+                .font(.caption).foregroundStyle(.secondary)
         } else if model.getting.contains(token) {
             VStack(alignment: .trailing, spacing: 3) {
                 ProgressView().progressViewStyle(.linear).frame(width: 120)

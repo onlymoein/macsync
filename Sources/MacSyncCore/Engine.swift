@@ -208,6 +208,8 @@ public final class Engine {
     private var installFolder: URL?
     /// Who hears how the install in progress is going.
     private var installProgress: ((String) -> Void)?
+    /// One getApp at a time, without holding the state lock while it installs.
+    private let installLock = NSLock()
 
     /// A folder apps can be installed into: one that exists and can be written to.
     static func isUsableFolder(_ url: URL) -> Bool {
@@ -1062,15 +1064,20 @@ public final class Engine {
     /// Gets one app straight away, outside Apply: installs it with Homebrew, opens its App Store
     /// page, or downloads its installer from the developer. Nothing else on the Mac changes.
     public func getApp(_ missing: MissingApp, into folder: URL? = nil, progress: ((String) -> Void)? = nil) -> InstallResult {
-        installProgress = progress
-        defer { installProgress = nil }
-        stateLock.lock(); defer { stateLock.unlock() }
         guard missing.app.isSafe else { return InstallResult(app: missing.app, outcome: .failed, message: "That app's name isn't valid.") }
+        // The install itself runs without the state lock: Homebrew can take minutes, and syncing,
+        // ArtCraft and the switches must not wait on it. Only the bookkeeping around it is locked.
+        installLock.lock(); defer { installLock.unlock() }
+        stateLock.lock()
+        installProgress = progress
         missingNames[missing.app.token] = missing.displayName
         if let download = missing.download { missingDownloads[missing.app.token] = download.sanitized }
         installFolder = folder.flatMap { Self.isUsableFolder($0) ? $0 : nil }
-        defer { installFolder = nil }
+        stateLock.unlock()
         var result = install(missing.app)
+        stateLock.lock(); defer { stateLock.unlock() }
+        installProgress = nil
+        installFolder = nil
         result.displayName = missing.displayName
         // Gone from Homebrew: nothing to install, so stop offering it on this Mac.
         if result.outcome == .failed, result.message?.hasPrefix("Homebrew no longer has") == true {
@@ -1246,6 +1253,9 @@ public final class Engine {
         _ = try? sync(refreshInventory: false)
         return result
     }
+
+    /// "Remove from all Macs" requests as this Mac knows them. Reads only, without the state lock.
+    func currentRemovals() -> [AppRemoval] { Array((loadState().removals ?? [:]).values) }
 
     /// Keeps Homebrew apps and tools, npm and uv up to date.
     public var upgrader: Upgrader { Upgrader(env: env, runner: runner) }
