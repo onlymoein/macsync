@@ -541,6 +541,23 @@ final class EngineTests: XCTestCase {
         XCTAssertEqual(plan.targetApps.compactMap(\.bundleID), ["c", "a", "b"])
     }
 
+    func testRemovingFromADockThatAlreadyMatchesWorks() throws {
+        let world = try TestWorld()
+        let studio = try world.mac("studio", dock: ["a", "b", "c"])
+        try studio.engine.sync()
+        world.tick()
+        let air = try world.mac("air", dock: ["a", "b", "c"])
+        let overview = try air.engine.sync()
+        XCTAssertNil(overview.dockPlan)
+        let key = try XCTUnwrap(overview.dockPreview?.targetApps.first { $0.bundleID == "b" }).key
+        world.tick()
+        let report = try air.engine.apply(ApplyRequest(applyDock: true, apps: [], removeFromDock: [key]))
+        XCTAssertTrue(report.dockChanged)
+        XCTAssertEqual(try dockBundleIDs(air), ["a", "c"])
+        world.tick()
+        XCTAssertEqual(try studio.engine.sync().dockPlan?.removed.compactMap(\.bundleID), ["b"])
+    }
+
     func testOldICloudCopiesAreDeleted() throws {
         let world = try TestWorld()
         let old = world.sync.appendingPathComponent("apps/packages")

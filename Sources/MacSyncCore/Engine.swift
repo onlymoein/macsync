@@ -749,8 +749,10 @@ public final class Engine {
         let before = try sync(refreshInventory: false)
         let allowed = Set(before.missingApps.map(\.app))
         let apps = request.apps.filter { allowed.contains($0) && $0.isSafe }
+        // The combined Dock, whether or not it differs from this Mac's.
+        let shown = before.dockPlan ?? before.dockPreview
         let removals = request.applyDock ? Set(request.removeFromDock).intersection(
-            ((before.dockPlan?.targetApps ?? []) + (before.dockPlan?.targetOthers ?? [])).map(\.key)) : []
+            ((shown?.targetApps ?? []) + (shown?.targetOthers ?? [])).map(\.key)) : []
         let rearranged = request.applyDock ? request.dockOrder.flatMap { $0.isEmpty ? nil : $0 } : nil
         let wantsDock = request.applyDock && (before.dockPlan != nil || !removals.isEmpty || rearranged != nil)
         let wantsSettings = request.applySettings && before.settingsPlan != nil
@@ -801,7 +803,7 @@ public final class Engine {
             var snapshotDock = try captureDock(&state)
             // Removing here counts as a removal made on this Mac now, so every other Mac follows.
             for key in removals {
-                let known = state.dockEvents?[key] ?? before.dockPlan.flatMap { plan in
+                let known = state.dockEvents?[key] ?? shown.flatMap { plan in
                     (plan.targetApps.map { ($0, true) } + plan.targetOthers.map { ($0, false) }).first { $0.0.key == key }
                         .map { DockEvent(present: true, at: Self.epoch, item: $0.0, inApps: $0.1) }
                 }

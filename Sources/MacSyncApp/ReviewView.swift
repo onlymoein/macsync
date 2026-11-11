@@ -242,8 +242,8 @@ private struct DockPanel: View {
             DockStrip(items: plan.targetApps + plan.targetOthers, model: model, added: Set(plan.added.map(\.key)), apps: plan.targetApps)
             Text((model.dockArrangement != nil ? "New order: press Apply to use it on every Mac. " : "Drag icons to rearrange. ")
                  + (model.dockRemovals.isEmpty
-                    ? "Click an icon to remove it from the Dock on every Mac."
-                    : "\(model.dockRemovals.count) marked to remove from every Mac. Click again to keep."))
+                    ? "Click an icon, or its ×, to remove it from the Dock on every Mac."
+                    : "\(model.dockRemovals.count) marked to remove from every Mac. Press Apply, or click again to keep."))
                 .font(.caption).foregroundStyle(.secondary)
             if model.dockArrangement != nil {
                 Button("Reset Order") { model.dockArrangement = nil }.glassButton().controlSize(.small)
@@ -318,12 +318,46 @@ private struct DockStrip: View {
     }
 
     private func icon(_ item: DockItem) -> some View {
-        let removing = model.dockRemovals.contains(item.key)
-        return DockIcon(item: item, image: model.icon(for: item),
-                        badge: removing ? .removed : (added.contains(item.key) ? .added : nil))
-            .contentShape(Rectangle())
-            .onTapGesture { if item.kind != .spacer { model.toggleDockRemoval(item.key) } }
+        DockStripIcon(item: item, model: model, added: added.contains(item.key))
     }
+}
+
+/// One Dock icon in the preview: drag to move it, click it or its × to remove it from every Mac.
+private struct DockStripIcon: View {
+    let item: DockItem
+    @ObservedObject var model: AppModel
+    let added: Bool
+    @State private var hovering = false
+
+    var body: some View {
+        let removing = model.dockRemovals.contains(item.key)
+        DockIcon(item: item, image: model.icon(for: item), badge: removing ? .removed : (added ? .added : nil))
+            .contentShape(Rectangle())
+            .simultaneousGesture(TapGesture().onEnded { toggle() })
+            .overlay(alignment: .topLeading) {
+                if hovering && !removing && item.kind != .spacer {
+                    Button(action: toggle) {
+                        ZStack {
+                            Circle().fill(Color(white: 0.25))
+                            Image(systemName: "xmark").font(.system(size: 7, weight: .heavy)).foregroundColor(.white)
+                        }
+                        .frame(width: 15, height: 15)
+                    }
+                    .buttonStyle(.plain)
+                    .offset(x: -4, y: -4)
+                    .help("Remove \(item.label) from the Dock on every Mac")
+                }
+            }
+            .onHover { hovering = $0 }
+            .contextMenu {
+                if item.kind != .spacer {
+                    Button(removing ? "Keep in the Dock" : "Remove from Dock on Every Mac") { toggle() }
+                }
+            }
+            .help(removing ? "\(item.label) will be removed from every Mac's Dock. Click to keep it." : item.label)
+    }
+
+    private func toggle() { if item.kind != .spacer { model.toggleDockRemoval(item.key) } }
 }
 
 /// Moves the dragged icon in front of the one it's over, as the Dock itself does.
