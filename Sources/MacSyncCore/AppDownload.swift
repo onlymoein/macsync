@@ -63,7 +63,10 @@ struct CaskCatalog {
     static let address = "https://formulae.brew.sh/api/cask.json"
     static let maxAge: TimeInterval = 86_400
 
-    struct Entry { var token: String; var url: String; var sha256: String?; var intelURL: String?; var intelSHA256: String? }
+    struct Entry {
+        var token: String; var url: String; var sha256: String?; var intelURL: String?; var intelSHA256: String?
+        var name: String? = nil; var desc: String? = nil
+    }
 
     let byApp: [String: [String]]
     let entries: [String: Entry]
@@ -121,7 +124,8 @@ struct CaskCatalog {
             let intel = (cask["variations"] as? [String: [String: Any]] ?? [:])
                 .filter { $0.key.hasPrefix("x86_64") }.sorted { $0.key > $1.key }.first?.value
             entries[token] = Entry(token: token, url: url, sha256: cask["sha256"] as? String,
-                                   intelURL: intel?["url"] as? String, intelSHA256: intel?["sha256"] as? String)
+                                   intelURL: intel?["url"] as? String, intelSHA256: intel?["sha256"] as? String,
+                                   name: (cask["name"] as? [String])?.first, desc: cask["desc"] as? String)
         }
         return CaskCatalog(byApp: byApp, entries: entries)
     }

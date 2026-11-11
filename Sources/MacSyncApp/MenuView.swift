@@ -93,7 +93,7 @@ struct MenuView: View {
         HStack {
             Menu {
                 if model.proEnabled {
-                    Button("App Preferences…") { AppPrefsWindow.shared.show(model: model) }
+                    Button("App Settings…") { AppPrefsWindow.shared.show(model: model) }
                     Divider()
                 }
                 Toggle("Sync Automatically", isOn: $model.autoSync)

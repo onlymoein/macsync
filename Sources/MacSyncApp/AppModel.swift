@@ -82,8 +82,8 @@ final class AppModel: ObservableObject {
         if let plan = overview.settingsPlan {
             return "New settings from \(plan.sourceMachine)"
         }
-        if !overview.missingApps.isEmpty {
-            let count = overview.missingApps.count
+        if !overview.wantedApps.isEmpty {
+            let count = overview.wantedApps.count
             return "\(count) app\(count == 1 ? "" : "s") on your other Macs"
         }
         return overview.machines.count > 1 ? "Your Macs match" : "This Mac is saved. Add another Mac to sync."
@@ -132,6 +132,16 @@ final class AppModel: ObservableObject {
     }
 
     /// The app's own icon, shared through iCloud by the Mac that has it.
+    /// The app on another Mac that a Dock item stands for, matched by bundle ID.
+    func missingApp(for item: DockItem) -> MissingApp? {
+        guard let id = item.bundleID else { return nil }
+        return overview?.missingApps.first { $0.detail?.bundleID == id || ($0.app.source == .direct && $0.app.name == id) }
+    }
+
+    func name(for item: DockItem) -> String {
+        missingApp(for: item)?.displayName ?? item.label
+    }
+
     func icon(for missing: MissingApp) -> NSImage? {
         guard let id = missing.detail?.iconID else { return nil }
         if let cached = iconCache[id] { return cached }
@@ -146,7 +156,51 @@ final class AppModel: ObservableObject {
 
     var canApply: Bool {
         !isApplying && ((applyDock && (overview?.dockPlan != nil || !dockRemovals.isEmpty)) || (applySettings && overview?.settingsPlan != nil)
-                        || !appsToInstall.isEmpty)
+)
+    }
+
+    /// Apps being fetched one at a time from the list, and how each one went.
+    @Published var getting: Set<String> = []
+    @Published var gotten: [String: InstallResult] = [:]
+    private var getQueue: [MissingApp] = []
+
+    /// Hides an app this Mac doesn't need, or brings it back. Remembered across syncs.
+    func setSkipped(_ app: MissingApp, _ skipped: Bool) {
+        try? engine.setSkipped(app.app.token, skipped)
+        guard var current = overview else { return }
+        if skipped { current.skippedApps.append(app.app.token) } else { current.skippedApps.removeAll { $0 == app.app.token } }
+        overview = current
+    }
+
+    func get(_ apps: [MissingApp]) {
+        let fresh = apps.filter { $0.canInstall && !getting.contains($0.app.token) && gotten[$0.app.token]?.outcome != .installed
+                                  && gotten[$0.app.token]?.outcome != .downloaded }
+        guard !fresh.isEmpty else { return }
+        for app in fresh { getting.insert(app.app.token); gotten[app.app.token] = nil }
+        let wasIdle = getQueue.isEmpty
+        getQueue += fresh
+        if wasIdle { getNext() }
+    }
+
+    private func getNext() {
+        guard let next = getQueue.first else { syncNow(); return }
+        let engine = engine
+        progress = "Getting \(next.displayName)…"
+        Task {
+            let result = await Task.detached { engine.getApp(next) }.value
+            getQueue.removeFirst()
+            getting.remove(next.app.token)
+            gotten[next.app.token] = result
+            progress = nil
+            getNext()
+        }
+    }
+
+    /// Opens a downloaded installer again, or shows it in Finder if it's gone from where it was.
+    func openDownload(_ result: InstallResult) {
+        guard let path = result.path else { return }
+        if FileManager.default.fileExists(atPath: path) { NSWorkspace.shared.open(URL(fileURLWithPath: path)) }
+        else { NSWorkspace.shared.open(FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Downloads")) }
     }
 
     func apply() {
@@ -155,7 +209,7 @@ final class AppModel: ObservableObject {
         lastReport = nil
         undoMessage = nil
         errorMessage = nil
-        let request = ApplyRequest(applyDock: applyDock, apps: appsToInstall, applySettings: applySettings,
+        let request = ApplyRequest(applyDock: applyDock, apps: [], applySettings: applySettings,
                                    removeFromDock: Array(dockRemovals))
         let engine = engine
         Task {
@@ -221,8 +275,9 @@ final class AppModel: ObservableObject {
         case .spacer: return nil
         case .url: return NSImage(systemSymbolName: "globe", accessibilityDescription: item.label)
         case .app, .file, .folder:
-            guard let path = Planner.resolve(item, locator: locator) else { return nil }
-            return NSWorkspace.shared.icon(forFile: path)
+            if let path = Planner.resolve(item, locator: locator) { return NSWorkspace.shared.icon(forFile: path) }
+            // Not on this Mac: use the icon the other Mac synced for that app.
+            return missingApp(for: item).flatMap { icon(for: $0) }
         }
     }
 

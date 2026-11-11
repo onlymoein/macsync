@@ -93,8 +93,8 @@ struct ReviewView: View {
 
     private var chips: [String] {
         var list: [String] = []
-        let apps = model.appsToInstall.count
-        if apps > 0 { list.append("\(apps) app\(apps == 1 ? "" : "s") to add") }
+        let apps = (model.overview?.wantedApps ?? []).filter { model.gotten[$0.app.token] == nil }.count
+        if apps > 0 { list.append("\(apps) app\(apps == 1 ? "" : "s") to get") }
         if let plan = model.overview?.dockPlan {
             let changes = plan.added.count + plan.removed.count
             list.append(changes == 0 ? "Dock order" : "\(changes) Dock change\(changes == 1 ? "" : "s")")
@@ -182,7 +182,7 @@ private struct DockPanel: View {
                 IconRow(title: "Removed on another Mac", items: plan.removed, model: model, badge: .removed)
             }
             if !plan.missing.isEmpty {
-                IconRow(title: "Added once they're installed", items: plan.missing, model: model, badge: .waiting)
+                WaitingRow(items: plan.missing, model: model)
             }
             if let change = plan.tileSizeChange {
                 Text("Icon size \(change.from.map { String(format: "%g", $0) } ?? "default") → \(String(format: "%g", change.to))")
@@ -238,6 +238,33 @@ private struct IconRow: View {
     }
 }
 
+/// Dock items from another Mac whose apps aren't on this one yet, shown with their synced icons
+/// and names so it's clear what they are.
+private struct WaitingRow: View {
+    let items: [DockItem]
+    @ObservedObject var model: AppModel
+    private let columns = [GridItem(.adaptive(minimum: 68, maximum: 68), spacing: 8)]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("In the Dock on your other Mac, not installed here").font(.callout.weight(.medium))
+                Text("Get them in the apps list below. Each one joins this Dock once it is installed.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
+                ForEach(items) { item in
+                    VStack(spacing: 3) {
+                        DockIcon(item: item, image: model.icon(for: item), badge: .waiting)
+                        Text(model.name(for: item)).font(.caption2).foregroundStyle(.secondary)
+                            .lineLimit(1).truncationMode(.tail).frame(width: 68)
+                    }
+                }
+            }
+        }
+    }
+}
+
 private struct DockIcon: View {
     let item: DockItem
     let image: NSImage?
@@ -254,7 +281,7 @@ private struct DockIcon: View {
             }
         }
         .frame(width: 40, height: 40)
-        .opacity(badge == .removed || badge == .waiting ? 0.45 : 1)
+        .opacity(badge == .removed ? 0.45 : badge == .waiting ? 0.7 : 1)
         .overlay(alignment: .bottomTrailing) {
             switch badge {
             case .added: mark("plus", .green)
@@ -284,18 +311,20 @@ private struct AppsPanel: View {
     @ObservedObject var model: AppModel
     @State private var showTools = false
 
-    private var all: [MissingApp] { model.overview?.missingApps ?? [] }
-    private var apps: [MissingApp] {
-        all.filter { $0.app.source != .formula }.sorted { $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending }
+    private var everything: [MissingApp] {
+        (model.overview?.missingApps ?? []).sorted { $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending }
     }
+    private var skippedTokens: Set<String> { Set(model.overview?.skippedApps ?? []) }
+    private var all: [MissingApp] { everything }
+    private var apps: [MissingApp] { all.filter { $0.app.source != .formula } }
     private var tools: [MissingApp] { all.filter { $0.app.source == .formula } }
 
     var body: some View {
-        if !all.isEmpty {
+        if !everything.isEmpty {
             VStack(alignment: .leading, spacing: 14) {
-                PanelHeader(symbol: "square.grid.2x2.fill", title: "Apps from your other Macs",
-                            subtitle: "Ticked apps are added to this Mac. Nothing is ever removed.") {
-                    selectAll(all)
+                PanelHeader(symbol: "square.grid.2x2.fill", title: "Apps on your other Macs",
+                            subtitle: "Switch off what this Mac doesn't need. MacSync remembers. Get the rest here.") {
+                    getAll(apps, label: "Get All")
                 }
                 if !apps.isEmpty {
                     VStack(spacing: 2) {
@@ -309,14 +338,14 @@ private struct AppsPanel: View {
                     } label: {
                         HStack {
                             Text("Command-line tools").font(.callout.weight(.medium))
-                            Text("\(selected(tools)) of \(tools.count) ticked").font(.callout).foregroundStyle(.secondary)
+                            Text("\(tools.count)").font(.callout).foregroundStyle(.secondary)
                             Spacer()
-                            selectAll(tools)
+                            getAll(tools, label: "Install All")
                         }
                     }
                 }
                 if model.overview?.brewAvailable == false, all.contains(where: { $0.app.source == .cask || $0.app.source == .formula }) {
-                    Label("Homebrew isn't on this Mac yet, so those apps can't be installed. Get it at brew.sh.", systemImage: "info.circle")
+                    Label("Homebrew isn't on this Mac yet, so Homebrew apps can't be installed. Get it at brew.sh.", systemImage: "info.circle")
                         .font(.callout).foregroundStyle(.secondary)
                 }
             }
@@ -325,14 +354,13 @@ private struct AppsPanel: View {
         }
     }
 
-    private func selected(_ list: [MissingApp]) -> Int { list.filter { model.selectedApps.contains($0.app.token) }.count }
-
-    private func selectAll(_ list: [MissingApp]) -> some View {
-        let installable = list.filter(\.canInstall)
-        let allOn = selected(installable) == installable.count
-        return Button(allOn ? "Untick all" : "Tick all") { model.setSelected(installable.map(\.app.token), !allOn) }
+    private func getAll(_ list: [MissingApp], label: String) -> some View {
+        let skipped = skippedTokens
+        let left = list.filter { $0.canInstall && !skipped.contains($0.app.token) && model.gotten[$0.app.token] == nil && !model.getting.contains($0.app.token) }
+        return Button(label) { model.get(left) }
             .glassButton()
             .controlSize(.small)
+            .disabled(left.isEmpty)
     }
 }
 
@@ -340,48 +368,90 @@ private struct AppRow: View {
     let missing: MissingApp
     @ObservedObject var model: AppModel
 
-    private var isOn: Binding<Bool> {
-        Binding(get: { model.selectedApps.contains(missing.app.token) }, set: { model.setSelected(missing.app.token, $0) })
-    }
+    private var token: String { missing.app.token }
+    private var isSkipped: Bool { model.overview?.skippedApps.contains(token) == true }
+    private var result: InstallResult? { model.gotten[token] }
 
     var body: some View {
         HStack(spacing: 12) {
             AppIcon(missing: missing, image: model.icon(for: missing))
             VStack(alignment: .leading, spacing: 1) {
                 Text(missing.displayName).font(.body.weight(.medium)).lineLimit(1)
-                if let summary = missing.detail?.summary {
+                if let result, result.outcome == .failed, let message = result.message {
+                    Text(message).font(.caption).foregroundStyle(.orange).lineLimit(2)
+                } else if let summary = missing.detail?.summary {
                     Text(summary).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                 }
             }
             Spacer(minLength: 8)
             Text(sourceLabel).font(.caption).foregroundStyle(.secondary)
-                .help(help)
                 .padding(.horizontal, 8).padding(.vertical, 3)
                 .background(.quaternary.opacity(0.6), in: Capsule())
-            Toggle("", isOn: isOn).toggleStyle(.switch).labelsHidden().controlSize(.small)
-                .disabled(!missing.canInstall)
+            action.frame(minWidth: 92, alignment: .trailing)
+            Toggle("", isOn: Binding(get: { !isSkipped }, set: { model.setSkipped(missing, !$0) }))
+                .toggleStyle(.switch).labelsHidden().controlSize(.small)
+                .disabled(model.getting.contains(token))
+                .help(isSkipped ? "Not needed on this Mac. Switch on to get it." : "Switch off if this Mac doesn't need it. MacSync remembers.")
         }
+        .opacity(isSkipped ? 0.5 : 1)
         .padding(.horizontal, 8)
         .padding(.vertical, 6)
-        .contentShape(Rectangle())
-        .onTapGesture { if missing.canInstall { isOn.wrappedValue.toggle() } }
-        .opacity(missing.canInstall ? 1 : 0.6)
+        .help(help)
         .accessibilityElement(children: .combine)
+    }
+
+    @ViewBuilder private var action: some View {
+        if model.getting.contains(token) {
+            HStack(spacing: 6) {
+                ProgressView().controlSize(.small)
+                Text(missing.app.source == .direct ? "Downloading" : "Installing").font(.caption).foregroundStyle(.secondary)
+            }
+        } else if let result {
+            switch result.outcome {
+            case .installed:
+                Label("Installed", systemImage: "checkmark.circle.fill").font(.callout).foregroundStyle(.green)
+            case .downloaded:
+                Button("Open") { model.openDownload(result) }.glassButton().controlSize(.small)
+                    .help("Open the installer in Downloads")
+            case .openedInAppStore:
+                Label("In App Store", systemImage: "bag").font(.callout).foregroundStyle(.secondary)
+            case .failed:
+                Button("Try Again") { model.get([missing]) }.glassButton().controlSize(.small)
+            }
+        } else if isSkipped {
+            Text("Not needed").font(.callout).foregroundStyle(.secondary)
+        } else if !missing.canInstall {
+            Text("No link").font(.callout).foregroundStyle(.secondary)
+        } else {
+            Button(buttonTitle) { model.get([missing]) }.primaryGlassButton().controlSize(.small)
+        }
+    }
+
+    private var buttonTitle: String {
+        switch missing.app.source {
+        case .cask, .formula: return "Install"
+        case .appStore: return "Get"
+        case .direct: return "Download"
+        }
     }
 
     private var sourceLabel: String {
         switch missing.app.source {
         case .cask, .formula: return "Homebrew"
         case .appStore: return "App Store"
-        case .direct: return missing.canInstall ? "Download" : "No download link"
+        case .direct: return "Developer"
         }
     }
 
     private var help: String {
-        guard missing.app.source == .direct else { return "" }
-        return missing.canInstall
-            ? "Downloaded from the developer into Downloads, then opened so you can install it"
-            : "MacSync doesn't know where this app is published. Get it from the developer's website."
+        switch missing.app.source {
+        case .cask, .formula: return "Installs with Homebrew. On \(missing.fromMachines.joined(separator: ", "))."
+        case .appStore: return "Opens its App Store page. Click Get there."
+        case .direct:
+            return missing.canInstall
+                ? "Downloads the installer from the developer into Downloads and opens it, so you can finish installing it."
+                : "MacSync doesn't know where this app is published. Get it from the developer's website."
+        }
     }
 }
 

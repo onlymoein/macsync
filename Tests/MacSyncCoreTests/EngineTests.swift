@@ -435,6 +435,22 @@ final class EngineTests: XCTestCase {
         XCTAssertFalse(overview.selectedApps.contains(app.app.token))
     }
 
+    func testAppNotNeededIsRememberedAndCanComeBack() throws {
+        let world = try TestWorld()
+        let studio = try world.mac("studio", dock: ["a"])
+        studio.runner.casks = ["ghostty"]
+        try studio.engine.sync()
+        let air = try world.mac("air", dock: ["a"])
+        XCTAssertTrue(try air.engine.sync().hasPendingChanges)
+        try air.engine.setSkipped("cask:ghostty", true)
+        let after = try air.engine.sync()
+        XCTAssertEqual(after.skippedApps, ["cask:ghostty"])
+        XCTAssertTrue(after.wantedApps.isEmpty)
+        XCTAssertFalse(after.hasPendingChanges)
+        try air.engine.setSkipped("cask:ghostty", false)
+        XCTAssertEqual(try air.engine.sync().wantedApps.map(\.app.token), ["cask:ghostty"])
+    }
+
     func testOldICloudCopiesAreDeleted() throws {
         let world = try TestWorld()
         let old = world.sync.appendingPathComponent("apps/packages")

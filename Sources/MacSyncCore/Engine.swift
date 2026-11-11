@@ -39,8 +39,12 @@ public struct SyncOverview: Codable, Equatable {
     public var settingsPlan: SettingsPlan?
     public var settingsSkipped: [String]
     public var appPrefDomains: [String]
+    /// Apps from other Macs the person said this Mac doesn't need. Remembered on this Mac only.
+    public var skippedApps: [String] = []
 
-    public var hasPendingChanges: Bool { dockPlan != nil || settingsPlan != nil || !missingApps.isEmpty }
+    public var hasPendingChanges: Bool { dockPlan != nil || settingsPlan != nil || !wantedApps.isEmpty }
+    /// Missing apps, minus the ones this Mac doesn't need.
+    public var wantedApps: [MissingApp] { missingApps.filter { !skippedApps.contains($0.app.token) } }
 }
 
 public struct InstallResult: Codable, Equatable, Identifiable {
@@ -50,6 +54,8 @@ public struct InstallResult: Codable, Equatable, Identifiable {
     public var message: String?
     /// The name people recognize ("Android Studio", "PhotoCraft").
     public var displayName: String? = nil
+    /// For a downloaded installer: where it was saved.
+    public var path: String? = nil
     public var id: String { app.token }
 }
 
@@ -183,6 +189,16 @@ public final class Engine {
     private func removeOldCopies() {
         let old = env.syncDirectory.appendingPathComponent("apps", isDirectory: true)
         if FileManager.default.fileExists(atPath: old.path) { try? FileManager.default.removeItem(at: old) }
+    }
+
+    /// Marks an app as not needed on this Mac, or brings it back. Kept even after it stops being
+    /// offered, so it stays hidden if another Mac installs it again later.
+    public func setSkipped(_ token: String, _ skipped: Bool) throws {
+        var state = loadState()
+        var set = Set(state.deselectedApps ?? [])
+        if skipped { set.insert(token) } else { set.remove(token) }
+        state.deselectedApps = set.sorted()
+        try saveState(state)
     }
 
     /// Records the choice as what was unticked, so apps that turn up later start ticked.
@@ -336,13 +352,27 @@ public final class Engine {
             proEnabled: proUnlocked,
             settingsPlan: settingsPlan?.hasChanges == true ? settingsPlan : nil,
             settingsSkipped: settingsPlan?.skipped ?? [],
-            appPrefDomains: state.appPrefDomains ?? [])
+            appPrefDomains: state.appPrefDomains ?? [],
+            skippedApps: missing.map(\.app.token).filter { deselected.contains($0) })
     }
 
     /// Apps on other Macs that this one lacks, leaving out any this Mac already has under another
     /// name or source (AnyDesk from Homebrew on one Mac, downloaded on another).
     private func missingApps(_ state: LocalState, others: [MachineSnapshot]) -> [MissingApp] {
-        Planner.missingApps(local: state.inventory ?? Inventory(), others: others).filter { missing in
+        let found = Planner.missingApps(local: state.inventory ?? Inventory(), others: others)
+        // A Mac on an older MacSync sends only cask names: fill in the real names from Homebrew's list.
+        let catalog = found.contains { $0.app.source == .cask && $0.detail?.displayName == nil }
+            ? CaskCatalog.load(env: env, runner: runner, now: now()) : nil
+        return found.map { missing in
+            guard missing.app.source == .cask, missing.detail?.displayName == nil,
+                  let entry = catalog?.entries[missing.app.name] else { return missing }
+            var copy = missing
+            var detail = copy.detail ?? AppDetail()
+            detail.displayName = entry.name.map { String($0.prefix(80)) }
+            if detail.summary == nil { detail.summary = entry.desc.map { String($0.prefix(160)) } }
+            copy.detail = detail
+            return copy
+        }.filter { missing in
             // A simulated Mac (its Dock lives in a file) has only its own Applications folder, not this Mac's apps.
             guard env.dockFile == nil,
                   let bundle = missing.detail?.bundleID ?? (missing.app.source == .direct ? missing.app.name : nil) else { return true }
@@ -455,6 +485,23 @@ public final class Engine {
                            settingsChanged: settingsChanged, settingsSkipped: before.settingsSkipped, settingsError: settingsError)
     }
 
+    /// Gets one app straight away, outside Apply: installs it with Homebrew, opens its App Store
+    /// page, or downloads its installer from the developer. Nothing else on the Mac changes.
+    public func getApp(_ missing: MissingApp) -> InstallResult {
+        guard missing.app.isSafe else { return InstallResult(app: missing.app, outcome: .failed, message: "That app's name isn't valid.") }
+        missingNames[missing.app.token] = missing.displayName
+        if let download = missing.download { missingDownloads[missing.app.token] = download.sanitized }
+        var result = install(missing.app)
+        result.displayName = missing.displayName
+        if result.outcome == .installed {
+            var state = loadState()
+            state.inventory = InventoryReader(runner: runner, env: env).read()
+            state.inventoryAt = now()
+            try? saveState(state)
+        }
+        return result
+    }
+
     private func install(_ app: AppRef) -> InstallResult {
         switch app.source {
         case .appStore:
@@ -471,7 +518,8 @@ public final class Engine {
             switch AppDownloader(env: env, runner: runner, now: now).fetch(source) {
             case .success(let path):
                 return InstallResult(app: app, outcome: .downloaded,
-                                     message: "Saved to Downloads as \((path as NSString).lastPathComponent) and opened. Finish installing it there.")
+                                     message: "Saved to Downloads as \((path as NSString).lastPathComponent) and opened. Finish installing it there.",
+                                     path: path)
             case .failure(let error):
                 return InstallResult(app: app, outcome: .failed, message: error.localizedDescription)
             }

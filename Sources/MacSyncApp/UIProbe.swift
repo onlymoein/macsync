@@ -46,6 +46,7 @@ enum UIProbe {
         let background = Color(nsColor: .windowBackgroundColor)
         write(ReviewView(model: model).frame(width: 680, height: height).background(background), dir, review)
         write(MenuView(model: model).background(background), dir, menu)
+        write(AppPrefsView(model: model).frame(width: 460, height: 560).background(background), dir, "appsettings-" + menu)
     }
 
     private static func write<V: View>(_ view: V, _ dir: String, _ name: String) {
