@@ -333,7 +333,7 @@ final class AppModel: ObservableObject {
     }
 
     var canApply: Bool {
-        !isApplying && getting.isEmpty && removing.isEmpty && (pendingAppPrefs != nil || (applyDock && (overview?.dockPlan != nil || !dockRemovals.isEmpty || dockArrangement != nil)) || (applySettings && overview?.settingsPlan != nil)
+        !isApplying && getting.isEmpty && removing.isEmpty && (pendingAppPrefs != nil || pendingExcludedSettings != nil || (applyDock && (overview?.dockPlan != nil || !dockRemovals.isEmpty || dockArrangement != nil)) || (applySettings && overview?.settingsPlan != nil)
 )
     }
 
@@ -474,12 +474,14 @@ final class AppModel: ObservableObject {
         let wantsMore = (applyDock && (overview?.dockPlan != nil || !dockRemovals.isEmpty || dockArrangement != nil))
             || (applySettings && overview?.settingsPlan != nil)
         let appPrefs = pendingAppPrefs.map { Array($0).sorted() }
+        let excluded = pendingExcludedSettings.map { Array($0).sorted() }
         let engine = engine
         Task {
             let result: Result<ApplyReport, Error> = await Task.detached {
                 Result {
                     // App settings first: which apps' settings this Mac shares with the others.
                     if let appPrefs { try engine.setAppPrefDomains(appPrefs) }
+                    if let excluded { try engine.setExcludedSettings(excluded) }
                     guard wantsMore else {
                         return ApplyReport(restorePoint: nil, dockChanged: false, skippedDockItems: [], results: [])
                     }
@@ -488,7 +490,7 @@ final class AppModel: ObservableObject {
                     }
                 }
             }.value
-            if case .success = result { pendingAppPrefs = nil }
+            if case .success = result { pendingAppPrefs = nil; pendingExcludedSettings = nil }
             isApplying = false
             progress = nil
             switch result {
@@ -549,6 +551,17 @@ final class AppModel: ObservableObject {
     func appPrefDomains() -> [String] { engine.appPrefDomains() }
     func currentSettings() -> [SettingsChange] { engine.currentSettings() }
     func availableAppPrefDomains() -> [String] { engine.availableAppPrefDomains() }
+    /// System settings switched off (kept to this Mac) in the window, not applied yet.
+    @Published var pendingExcludedSettings: Set<String>?
+
+    var excludedSettingsChosen: Set<String> { pendingExcludedSettings ?? Set(overview?.excludedSettings ?? []) }
+
+    func setSettingSynced(_ ids: [String], _ on: Bool) {
+        var next = excludedSettingsChosen
+        if on { next.subtract(ids) } else { next.formUnion(ids) }
+        pendingExcludedSettings = next == Set(overview?.excludedSettings ?? []) ? nil : next
+    }
+
     /// App settings switches flipped in the window but not applied yet.
     @Published var pendingAppPrefs: Set<String>?
 

@@ -60,6 +60,8 @@ public struct SyncOverview: Codable, Equatable {
     public var dockOrderFrom: String?
     /// The combined Dock even when it already matches this Mac, so it can always be shown.
     public var dockPreview: DockPlan?
+    /// Settings this Mac keeps to itself.
+    public var excludedSettings: [String] = []
 
     public var hasPendingChanges: Bool { dockPlan != nil || settingsPlan != nil || !wantedApps.isEmpty || !toRemove.isEmpty }
     /// Missing apps, minus the ones this Mac doesn't need.
@@ -154,6 +156,8 @@ public final class Engine {
         /// This Mac's apps that it doesn't offer to the other Macs.
         var unshared: [String]?
         var dockOrder: DockOrderChoice?
+        /// Settings this Mac keeps to itself: not sent to the other Macs, and not taken from them.
+        var excludedSettings: [String]?
         var publishedHash: String?
         var publishedAt: Date?
         var settingsHash: String?
@@ -629,7 +633,7 @@ public final class Engine {
     private func capturePrefs(_ state: inout LocalState) -> PrefsSection? {
         guard proUnlocked else { return nil }
         let domains = (state.appPrefDomains ?? []).sorted()
-        let captured = PrefsCapture.values(prefs: prefs, appDomains: domains, home: env.homeDirectory)
+        let captured = capture(state)
         var section = PrefsSection(changedAt: state.settingsChangedAt ?? Self.epoch, basedOn: state.settingsBasedOn,
                                    covered: captured.covered, values: captured.values, appDomains: domains)
         let hash = section.contentHash
@@ -646,9 +650,29 @@ public final class Engine {
         return section
     }
 
+    /// This Mac's settings as they are sent, without the ones it keeps to itself.
+    private func capture(_ state: LocalState) -> (covered: [String], values: [String: PrefValue]) {
+        let domains = (state.appPrefDomains ?? []).sorted()
+        var captured = PrefsCapture.values(prefs: prefs, appDomains: domains, home: env.homeDirectory)
+        let excluded = Set(state.excludedSettings ?? [])
+        guard !excluded.isEmpty else { return captured }
+        captured.covered.removeAll { excluded.contains($0) }
+        captured.values = captured.values.filter { !excluded.contains($0.key) }
+        return captured
+    }
+
+    /// Chooses which settings this Mac keeps to itself.
+    public func setExcludedSettings(_ ids: [String]) throws {
+        stateLock.lock(); defer { stateLock.unlock() }
+        var state = loadState()
+        state.excludedSettings = ids.isEmpty ? nil : Array(Set(ids)).sorted()
+        try saveState(state)
+        try sync(refreshInventory: false)
+    }
+
     private func currentPrefsHash(_ state: LocalState) -> String {
         let domains = (state.appPrefDomains ?? []).sorted()
-        let captured = PrefsCapture.values(prefs: prefs, appDomains: domains, home: env.homeDirectory)
+        let captured = capture(state)
         return PrefsSection(changedAt: Self.epoch, covered: captured.covered, values: captured.values, appDomains: domains).contentHash
     }
 
@@ -695,6 +719,8 @@ public final class Engine {
         if let sw = settingsWinner(everyone), sw.machineID != env.machineID, let target = sw.settings {
             settingsPlan = SettingsPlanner.plan(target: target, source: sw.machineName, sourceID: sw.machineID,
                                                 prefs: prefs, home: env.homeDirectory)
+            let excluded = Set(state.excludedSettings ?? [])
+            settingsPlan?.changes.removeAll { excluded.contains($0.id) }
         }
         let active = Set((state.removals ?? [:]).values.filter(\.active).map(\.token))
         let missing = missingApps(state, others: others).filter { !active.contains($0.app.token) }
@@ -746,7 +772,8 @@ public final class Engine {
             removed: (state.removals ?? [:]).values.filter(\.active).sorted { $0.at > $1.at },
             unshared: state.unshared ?? [],
             dockOrderFrom: dockOrder(state, everyone)?.machineID,
-            dockPreview: plan)
+            dockPreview: plan,
+            excludedSettings: state.excludedSettings ?? [])
     }
 
     /// Apps on other Macs that this one lacks, leaving out any this Mac already has under another

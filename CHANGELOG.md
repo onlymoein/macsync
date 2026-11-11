@@ -1,6 +1,7 @@
 # Changelog
 
 ## 0.5.7
+- Each system setting has its own switch: keep one to this Mac, applied with Apply. The Settings section sits at the bottom when nothing needs applying.
 - Uninstall any app or command-line tool from all your Macs right from the lists of apps on your other Macs.
 - Clearer message when Homebrew no longer has a package.
 

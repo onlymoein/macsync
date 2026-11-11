@@ -63,9 +63,6 @@ struct ReviewView: View {
                     }
                     if let plan = model.overview?.settingsPlan {
                         SettingsPanel(plan: plan, model: model)
-                    } else if model.proEnabled {
-                        // Always there, like the Dock, so it's clear what's in sync.
-                        SettingsMatchPanel(model: model)
                     }
                     if model.proEnabled { AppSettingsPanel(model: model) }
                     AppsPanel(kind: .apps, model: model)
@@ -73,6 +70,10 @@ struct ReviewView: View {
                     AppsPanel(kind: .tools, model: model)
                     ThisMacPanel(kind: .apps, model: model)
                     ThisMacPanel(kind: .tools, model: model)
+                    if model.overview?.settingsPlan == nil, model.proEnabled {
+                        // Always there, like the Dock, so it's clear what's in sync.
+                        SettingsMatchPanel(model: model)
+                    }
                     HistoryPanel(model: model).id("history")
                     if let overview = model.overview, !overview.hasPendingChanges, !model.canApply, model.lastReport == nil {
                         VStack(spacing: 8) {
@@ -1083,23 +1084,32 @@ private struct SettingsMatchPanel: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
+            let synced = settings.filter { !model.excludedSettingsChosen.contains($0.id) }.count
             PanelHeader(symbol: "gearshape.fill", title: "Settings",
-                        subtitle: "\(settings.count) match your other Macs · trackpad, keyboard, Finder, Dock and screenshots",
-                        isExpanded: $open) { EmptyView() }
+                        subtitle: model.pendingExcludedSettings != nil ? "Changed · press Apply to save"
+                            : "\(synced) of \(settings.count) kept the same on your Macs · trackpad, keyboard, Finder, Dock and screenshots",
+                        isExpanded: $open) {
+                AllSwitch(onCount: synced, total: settings.count) { on in model.setSettingSynced(settings.map(\.id), on) }
+            }
             if open {
-                Text("Change one in System Settings on any Mac and the others offer it here to apply.")
+                Text("Switch off a setting to keep it to this Mac, then press Apply. Change a setting in System Settings on any Mac and the others offer it here.")
                     .font(.caption).foregroundStyle(.secondary)
                 VStack(alignment: .leading, spacing: 10) {
                     ForEach(grouped, id: \.0) { category, items in
                         VStack(alignment: .leading, spacing: 4) {
                             Text(category).font(.caption.weight(.semibold)).foregroundStyle(.secondary).textCase(.uppercase)
                             ForEach(items) { item in
+                                let on = !model.excludedSettingsChosen.contains(item.id)
                                 HStack {
                                     Text(item.label)
                                     Spacer(minLength: 8)
                                     Text(item.to?.display ?? "default").foregroundStyle(.secondary)
+                                    Toggle("", isOn: Binding(get: { on }, set: { model.setSettingSynced([item.id], $0) }))
+                                        .toggleStyle(.switch).labelsHidden().controlSize(.mini)
+                                        .help(on ? "Kept the same on all your Macs" : "Only on this Mac")
                                 }
                                 .font(.callout)
+                                .opacity(on ? 1 : 0.5)
                             }
                         }
                     }

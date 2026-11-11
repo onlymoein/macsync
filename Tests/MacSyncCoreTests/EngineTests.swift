@@ -584,6 +584,25 @@ final class EngineTests: XCTestCase {
         XCTAssertEqual(Engine.brewProblem("Error: tldr needs a password\n", name: "tldr", status: 1), "tldr needs a password")
     }
 
+    func testSettingKeptToThisMacIsNeitherSentNorTaken() throws {
+        let world = try TestWorld()
+        let studio = try world.mac("studio", dock: ["a"])
+        try studio.engine.sync()
+        let air = try world.mac("air", dock: ["a"])
+        try air.engine.sync()
+        world.tick()
+        studio.prefs.set(domain: "com.apple.dock", key: "autohide", value: .bool(true), type: .bool)
+        studio.prefs.set(domain: "com.apple.dock", key: "magnification", value: .bool(true), type: .bool)
+        try studio.engine.sync()
+        world.tick()
+        let before = try XCTUnwrap(try air.engine.sync().settingsPlan).changes.map(\.id)
+        XCTAssertTrue(before.contains("com.apple.dock|autohide"))
+        try air.engine.setExcludedSettings(["com.apple.dock|autohide"])
+        let after = try XCTUnwrap(try air.engine.sync().settingsPlan).changes.map(\.id)
+        XCTAssertFalse(after.contains("com.apple.dock|autohide"))
+        XCTAssertTrue(after.contains("com.apple.dock|magnification"))
+    }
+
     func testOldICloudCopiesAreDeleted() throws {
         let world = try TestWorld()
         let old = world.sync.appendingPathComponent("apps/packages")
