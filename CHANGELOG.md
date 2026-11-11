@@ -1,6 +1,8 @@
 # Changelog
 
 ## 0.8.5
+- Each ArtCraft app shows its result the moment it's done, Installed or why it wasn't, instead of only after the whole batch. An app that failed no longer looks like it's still Waiting.
+- Closing a Craft app's disk image gets 30 seconds, so a disk image something is still reading can't hold up the rest.
 - Checking a Craft app's signature no longer runs Apple's codesign tool, which could sit on "Checking the signature" indefinitely. MacSync reads the signing team itself through macOS's Security framework, on the Mac with no network, and gives up after a minute with an error so you can try again.
 
 ## 0.8.4

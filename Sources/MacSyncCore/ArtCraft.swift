@@ -236,7 +236,8 @@ public struct ArtCraft {
     // MARK: Installing
 
     /// Installs or updates apps one by one, then records them in the launcher's list in one go.
-    public func install(_ apps: [CraftApp], progress: (String) -> Void = { _ in }) -> [(CraftApp, Result<String, EngineError>)] {
+    public func install(_ apps: [CraftApp], progress: (String) -> Void = { _ in },
+                        finished: (CraftApp, Result<String, EngineError>) -> Void = { _, _ in }) -> [(CraftApp, Result<String, EngineError>)] {
         // The launcher first: it knows about the others and keeps them up to date.
         let apps = apps.filter(\.availableOnMac).sorted { ($0.id == "artcraft-launcher" ? 0 : 1) < ($1.id == "artcraft-launcher" ? 0 : 1) }
         let folder = installFolder()
@@ -244,7 +245,10 @@ public struct ArtCraft {
         var results: [(CraftApp, Result<String, EngineError>)] = []
         for app in apps {
             progress("\(app.isInstalled ? "Updating" : "Installing") \(app.name)…")
-            results.append((app, withoutActuallyEscaping(progress) { report in installOne(app, into: folder, progress: report) }))
+            let result = withoutActuallyEscaping(progress) { report in installOne(app, into: folder, progress: report) }
+            results.append((app, result))
+            // Each app's outcome shows as soon as it's known, not when the whole batch ends.
+            finished(app, result)
         }
         let done = results.compactMap { pair -> (CraftApp, String)? in
             if case .success(let path) = pair.1 { return (pair.0, path) }
@@ -323,7 +327,8 @@ public struct ArtCraft {
             return .failure(.refused(attach.status == -2 ? "\(app.name)'s disk image didn't open within 3 minutes. Try again."
                                                          : "\(app.name)'s disk image couldn't be opened."))
         }
-        defer { _ = runner.run("/usr/bin/hdiutil", ["detach", mount.path, "-quiet", "-force"], input: nil, environment: [:]) }
+        // Closing the disk image can hang when something is still reading it: it gets 30 seconds.
+        defer { _ = runner.stream("/usr/bin/hdiutil", ["detach", mount.path, "-force"], input: nil, environment: [:], idleTimeout: 30) { _ in } }
         let found = ((try? fm.contentsOfDirectory(atPath: mount.path)) ?? []).first { $0.hasSuffix(".app") }
         guard let found, DirectApp.isSafeName(String(found.dropLast(4))) else {
             return .failure(.refused("\(app.name)'s disk image has no app in it."))
@@ -455,8 +460,8 @@ extension Engine {
         ArtCraft(env: env, runner: runner, now: now).status(refresh: refresh)
     }
 
-    public func installCraft(_ apps: [CraftApp], into folder: URL? = nil,
-                             progress: (String) -> Void = { _ in }) -> [(CraftApp, Result<String, EngineError>)] {
+    public func installCraft(_ apps: [CraftApp], into folder: URL? = nil, progress: (String) -> Void = { _ in },
+                             finished: (CraftApp, Result<String, EngineError>) -> Void = { _, _ in }) -> [(CraftApp, Result<String, EngineError>)] {
         var craft = ArtCraft(env: env, runner: runner, now: now)
         craft.chosenFolder = folder
         var apps = apps
@@ -465,7 +470,7 @@ extension Engine {
            let launcher = craft.status().first(where: { $0.id == "artcraft-launcher" }), !launcher.isInstalled, launcher.availableOnMac {
             apps.insert(launcher, at: 0)
         }
-        return craft.install(apps, progress: progress)
+        return craft.install(apps, progress: progress, finished: finished)
     }
 
     /// Where ArtCraft apps go on this Mac: the folder picked in MacSync, else the launcher's.

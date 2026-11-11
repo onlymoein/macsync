@@ -515,9 +515,11 @@ final class AppModel: ObservableObject {
         Task {
             let results = await Task.detached { () -> [(CraftApp, Result<String, EngineError>)] in
                 engine.installCraftAgain(fresh)
-                return engine.installCraft(fresh, into: folder) { message in
+                return engine.installCraft(fresh, into: folder, progress: { message in
                     Task { @MainActor [weak self] in self?.advance("craft", message: message, ids: ids) }
-                }
+                }, finished: { app, result in
+                    Task { @MainActor [weak self] in self?.craftFinished(app, result) }
+                })
             }.value
             work["craft"] = nil
             workCurrent["craft"] = nil

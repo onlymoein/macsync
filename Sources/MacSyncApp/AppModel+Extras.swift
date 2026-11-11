@@ -265,6 +265,18 @@ extension AppModel {
         progress = message
     }
 
+    /// One ArtCraft app is done: its row shows Installed or why not straight away.
+    func craftFinished(_ app: CraftApp, _ result: Result<String, EngineError>) {
+        craftBusy.remove(app.id)
+        if case .failure(let error) = result {
+            craftErrors[app.id] = error.localizedDescription
+            work["craft"]?.failed += 1
+        }
+        if let index = work["craft"]?.names.firstIndex(of: app.name) { work["craft"]?.done = index + 1 }
+        if workCurrent["craft"] == app.id { workCurrent["craft"] = nil; work["craft"]?.status = nil }
+        loadCraft()
+    }
+
     /// The job to show in the footer: installs first.
     var activeWork: WorkProgress? {
         for key in ["get", "craft", "remove", "craftRemove", "brew"] { if let w = work[key] { return w } }
