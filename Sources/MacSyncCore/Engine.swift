@@ -11,6 +11,10 @@ public struct MachineSummary: Codable, Equatable, Identifiable {
     public var dockMatchesSource: Bool
     public var dockItemCount: Int
     public var appCount: Int
+    /// The MacSync version that Mac runs.
+    public var appVersion: String = ""
+    /// Older than this Mac's MacSync, so it may miss newer features.
+    public var isOutdated: Bool { !appVersion.isEmpty && SelfUpdater.isNewer(MacSyncEnvironment.appVersion, than: appVersion) }
 }
 
 public struct RestorePointInfo: Codable, Equatable, Identifiable {
@@ -52,6 +56,8 @@ public struct SyncOverview: Codable, Equatable {
     public var unshared: [String] = []
     /// The Mac whose Dock order every Mac follows; nil means whichever changed last.
     public var dockOrderFrom: String?
+    /// The combined Dock even when it already matches this Mac, so it can always be shown.
+    public var dockPreview: DockPlan?
 
     public var hasPendingChanges: Bool { dockPlan != nil || settingsPlan != nil || !wantedApps.isEmpty || !toRemove.isEmpty }
     /// Missing apps, minus the ones this Mac doesn't need.
@@ -665,7 +671,8 @@ public final class Engine {
                 id: machine.machineID, name: machine.machineName, osVersion: machine.osVersion, savedAt: machine.savedAt,
                 isThisMac: machine.machineID == env.machineID, isLayoutSource: isSource, dockMatchesSource: matches,
                 dockItemCount: keys(machine.dock).count,
-                appCount: (inventory?.casks.count ?? 0) + (inventory?.formulae.count ?? 0) + (inventory?.appStore.count ?? 0))
+                appCount: (inventory?.casks.count ?? 0) + (inventory?.formulae.count ?? 0) + (inventory?.appStore.count ?? 0),
+                appVersion: machine.appVersion)
         }.sorted { ($0.isThisMac ? 0 : 1, $0.name) < ($1.isThisMac ? 0 : 1, $1.name) }
         return SyncOverview(
             iCloudAvailable: env.iCloudAvailable,
@@ -687,7 +694,8 @@ public final class Engine {
             toRemove: toRemove,
             removed: (state.removals ?? [:]).values.filter(\.active).sorted { $0.at > $1.at },
             unshared: state.unshared ?? [],
-            dockOrderFrom: dockOrder(state, everyone)?.machineID)
+            dockOrderFrom: dockOrder(state, everyone)?.machineID,
+            dockPreview: plan)
     }
 
     /// Apps on other Macs that this one lacks, leaving out any this Mac already has under another

@@ -106,6 +106,7 @@ struct MenuView: View {
             .fixedSize()
             .accessibilityLabel("Settings")
             Spacer()
+            Text("MacSync \(MacSyncEnvironment.appVersion)").font(.caption).foregroundStyle(.tertiary)
             Button("Quit") { NSApp.terminate(nil) }
                 .buttonStyle(.borderless)
                 .foregroundStyle(.secondary)
@@ -144,6 +145,16 @@ struct MachineRow: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
+                Group {
+                    if machine.isOutdated {
+                        Label("MacSync \(machine.appVersion) · update it on that Mac", systemImage: "exclamationmark.triangle.fill")
+                            .foregroundStyle(.orange)
+                    } else {
+                        Text("MacSync \(machine.appVersion)").foregroundStyle(.tertiary)
+                    }
+                }
+                .font(.caption2)
+                .lineLimit(1)
             }
             Spacer(minLength: 6)
             Text(state.text)

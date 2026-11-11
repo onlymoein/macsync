@@ -56,8 +56,8 @@ struct ReviewView: View {
                             .foregroundStyle(.green).padding(14).frame(maxWidth: .infinity, alignment: .leading).glassPanel()
                     }
                     ToRemovePanel(model: model)
-                    if let plan = model.overview?.dockPlan {
-                        DockPanel(plan: plan, model: model)
+                    if let plan = model.overview?.dockPlan ?? model.overview?.dockPreview {
+                        DockPanel(plan: plan, model: model, matches: model.overview?.dockPlan == nil)
                         if !plan.missing.isEmpty { NotInstalledPanel(items: plan.missing, model: model) }
                     }
                     if let plan = model.overview?.settingsPlan { SettingsPanel(plan: plan, model: model) }
@@ -199,11 +199,14 @@ private struct PanelHeader<Trailing: View>: View {
 private struct DockPanel: View {
     let plan: DockPlan
     @ObservedObject var model: AppModel
+    /// Nothing to change: this Mac's Dock already is the combined one.
+    var matches = false
     @AppStorage("review.dock.open") private var open = true
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            PanelHeader(symbol: "dock.rectangle", title: "Dock", subtitle: "Combined from \(plan.sourceMachine)", isExpanded: $open) {
+            PanelHeader(symbol: "dock.rectangle", title: "Dock",
+                        subtitle: matches ? "Matches your other Macs" : "Combined from \(plan.sourceMachine)", isExpanded: $open) {
                 Toggle("Update Dock", isOn: $model.applyDock).toggleStyle(.switch).labelsHidden()
             }
             if open { content }
