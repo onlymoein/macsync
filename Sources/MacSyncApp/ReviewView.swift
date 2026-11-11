@@ -548,6 +548,8 @@ private struct ToRemovePanel: View {
                                     ProgressView().controlSize(.small)
                                 } else if let result = model.removeResults[app.app.token], result.outcome == .failed {
                                     Text(result.message ?? "Didn't uninstall").font(.caption).foregroundStyle(.orange).lineLimit(2)
+                                    Button("Keep Here") { model.keepHere(app) }.glassButton().controlSize(.small)
+                                    Button("Try Again") { model.uninstallHere([app]) }.primaryGlassButton().controlSize(.small)
                                 } else {
                                     Button("Keep Here") { model.keepHere(app) }.glassButton().controlSize(.small)
                                     Button("Uninstall") { model.uninstallHere([app]) }.primaryGlassButton().controlSize(.small)
@@ -647,6 +649,7 @@ private struct ThisMacPanel: View {
                 ProgressView().controlSize(.small)
             } else if let result = model.removeResults[token], result.outcome == .failed {
                 Text(result.message ?? "Didn't uninstall").font(.caption).foregroundStyle(.orange).lineLimit(2).frame(maxWidth: 220)
+                Button("Try Again") { model.removeEverywhere(app) }.glassButton().controlSize(.small)
             } else {
                 Button { confirm = app } label: { Label("Remove", systemImage: "trash") }
                     .glassButton().controlSize(.small)

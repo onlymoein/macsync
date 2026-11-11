@@ -385,26 +385,33 @@ public final class Engine {
                 return InstallResult(app: ref, outcome: .removed, message: "Moved to the Trash.")
             }
             return InstallResult(app: ref, outcome: .failed,
-                                 message: "\(app.displayName) wasn't moved to the Trash. macOS asks for your password to remove App Store apps; try again and allow it.")
+                                 message: "\(app.displayName) wasn't moved to the Trash. App Store apps need your Mac's password: press Try Again and enter it.")
         }
     }
 
     /// Moves a file to the Trash the way Finder does, which asks for an administrator's
     /// password when the file belongs to the system. Waits for the answer.
     static func recycleAskingForPassword(_ url: URL) -> Bool {
-        // Waiting on the main thread for work queued on it would never finish.
-        guard !Thread.isMainThread else { return false }
-        let done = DispatchSemaphore(value: 0)
-        var ok = false
-        DispatchQueue.main.async {
-            NSWorkspace.shared.recycle([url]) { trashed, error in
-                ok = error == nil && !trashed.isEmpty
-                done.signal()
-            }
+        // macOS's own password window, the one installers use. The app goes to this person's
+        // Trash, where it can still be put back.
+        let trash = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".Trash", isDirectory: true)
+        var target = trash.appendingPathComponent(url.lastPathComponent)
+        var n = 2
+        while FileManager.default.fileExists(atPath: target.path) {
+            target = trash.appendingPathComponent(url.deletingPathExtension().lastPathComponent + " \(n)." + url.pathExtension)
+            n += 1
         }
-        // The person may take a while to type the password.
-        _ = done.wait(timeout: .now() + 300)
-        return ok && !FileManager.default.fileExists(atPath: url.path)
+        let script = """
+        on run argv
+            do shell script "/bin/mv " & quoted form of (item 1 of argv) & " " & quoted form of (item 2 of argv) with prompt "MacSync wants to move " & (item 3 of argv) & " to the Trash." with administrator privileges
+        end run
+        """
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+        process.arguments = ["-e", script, url.path, target.path, url.deletingPathExtension().lastPathComponent]
+        do { try process.run() } catch { return false }
+        process.waitUntilExit()
+        return process.terminationStatus == 0 && !FileManager.default.fileExists(atPath: url.path)
     }
 
     /// Takes an uninstalled app's tile out of this Mac's Dock. The next sync records it as
