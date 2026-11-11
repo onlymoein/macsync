@@ -45,6 +45,9 @@
   details p { color:var(--muted); margin:8px 0 0; }
   pre.term { background:var(--code); color:var(--codefg); border-radius:12px; padding:14px 16px; overflow-x:auto; font:14px/1.6 ui-monospace, "SF Mono", Menlo, monospace; }
   .badge { display:inline-block; font-size:14px; color:var(--muted); border:1px solid var(--line); border-radius:999px; padding:4px 12px; margin: 0 4px 8px; }
+  .coffee { display:inline-flex; align-items:center; gap:8px; background:#ffdd00; color:#1d1d1f; font-weight:600; text-decoration:none;
+            border-radius:10px; padding:10px 16px; }
+  .coffee:hover { filter: brightness(0.95); }
   footer { margin-top: 72px; padding-top: 24px; border-top:1px solid var(--line); color:var(--muted); font-size:15px; text-align:center; }
   a { color: var(--accent); }
   .shot-light { display:block; } .shot-dark { display:none; }
@@ -182,10 +185,17 @@ macsync undo</pre>
     <p style="color:var(--muted)">Already downloaded MacSync by hand? Run <code class="inline">brew install --cask --force macsync</code> once to let Homebrew manage it.</p>
   </section>
 
+  <section style="text-align:center">
+    <h2>Like MacSync?</h2>
+    <p style="color:var(--muted)">It's free and made by one person. If it saves you time, a coffee keeps it going.</p>
+    <p><a class="coffee" href="https://buymeacoffee.com/onlymoein" target="_blank" rel="noopener">☕ Buy me a coffee</a></p>
+  </section>
+
   <footer>
     <a href="https://github.com/onlymoein/macsync">GitHub</a> ·
     <a href="https://github.com/onlymoein/macsync/releases/latest">Download</a> ·
     <a href="https://github.com/onlymoein/macsync/blob/main/CHANGELOG.md">Changelog</a> ·
+    <a href="https://buymeacoffee.com/onlymoein">Buy me a coffee</a> ·
     Free and open source under the MIT license. macOS 13 or later.
   </footer>
 </main>
