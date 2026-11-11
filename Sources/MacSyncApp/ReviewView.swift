@@ -63,13 +63,8 @@ struct ReviewView: View {
                     if let plan = model.overview?.settingsPlan {
                         SettingsPanel(plan: plan, model: model)
                     } else if model.proEnabled {
-                        // Always there, like the Dock, so it's clear settings are in sync.
-                        HStack {
-                            PanelHeader(symbol: "gearshape.fill", title: "Settings",
-                                        subtitle: "Match your other Macs · trackpad, keyboard, Finder, Dock and screenshots") { EmptyView() }
-                        }
-                        .padding(18)
-                        .glassPanel()
+                        // Always there, like the Dock, so it's clear what's in sync.
+                        SettingsMatchPanel(model: model)
                     }
                     if model.proEnabled { AppSettingsPanel(model: model) }
                     AppsPanel(kind: .apps, model: model)
@@ -135,7 +130,7 @@ struct ReviewView: View {
                 } else if model.canApply {
                     Label("A restore point is saved first", systemImage: "clock.arrow.circlepath").lineLimit(1)
                 } else {
-                    Label("Nothing to apply on this Mac. Your switches are saved and sent to your other Macs.", systemImage: "checkmark.circle")
+                    Label("Nothing to apply on this Mac.", systemImage: "checkmark.circle")
                         .lineLimit(2)
                 }
             }
@@ -696,14 +691,15 @@ private struct AppSettingsPanel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             PanelHeader(symbol: "slider.horizontal.3", title: "App settings",
-                        subtitle: "\(chosen.count) of \(apps.count) apps match on all your Macs", isExpanded: $open) {
-                AllSwitch(onCount: apps.filter { chosen.contains($0.domain) }.count, total: apps.count) { on in
-                    chosen = on ? chosen.union(apps.map(\.domain)) : chosen.subtracting(apps.map(\.domain))
-                    model.setAppPrefDomains(Array(chosen))
+                        subtitle: model.pendingAppPrefs != nil ? "Changed · press Apply to save"
+                            : "\(apps.filter { model.appPrefsChosen.contains($0.domain) }.count) of \(apps.count) apps match on all your Macs",
+                        isExpanded: $open) {
+                AllSwitch(onCount: apps.filter { model.appPrefsChosen.contains($0.domain) }.count, total: apps.count) { on in
+                    model.setAppPref(apps.map(\.domain), on)
                 }
             }
             if open {
-                Text("Turn on the apps whose settings should match on all your Macs. Your choice is saved straight away and sent from this Mac; your other Macs show these settings to apply. Passwords, tokens, license keys and window positions are never copied.")
+                Text("Turn on the apps whose settings should match on all your Macs, then press Apply. Your other Macs then show these settings to apply. Passwords, tokens, license keys and window positions are never copied.")
                     .font(.caption).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                 TextField("Search apps", text: $search).textFieldStyle(.roundedBorder)
@@ -727,11 +723,8 @@ private struct AppSettingsPanel: View {
 
     private func row(_ app: PrefApp) -> some View {
         let isOn = Binding(
-            get: { chosen.contains(app.domain) },
-            set: { on in
-                if on { chosen.insert(app.domain) } else { chosen.remove(app.domain) }
-                model.setAppPrefDomains(Array(chosen))
-            })
+            get: { model.appPrefsChosen.contains(app.domain) },
+            set: { on in model.setAppPref([app.domain], on) })
         return HStack(spacing: 12) {
             Group {
                 if let icon = app.icon { Image(nsImage: icon).resizable().scaledToFit() }
@@ -993,6 +986,47 @@ private struct ResultPanel: View {
     private var headline: String {
         if report.hasFailures { return "Some changes didn't apply" }
         return report.dockChanged || report.settingsChanged || !report.results.isEmpty ? "Changes applied" : "Done"
+    }
+}
+
+/// The settings that match on every Mac, with their values here, when nothing needs applying.
+private struct SettingsMatchPanel: View {
+    @ObservedObject var model: AppModel
+    @AppStorage("review.settings.open") private var open = true
+    @State private var settings: [SettingsChange] = []
+
+    private var grouped: [(String, [SettingsChange])] {
+        Dictionary(grouping: settings, by: \.category).sorted { $0.key < $1.key }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            PanelHeader(symbol: "gearshape.fill", title: "Settings",
+                        subtitle: "\(settings.count) match your other Macs · trackpad, keyboard, Finder, Dock and screenshots",
+                        isExpanded: $open) { EmptyView() }
+            if open {
+                Text("Change one in System Settings on any Mac and the others offer it here to apply.")
+                    .font(.caption).foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 10) {
+                    ForEach(grouped, id: \.0) { category, items in
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(category).font(.caption.weight(.semibold)).foregroundStyle(.secondary).textCase(.uppercase)
+                            ForEach(items) { item in
+                                HStack {
+                                    Text(item.label)
+                                    Spacer(minLength: 8)
+                                    Text(item.to?.display ?? "default").foregroundStyle(.secondary)
+                                }
+                                .font(.callout)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        .padding(18)
+        .glassPanel()
+        .onAppear { settings = model.currentSettings() }
     }
 }
 

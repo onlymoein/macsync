@@ -22,6 +22,7 @@ struct MacSyncApp: App {
 final class ReviewWindow {
     static let shared = ReviewWindow()
     private var window: NSWindow?
+    var isVisible: Bool { window?.isVisible == true }
 
     func show(model: AppModel) {
         if window == nil {

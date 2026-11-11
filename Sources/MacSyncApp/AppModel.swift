@@ -55,6 +55,10 @@ final class AppModel: ObservableObject {
     private var lastInventoryRefresh = Date.distantPast
     private var wakeObserver: NSObjectProtocol?
     private var dockWatcher: DockWatcher?
+    /// Checks the live Dock every few seconds, so a moved icon shows up and syncs right away
+    /// even before macOS writes the Dock's file.
+    private var dockPoll: Timer?
+    private var lastDockFingerprint: String?
 
     private static let syncInterval: TimeInterval = 5 * 60
     private static let inventoryInterval: TimeInterval = 30 * 60
@@ -75,6 +79,9 @@ final class AppModel: ObservableObject {
                 guard let self, self.autoSync, !self.isApplying else { return }
                 self.runSync(refreshInventory: false)
             }
+        }
+        dockPoll = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.pollDock() }
         }
         syncNow()
         checkForUpdates()
@@ -118,6 +125,24 @@ final class AppModel: ObservableObject {
         checkForUpdates()
         guard autoSync, !isApplying else { return }
         runSync(refreshInventory: Date().timeIntervalSince(lastInventoryRefresh) > Self.inventoryInterval)
+    }
+
+    private var pollingDock = false
+    private var pollTicks = 0
+    private func pollDock() {
+        guard autoSync, !isApplying, !pollingDock else { return }
+        // Every 3 seconds with the sync window open, every 15 otherwise.
+        pollTicks += 1
+        if !ReviewWindow.shared.isVisible, pollTicks % 5 != 0 { return }
+        pollingDock = true
+        let engine = engine
+        Task {
+            let print = await Task.detached { engine.dockFingerprintNow() }.value
+            pollingDock = false
+            guard let print else { return }
+            if let last = lastDockFingerprint, last != print { runSync(refreshInventory: false) }
+            lastDockFingerprint = print
+        }
     }
 
     /// A sync asked for while one was running; it runs as soon as that one ends, so the result
@@ -246,7 +271,7 @@ final class AppModel: ObservableObject {
     }
 
     var canApply: Bool {
-        !isApplying && getting.isEmpty && removing.isEmpty && ((applyDock && (overview?.dockPlan != nil || !dockRemovals.isEmpty || dockArrangement != nil)) || (applySettings && overview?.settingsPlan != nil)
+        !isApplying && getting.isEmpty && removing.isEmpty && (pendingAppPrefs != nil || (applyDock && (overview?.dockPlan != nil || !dockRemovals.isEmpty || dockArrangement != nil)) || (applySettings && overview?.settingsPlan != nil)
 )
     }
 
@@ -381,15 +406,24 @@ final class AppModel: ObservableObject {
         actionError = nil
         let request = ApplyRequest(applyDock: applyDock, apps: [], applySettings: applySettings,
                                    removeFromDock: Array(dockRemovals), dockOrder: dockArrangement)
+        let wantsMore = (applyDock && (overview?.dockPlan != nil || !dockRemovals.isEmpty || dockArrangement != nil))
+            || (applySettings && overview?.settingsPlan != nil)
+        let appPrefs = pendingAppPrefs.map { Array($0).sorted() }
         let engine = engine
         Task {
             let result: Result<ApplyReport, Error> = await Task.detached {
                 Result {
-                    try engine.apply(request) { message in
+                    // App settings first: which apps' settings this Mac shares with the others.
+                    if let appPrefs { try engine.setAppPrefDomains(appPrefs) }
+                    guard wantsMore else {
+                        return ApplyReport(restorePoint: nil, dockChanged: false, skippedDockItems: [], results: [])
+                    }
+                    return try engine.apply(request) { message in
                         Task { @MainActor [weak self] in self?.progress = message }
                     }
                 }
             }.value
+            if case .success = result { pendingAppPrefs = nil }
             isApplying = false
             progress = nil
             switch result {
@@ -425,7 +459,19 @@ final class AppModel: ObservableObject {
     }
 
     func appPrefDomains() -> [String] { engine.appPrefDomains() }
+    func currentSettings() -> [SettingsChange] { engine.currentSettings() }
     func availableAppPrefDomains() -> [String] { engine.availableAppPrefDomains() }
+    /// App settings switches flipped in the window but not applied yet.
+    @Published var pendingAppPrefs: Set<String>?
+
+    var appPrefsChosen: Set<String> { pendingAppPrefs ?? Set(overview?.appPrefDomains ?? appPrefDomains()) }
+
+    func setAppPref(_ domains: [String], _ on: Bool) {
+        var next = appPrefsChosen
+        if on { next.formUnion(domains) } else { next.subtract(domains) }
+        pendingAppPrefs = next == Set(overview?.appPrefDomains ?? appPrefDomains()) ? nil : next
+    }
+
     func setAppPrefDomains(_ domains: [String]) {
         if var current = overview { current.appPrefDomains = domains.sorted(); overview = current }
         let engine = engine

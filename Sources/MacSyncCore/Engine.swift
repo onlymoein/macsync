@@ -102,6 +102,17 @@ public struct ApplyReport: Codable, Equatable {
     public var settingsSkipped: [String] = []
     public var settingsError: String?
     public var hasFailures: Bool { results.contains { $0.outcome == .failed } || settingsError != nil }
+
+    public init(restorePoint: RestorePointInfo?, dockChanged: Bool, skippedDockItems: [DockItem], results: [InstallResult],
+                settingsChanged: Bool = false, settingsSkipped: [String] = [], settingsError: String? = nil) {
+        self.restorePoint = restorePoint
+        self.dockChanged = dockChanged
+        self.skippedDockItems = skippedDockItems
+        self.results = results
+        self.settingsChanged = settingsChanged
+        self.settingsSkipped = settingsSkipped
+        self.settingsError = settingsError
+    }
 }
 
 public enum EngineError: Error, LocalizedError {
@@ -1099,6 +1110,23 @@ public final class Engine {
             && !$0.hasPrefix("com.apple.") && $0 != "NSGlobalDomain" && $0 != SelfUpdater.bundleID }
         state.appPrefDomains = Array(Set(valid)).sorted()
         try saveState(state)
+    }
+
+    /// A short fingerprint of the Dock as it is right now, read through macOS rather than the
+    /// file on disk (which macOS may write late). Cheap enough to check every few seconds.
+    public func dockFingerprintNow() -> String? {
+        guard let raw = try? dock.readRaw() else { return nil }
+        let section = DockCapture.section(from: raw, changedAt: Self.epoch, home: env.homeDirectory)
+        return section.contentHash
+    }
+
+    /// Every setting MacSync keeps the same on all Macs, with its value on this Mac.
+    public func currentSettings() -> [SettingsChange] {
+        SettingsCatalog.all.map { d in
+            let value = prefs.value(domain: d.domain, key: d.key)
+            return SettingsChange(id: d.id, domain: d.domain, key: d.key, label: d.label, category: d.category,
+                                  from: value, to: value, restart: d.restart, needsLogout: d.needsLogout, type: d.type)
+        }
     }
 
     /// Apps that have saved preferences on this Mac, for the person to choose from.
