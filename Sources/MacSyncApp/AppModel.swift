@@ -595,7 +595,12 @@ final class AppModel: ObservableObject {
         progress = "Getting \(next.displayName)…"
         Task {
             let folder = installFolders.removeValue(forKey: next.app.token)
-            let result = await Task.detached { engine.getApp(next, into: folder) }.value
+            let result = await Task.detached { engine.getApp(next, into: folder) { status in
+                Task { @MainActor [weak self] in
+                    self?.work["get"]?.status = status
+                    self?.progress = status
+                }
+            } }.value
             getQueue.removeFirst()
             getting.remove(next.app.token)
             work["get"]?.done += 1

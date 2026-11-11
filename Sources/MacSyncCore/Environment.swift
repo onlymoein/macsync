@@ -20,7 +20,7 @@ public struct MacSyncEnvironment {
     public var applicationsDirectory: URL
     public var homeDirectory: String
 
-    public static let appVersion = "0.8.2"
+    public static let appVersion = "0.8.3"
 
     public var iCloudAvailable: Bool {
         FileManager.default.fileExists(atPath: syncDirectory.deletingLastPathComponent().path)
@@ -60,6 +60,19 @@ public struct MacSyncEnvironment {
 /// Runs external tools with no stdin, so nothing can hang waiting for a password.
 public protocol CommandRunning {
     func run(_ executable: String, _ arguments: [String], input: Data?, environment: [String: String]) -> CommandResult
+    /// Like `run`, but hands over each line as it's printed, and stops the tool when it prints
+    /// nothing for `idleTimeout` seconds.
+    func stream(_ executable: String, _ arguments: [String], environment: [String: String], idleTimeout: TimeInterval,
+                onLine: @escaping (String) -> Void) -> CommandResult
+}
+
+extension CommandRunning {
+    public func stream(_ executable: String, _ arguments: [String], environment: [String: String], idleTimeout: TimeInterval,
+                       onLine: @escaping (String) -> Void) -> CommandResult {
+        let result = run(executable, arguments, input: nil, environment: environment)
+        (result.output + "\n" + result.stderr).split(whereSeparator: \.isNewline).forEach { onLine(String($0)) }
+        return result
+    }
 }
 
 public struct CommandResult {
@@ -76,6 +89,56 @@ public struct CommandResult {
 
 public struct SystemCommandRunner: CommandRunning {
     public init() {}
+
+    public func stream(_ executable: String, _ arguments: [String], environment: [String: String], idleTimeout: TimeInterval,
+                       onLine: @escaping (String) -> Void) -> CommandResult {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: executable)
+        process.arguments = arguments
+        process.environment = ProcessInfo.processInfo.environment.merging(environment) { $1 }
+        process.standardInput = FileHandle.nullDevice
+        let out = Pipe(), err = Pipe()
+        process.standardOutput = out
+        process.standardError = err
+        let lock = NSLock()
+        var outData = Data(), errData = Data(), pending = ""
+        var lastOutput = Date()
+        func take(_ data: Data, isError: Bool) {
+            lock.lock()
+            if isError { errData.append(data) } else { outData.append(data) }
+            lastOutput = Date()
+            pending += String(decoding: data, as: UTF8.self)
+            var lines: [String] = []
+            while let cut = pending.firstIndex(where: { $0 == "\n" || $0 == "\r" }) {
+                lines.append(String(pending[..<cut]))
+                pending = String(pending[pending.index(after: cut)...])
+            }
+            lock.unlock()
+            for line in lines where !line.trimmingCharacters(in: .whitespaces).isEmpty { onLine(line) }
+        }
+        out.fileHandleForReading.readabilityHandler = { handle in let d = handle.availableData; if !d.isEmpty { take(d, isError: false) } }
+        err.fileHandleForReading.readabilityHandler = { handle in let d = handle.availableData; if !d.isEmpty { take(d, isError: true) } }
+        do { try process.run() } catch {
+            return CommandResult(status: -1, stderr: "Could not run \(executable): \(error.localizedDescription)")
+        }
+        var timedOut = false
+        while process.isRunning {
+            usleep(250_000)
+            lock.lock(); let quiet = Date().timeIntervalSince(lastOutput); lock.unlock()
+            if quiet > idleTimeout { timedOut = true; process.terminate(); break }
+        }
+        process.waitUntilExit()
+        out.fileHandleForReading.readabilityHandler = nil
+        err.fileHandleForReading.readabilityHandler = nil
+        take(out.fileHandleForReading.readDataToEndOfFile(), isError: false)
+        take(err.fileHandleForReading.readDataToEndOfFile(), isError: true)
+        lock.lock(); defer { lock.unlock() }
+        if timedOut {
+            return CommandResult(status: -2, stdout: outData, stderr: String(decoding: errData, as: UTF8.self)
+                                 + "\nError: It printed nothing for \(Int(idleTimeout / 60)) minutes, so MacSync stopped it.")
+        }
+        return CommandResult(status: process.terminationStatus, stdout: outData, stderr: String(decoding: errData, as: UTF8.self))
+    }
 
     public func run(_ executable: String, _ arguments: [String], input: Data? = nil,
                     environment: [String: String] = [:]) -> CommandResult {

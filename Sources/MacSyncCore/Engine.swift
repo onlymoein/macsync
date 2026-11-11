@@ -206,6 +206,8 @@ public final class Engine {
     private var missingDownloads: [String: DirectApp] = [:]
     /// Where apps go for the install in progress, when the person chose a folder.
     private var installFolder: URL?
+    /// Who hears how the install in progress is going.
+    private var installProgress: ((String) -> Void)?
 
     /// A folder apps can be installed into: one that exists and can be written to.
     static func isUsableFolder(_ url: URL) -> Bool {
@@ -1025,6 +1027,26 @@ public final class Engine {
         return report
     }
 
+    /// What a line of Homebrew's output means for the person watching.
+    static func brewStatus(_ line: String, name: String) -> String? {
+        let text = line.trimmingCharacters(in: .whitespaces)
+        if text.contains("Password:") || text.contains("sudo:") || text.contains("a terminal is required") {
+            return "\(name) needs your Mac password, which MacSync never types. Install it in Terminal: brew install \(name)"
+        }
+        if text.contains("xcode-select") || text.contains("Command Line Tools") {
+            return "Homebrew needs Apple's Command Line Tools first. Run xcode-select --install in Terminal"
+        }
+        if text.contains("Another active Homebrew") || text.contains("has already locked") || text.contains("Waiting for another") {
+            return "Waiting for another Homebrew job to finish…"
+        }
+        if text.hasPrefix("==> Downloading") || text.hasPrefix("==> Fetching") { return "Downloading \(name)…" }
+        if text.hasPrefix("==> Pouring") || text.hasPrefix("==> Installing") || text.hasPrefix("==> Moving") { return "Installing \(name)…" }
+        if text.hasPrefix("==> ") && text.lowercased().contains("build") { return "Building \(name) from source (this can take a while)…" }
+        if text.hasPrefix("==> Auto-updating") || text.hasPrefix("==> Updating Homebrew") { return "Homebrew is updating its lists…" }
+        if text.hasPrefix("==> Installing dependencies") || text.hasPrefix("==> Installing \(name) dependency") { return "Installing what \(name) needs…" }
+        return nil
+    }
+
     /// Homebrew's error in plain words: "Homebrew no longer has tldr. Did you mean tldx?"
     static func brewProblem(_ stderr: String, name: String, status: Int32) -> String {
         let lines = stderr.split(whereSeparator: \.isNewline).map { String($0).trimmingCharacters(in: .whitespaces) }
@@ -1039,7 +1061,9 @@ public final class Engine {
 
     /// Gets one app straight away, outside Apply: installs it with Homebrew, opens its App Store
     /// page, or downloads its installer from the developer. Nothing else on the Mac changes.
-    public func getApp(_ missing: MissingApp, into folder: URL? = nil) -> InstallResult {
+    public func getApp(_ missing: MissingApp, into folder: URL? = nil, progress: ((String) -> Void)? = nil) -> InstallResult {
+        installProgress = progress
+        defer { installProgress = nil }
         stateLock.lock(); defer { stateLock.unlock() }
         guard missing.app.isSafe else { return InstallResult(app: missing.app, outcome: .failed, message: "That app's name isn't valid.") }
         missingNames[missing.app.token] = missing.displayName
@@ -1094,7 +1118,17 @@ public final class Engine {
             }
             var args = app.source == .cask ? ["install", "--cask", app.name] : ["install", app.name]
             if app.source == .cask, let folder = installFolder { args.insert("--appdir=\(folder.path)", at: 2) }
-            let result = runner.run(brew, args, input: nil, environment: InventoryReader.brewEnvironment(brew))
+            let name = missingNames[app.token] ?? app.name
+            let report = installProgress
+            // Homebrew's download as it arrives, from its cache folder.
+            let watcher = BrewDownloadWatcher(home: env.homeDirectory) { bytes in
+                report?("Downloading \(name)… \(ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file))")
+            }
+            watcher.start()
+            let result = runner.stream(brew, args, environment: InventoryReader.brewEnvironment(brew), idleTimeout: 600) { line in
+                if let status = Self.brewStatus(line, name: name) { report?(status) }
+            }
+            watcher.stop()
             guard result.status != 0 else { return InstallResult(app: app, outcome: .installed, message: nil) }
             // Installed another way (a download, npm, another formula): it's here, so it's done.
             if result.stderr.range(of: "already an App at|already a Binary at|is already installed", options: .regularExpression) != nil {
@@ -1459,4 +1493,38 @@ extension JSONEncoder {
 
 extension JSONDecoder {
     static var iso: JSONDecoder { let d = JSONDecoder(); d.dateDecodingStrategy = .iso8601; return d }
+}
+
+
+/// Watches Homebrew's downloads folder and reports how much of the current download has arrived.
+final class BrewDownloadWatcher {
+    let folder: URL
+    let report: (Int64) -> Void
+    private var timer: DispatchSourceTimer?
+    private let started = Date()
+
+    init(home: String, report: @escaping (Int64) -> Void) {
+        folder = URL(fileURLWithPath: home).appendingPathComponent("Library/Caches/Homebrew/downloads")
+        self.report = report
+    }
+
+    func start() {
+        let timer = DispatchSource.makeTimerSource(queue: .global())
+        timer.schedule(deadline: .now() + 1, repeating: 1)
+        var last: Int64 = -1
+        timer.setEventHandler { [folder, started, report] in
+            let fm = FileManager.default
+            let files = (try? fm.contentsOfDirectory(at: folder, includingPropertiesForKeys: [.fileSizeKey, .contentModificationDateKey])) ?? []
+            let growing = files.filter { $0.pathExtension == "incomplete" }.compactMap { url -> (Int64, Date)? in
+                let v = try? url.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey])
+                guard let size = v?.fileSize, let date = v?.contentModificationDate, date > started else { return nil }
+                return (Int64(size), date)
+            }.max { $0.1 < $1.1 }
+            if let size = growing?.0, size != last { last = size; report(size) }
+        }
+        timer.resume()
+        self.timer = timer
+    }
+
+    func stop() { timer?.cancel(); timer = nil }
 }

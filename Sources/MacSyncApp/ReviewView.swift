@@ -1302,8 +1302,9 @@ private struct AppRow: View {
         } else if model.getting.contains(token) {
             VStack(alignment: .trailing, spacing: 3) {
                 ProgressView().progressViewStyle(.linear).frame(width: 120)
-                Text(missing.app.source == .direct ? "Downloading" : missing.app.source == .appStore ? "Opening the App Store" : "Installing with Homebrew")
-                    .font(.caption).foregroundStyle(.secondary)
+                Text(model.work["get"]?.status.map { $0.replacingOccurrences(of: "\(missing.displayName)… ", with: "").replacingOccurrences(of: "…", with: "") }
+                     ?? (missing.app.source == .direct ? "Downloading" : missing.app.source == .appStore ? "Opening the App Store" : "Installing with Homebrew"))
+                    .font(.caption.monospacedDigit()).foregroundStyle(.secondary).lineLimit(2).multilineTextAlignment(.trailing).frame(maxWidth: 260, alignment: .trailing)
             }
         } else if let result {
             switch result.outcome {

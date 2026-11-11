@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.8.3
+- Homebrew installs say what they're doing on the row as it happens: Downloading btop… 12 MB (watched as it arrives), Installing, Installing what it needs, Building from source, or Waiting for another Homebrew job to finish.
+- When Homebrew wants your Mac password, or Apple's Command Line Tools, the row says so and how to do it, instead of sitting on Installing.
+- If Homebrew prints nothing for 10 minutes, MacSync stops it and says so, with Try Again.
+- Automatic Homebrew updates wait while apps are installing, since Homebrew does one job at a time.
+
 ## 0.8.2
 - The update check also reads GitHub's releases feed. GitHub's "latest release" address is cached and can point at the previous release for a while, which made a new release look missing ("0.8.0 is the latest version" when 0.8.1 was out).
 - New MacSync releases show up sooner: opening the menu checks when it's been a couple of minutes, and MacSync looks every 10 minutes instead of every 30. `macsync://update` checks now.

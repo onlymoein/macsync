@@ -56,7 +56,8 @@ extension AppModel {
     /// Runs on open and after a sync, at most every six hours.
     func upgradeIfDue() {
         if upgradeReport == nil { upgradeReport = engine.upgrader.lastReport() }
-        guard !upgrading, !isApplying, engine.upgrader.isDue() else { return }
+        // Not while apps install: both need Homebrew, which does one job at a time.
+        guard !upgrading, !isApplying, getting.isEmpty, craftBusy.isEmpty, engine.upgrader.isDue() else { return }
         if autoUpgrade { upgradeAll() } else { checkUpgrades() }
     }
 
