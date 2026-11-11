@@ -559,6 +559,7 @@ extension AppSuite {
 private struct ArtCraftPanel: View {
     @ObservedObject var model: AppModel
     @AppStorage("review.artcraft.open") private var open = true
+    @State private var confirmRemove: [CraftApp] = []
 
     private var apps: [CraftApp] { model.craftApps }
     private var skipped: Set<String> { Set(model.overview?.skippedApps ?? []) }
@@ -566,6 +567,8 @@ private struct ArtCraftPanel: View {
         apps.filter { $0.availableOnMac && !$0.isInstalled && !skipped.contains($0.skipToken) && !model.craftBusy.contains($0.id) }
     }
     private var toUpdate: [CraftApp] { apps.filter { $0.needsUpdate && !model.craftBusy.contains($0.id) } }
+    /// Remove All leaves ArtCraft Launcher itself; it has its own Remove.
+    private var removable: [CraftApp] { apps.filter { $0.isInstalled && $0.id != "artcraft-launcher" && !model.craftBusy.contains($0.id) } }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -575,6 +578,9 @@ private struct ArtCraftPanel: View {
                             : "\(installed) of \(apps.count) apps on this Mac" + (toUpdate.isEmpty ? "" : " · \(toUpdate.count) to update"),
                         isExpanded: $open) {
                 HStack(spacing: 10) {
+                    if !removable.isEmpty {
+                        Button("Remove All") { confirmRemove = removable }.glassButton().controlSize(.small)
+                    }
                     if !toUpdate.isEmpty {
                         Button("Update All \(toUpdate.count)") { model.installCraft(toUpdate) }.glassButton().controlSize(.small)
                     }
@@ -591,6 +597,16 @@ private struct ArtCraftPanel: View {
         .padding(18)
         .glassPanel()
         .onAppear { model.loadCraft() }
+        .confirmationDialog(confirmRemove.count == 1 ? "Remove \(confirmRemove[0].name) from this Mac?"
+                                : "Remove \(confirmRemove.count) ArtCraft apps from this Mac?",
+                            isPresented: Binding(get: { !confirmRemove.isEmpty }, set: { if !$0 { confirmRemove = [] } })) {
+            Button(confirmRemove.count == 1 ? "Remove" : "Remove All", role: .destructive) {
+                model.removeCraft(confirmRemove)
+                confirmRemove = []
+            }
+        } message: {
+            Text("They go to the Trash, where you can put them back, and ArtCraft Launcher shows them as not installed. Install brings them back any time.")
+        }
     }
 
     private func row(_ app: CraftApp) -> some View {
@@ -628,7 +644,13 @@ private struct ArtCraftPanel: View {
             } else {
                 Button("Install") { model.installCraft([app]) }.primaryGlassButton().controlSize(.small)
             }
-            if !app.isInstalled {
+            if app.isInstalled && !model.craftBusy.contains(app.id) {
+                Button { confirmRemove = [app] } label: { Image(systemName: "trash") }
+                    .buttonStyle(.borderless).foregroundStyle(.secondary)
+                    .help("Remove \(app.name) from this Mac")
+                    .accessibilityLabel("Remove \(app.name)")
+            }
+            if !app.isInstalled && app.availableOnMac {
                 Toggle("", isOn: Binding(get: { !isSkipped }, set: { model.setSkipped(token: app.skipToken, !$0) }))
                     .toggleStyle(.switch).labelsHidden().controlSize(.small)
                     .help(isSkipped ? "Not needed on this Mac" : "Switch off if this Mac doesn't need it")

@@ -474,6 +474,22 @@ final class AppModel: ObservableObject {
         }
     }
 
+    func removeCraft(_ apps: [CraftApp]) {
+        let fresh = apps.filter { !craftBusy.contains($0.id) && $0.isInstalled }
+        guard !fresh.isEmpty else { return }
+        for app in fresh { craftBusy.insert(app.id); craftErrors[app.id] = nil }
+        let engine = engine
+        Task {
+            let results = await Task.detached { engine.removeCraft(fresh) }.value
+            for (app, result) in results {
+                craftBusy.remove(app.id)
+                if case .failure(let error) = result { craftErrors[app.id] = error.localizedDescription }
+            }
+            loadCraft()
+            syncNow()
+        }
+    }
+
     /// Apps to open once they are installed (ArtCraft Launcher, so it can install the rest).
     private var openAfter: [String: String] = [:]
 

@@ -301,19 +301,40 @@ public struct ArtCraft {
         return .success(target.path)
     }
 
-    /// Adds the apps to ArtCraft Launcher's list, the same way it records its own installs. The
-    /// launcher rewrites that file while it runs, so it is closed for the write and reopened.
-    private func record(_ done: [(CraftApp, String)]) {
+    /// Moves apps to the Trash (asking for the password when macOS requires it) and takes them off
+    /// ArtCraft Launcher's list, so it shows them as not installed.
+    public func remove(_ apps: [CraftApp], progress: (String) -> Void = { _ in }) -> [(CraftApp, Result<String, EngineError>)] {
+        var results: [(CraftApp, Result<String, EngineError>)] = []
+        for app in apps {
+            guard let path = app.installedPath else { results.append((app, .success(""))); continue }
+            progress("Removing \(app.name)…")
+            let url = URL(fileURLWithPath: path)
+            if (try? FileManager.default.trashItem(at: url, resultingItemURL: nil)) != nil || Engine.recycleAskingForPassword(url) {
+                results.append((app, .success(path)))
+            } else {
+                results.append((app, .failure(.refused("\(app.name) wasn't moved to the Trash. Quit it and try again."))))
+            }
+        }
+        let removed = results.compactMap { pair -> String? in
+            if case .success = pair.1 { return pair.0.id }
+            return nil
+        }
+        if !removed.isEmpty { forget(removed) }
+        return results
+    }
+
+    private func forget(_ ids: [String]) {
+        editRecords { apps in for id in ids { apps[id] = nil } }
+    }
+
+    /// Changes ArtCraft Launcher's list with the launcher closed, then reopens it if it was open.
+    private func editRecords(_ change: (inout [String: Any]) -> Void) {
         let running = NSRunningApplication.runningApplications(withBundleIdentifier: Self.launcherBundleID)
         for app in running { app.terminate() }
         for _ in 0..<20 where running.contains(where: { !$0.isTerminated }) { Thread.sleep(forTimeInterval: 0.25) }
         var root = ((try? Data(contentsOf: recordsURL)).flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }) ?? [:]
         var apps = root["apps"] as? [String: Any] ?? [:]
-        for (app, path) in done {
-            let info = NSDictionary(contentsOfFile: path + "/Contents/Info.plist")
-            apps[app.id] = ["version": (info?["CFBundleShortVersionString"] as? String) ?? app.version, "kind": "Dmg", "path": path,
-                            "installed_at": Int(now().timeIntervalSince1970), "files": [String](), "needs_root": false] as [String: Any]
-        }
+        change(&apps)
         root["apps"] = apps
         try? FileManager.default.createDirectory(at: recordsURL.deletingLastPathComponent(), withIntermediateDirectories: true)
         if let data = try? JSONSerialization.data(withJSONObject: root, options: [.prettyPrinted, .sortedKeys]) {
@@ -321,6 +342,18 @@ public struct ArtCraft {
         }
         if !running.isEmpty, let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: Self.launcherBundleID) {
             NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration())
+        }
+    }
+
+    /// Adds the apps to ArtCraft Launcher's list, the same way it records its own installs. The
+    /// launcher rewrites that file while it runs, so it is closed for the write and reopened.
+    private func record(_ done: [(CraftApp, String)]) {
+        editRecords { apps in
+            for (app, path) in done {
+                let info = NSDictionary(contentsOfFile: path + "/Contents/Info.plist")
+                apps[app.id] = ["version": (info?["CFBundleShortVersionString"] as? String) ?? app.version, "kind": "Dmg", "path": path,
+                                "installed_at": Int(now().timeIntervalSince1970), "files": [String](), "needs_root": false] as [String: Any]
+            }
         }
     }
 }
@@ -354,5 +387,9 @@ extension Engine {
 
     public func installCraft(_ apps: [CraftApp], progress: (String) -> Void = { _ in }) -> [(CraftApp, Result<String, EngineError>)] {
         ArtCraft(env: env, runner: runner, now: now).install(apps, progress: progress)
+    }
+
+    public func removeCraft(_ apps: [CraftApp], progress: (String) -> Void = { _ in }) -> [(CraftApp, Result<String, EngineError>)] {
+        ArtCraft(env: env, runner: runner, now: now).remove(apps, progress: progress)
     }
 }

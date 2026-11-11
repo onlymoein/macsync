@@ -30,7 +30,8 @@ enum UIProbe {
             let wanted = env["MACSYNC_UI_PROBE_SELECT"] ?? ""
             let tokens = wanted == "all" ? (model.overview?.missingApps.map(\.app.token) ?? []) : wanted.split(separator: ",").map(String.init)
             for token in tokens { model.setSelected(token, true) }
-            try? await Task.sleep(nanoseconds: 500_000_000)
+            model.loadCraft()
+            try? await Task.sleep(nanoseconds: 6_000_000_000)
             shoot(dir, "review-\(suffix)", "menu-\(suffix)", model, height)
             print("before: canApply=\(model.canApply) status=\(model.statusLine)")
             if env["MACSYNC_UI_PROBE_NOAPPLY"] == nil {

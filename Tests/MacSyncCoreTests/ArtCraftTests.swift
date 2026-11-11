@@ -58,4 +58,26 @@ final class ArtCraftTests: XCTestCase {
         app.installedVersion = "0.20.0"
         XCTAssertFalse(app.needsUpdate)
     }
+
+    func testRemoveTrashesTheAppAndTakesItOffTheLaunchersList() throws {
+        let home = FileManager.default.temporaryDirectory.appendingPathComponent("ac-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: home) }
+        let folder = home.appendingPathComponent("Applications/Artcraft")
+        let app = folder.appendingPathComponent("PhotoCraft.app/Contents")
+        try FileManager.default.createDirectory(at: app, withIntermediateDirectories: true)
+        try Data("x".utf8).write(to: app.appendingPathComponent("Info.plist"))
+        let env = MacSyncEnvironment(syncDirectory: home.appendingPathComponent("sync"), dataDirectory: home.appendingPathComponent("data"),
+                                     machineID: "t", machineName: "T", dockFile: nil, brewPath: nil,
+                                     applicationsDirectory: home.appendingPathComponent("Applications"), homeDirectory: home.path)
+        let craft = ArtCraft(env: env, runner: FakeRunner(), now: Date.init)
+        try FileManager.default.createDirectory(at: craft.recordsURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data(#"{"apps":{"photocraft":{"path":"x"},"vectorcraft":{"path":"y"}}}"#.utf8).write(to: craft.recordsURL)
+        var photo = CraftApp(id: "photocraft", name: "PhotoCraft", version: "1", dmgURL: "https://github.com/storytold/p/p.dmg")
+        photo.installedVersion = "1"
+        photo.installedPath = folder.appendingPathComponent("PhotoCraft.app").path
+        let results = craft.remove([photo])
+        if case .failure(let e) = results[0].1 { XCTFail(e.localizedDescription) }
+        XCTAssertFalse(FileManager.default.fileExists(atPath: photo.installedPath!))
+        XCTAssertEqual(Set(craft.records().keys), ["vectorcraft"])
+    }
 }

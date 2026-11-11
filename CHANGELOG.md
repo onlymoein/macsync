@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.6.5
+- Remove and Remove All in the ArtCraft section: apps go to the Trash and come off ArtCraft Launcher's list.
+
 ## 0.6.4
 - ArtCraft has its own section with every app in ArtCraft Launcher's catalog, official and community, as it grows: version, installed or not, update available, real icons. Install All and Update All.
 - Craft apps come from their official downloads, checked against their published SHA-256 and their signing team, go into ArtCraft Launcher's install folder, and are recorded in the launcher's list so it knows them and keeps them updated.
