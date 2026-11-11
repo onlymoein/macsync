@@ -55,7 +55,10 @@ struct ReviewView: View {
                         Label(message, systemImage: "arrow.uturn.backward.circle.fill")
                             .foregroundStyle(.green).padding(14).frame(maxWidth: .infinity, alignment: .leading).glassPanel()
                     }
-                    if let plan = model.overview?.dockPlan { DockPanel(plan: plan, model: model) }
+                    if let plan = model.overview?.dockPlan {
+                        DockPanel(plan: plan, model: model)
+                        if !plan.missing.isEmpty { NotInstalledPanel(items: plan.missing, model: model) }
+                    }
                     if let plan = model.overview?.settingsPlan { SettingsPanel(plan: plan, model: model) }
                     AppsPanel(model: model)
                     if model.overview?.hasPendingChanges != true, model.lastReport == nil {
@@ -143,9 +146,34 @@ private struct PanelHeader<Trailing: View>: View {
     let symbol: String
     let title: String
     let subtitle: String?
+    /// When given, the header opens and closes its panel.
+    var isExpanded: Binding<Bool>? = nil
     @ViewBuilder let trailing: Trailing
 
     var body: some View {
+        HStack(alignment: .center, spacing: 12) {
+            if let isExpanded {
+                Button { withAnimation(.easeInOut(duration: 0.2)) { isExpanded.wrappedValue.toggle() } } label: {
+                    HStack(alignment: .center, spacing: 12) {
+                        Image(systemName: "chevron.right").font(.caption.weight(.bold)).foregroundStyle(.secondary)
+                            .rotationEffect(.degrees(isExpanded.wrappedValue ? 90 : 0))
+                            .frame(width: 12)
+                        label
+                        Spacer(minLength: 8)
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("\(isExpanded.wrappedValue ? "Collapse" : "Expand") \(title)")
+            } else {
+                label
+                Spacer(minLength: 8)
+            }
+            trailing
+        }
+    }
+
+    private var label: some View {
         HStack(alignment: .center, spacing: 12) {
             Image(systemName: symbol)
                 .font(.system(size: 15, weight: .semibold))
@@ -156,10 +184,8 @@ private struct PanelHeader<Trailing: View>: View {
                             in: RoundedRectangle(cornerRadius: 8, style: .continuous))
             VStack(alignment: .leading, spacing: 1) {
                 Text(title).font(.headline)
-                if let subtitle { Text(subtitle).font(.callout).foregroundStyle(.secondary) }
+                if let subtitle { Text(subtitle).font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.leading) }
             }
-            Spacer(minLength: 8)
-            trailing
         }
     }
 }
@@ -167,12 +193,21 @@ private struct PanelHeader<Trailing: View>: View {
 private struct DockPanel: View {
     let plan: DockPlan
     @ObservedObject var model: AppModel
+    @AppStorage("review.dock.open") private var open = true
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            PanelHeader(symbol: "dock.rectangle", title: "Dock", subtitle: "Combined from \(plan.sourceMachine)") {
+            PanelHeader(symbol: "dock.rectangle", title: "Dock", subtitle: "Combined from \(plan.sourceMachine)", isExpanded: $open) {
                 Toggle("Update Dock", isOn: $model.applyDock).toggleStyle(.switch).labelsHidden()
             }
+            if open { content }
+        }
+        .padding(18)
+        .glassPanel()
+        .opacity(model.applyDock ? 1 : 0.55)
+    }
+
+    @ViewBuilder private var content: some View {
             DockStrip(items: plan.targetApps + plan.targetOthers, model: model, added: Set(plan.added.map(\.key)))
             Text(model.dockRemovals.isEmpty
                  ? "Click an icon to remove it from the Dock on every Mac."
@@ -181,9 +216,6 @@ private struct DockPanel: View {
             if !plan.removed.isEmpty {
                 IconRow(title: "Removed on another Mac", items: plan.removed, model: model, badge: .removed)
             }
-            if !plan.missing.isEmpty {
-                WaitingRow(items: plan.missing, model: model)
-            }
             if let change = plan.tileSizeChange {
                 Text("Icon size \(change.from.map { String(format: "%g", $0) } ?? "default") → \(String(format: "%g", change.to))")
                     .font(.callout).foregroundStyle(.secondary)
@@ -191,10 +223,6 @@ private struct DockPanel: View {
             if let change = plan.orientationChange {
                 Text("Position \(change.from ?? "bottom") → \(change.to)").font(.callout).foregroundStyle(.secondary)
             }
-        }
-        .padding(18)
-        .glassPanel()
-        .opacity(model.applyDock ? 1 : 0.55)
     }
 }
 
@@ -240,22 +268,28 @@ private struct IconRow: View {
 
 /// Dock items from another Mac whose apps aren't on this one yet: their icon and name, a link to
 /// where to get each one, and a switch for the ones this Mac doesn't need (remembered).
-private struct WaitingRow: View {
+struct NotInstalledPanel: View {
     let items: [DockItem]
     @ObservedObject var model: AppModel
+    @AppStorage("review.notInstalled.open") private var open = true
+
+    private var needed: Int { items.filter { !model.isSkipped($0) }.count }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("In the Dock on your other Mac, not installed here").font(.callout.weight(.medium))
+        VStack(alignment: .leading, spacing: 12) {
+            PanelHeader(symbol: "arrow.down.app.fill", title: "Not installed here",
+                        subtitle: "\(needed) of \(items.count) needed · in the Dock on your other Mac", isExpanded: $open) { EmptyView() }
+            if open {
                 Text("Click one to open its download page. Switch off what this Mac doesn't need. Each one joins this Dock once it's installed.")
                     .font(.caption).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
-            }
-            VStack(spacing: 2) {
-                ForEach(items) { item in WaitingItem(item: item, model: model) }
+                VStack(spacing: 2) {
+                    ForEach(items) { item in WaitingItem(item: item, model: model) }
+                }
             }
         }
+        .padding(18)
+        .glassPanel()
     }
 }
 
@@ -349,12 +383,14 @@ private struct DockIcon: View {
 private struct AppsPanel: View {
     @ObservedObject var model: AppModel
     @State private var showTools = false
+    @AppStorage("review.apps.open") private var open = true
 
     private var everything: [MissingApp] {
         (model.overview?.missingApps ?? []).sorted { $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending }
     }
     private var skippedTokens: Set<String> { Set(model.overview?.skippedApps ?? []) }
     private var all: [MissingApp] { everything }
+    private var wanted: Int { everything.filter { !skippedTokens.contains($0.app.token) }.count }
     private var apps: [MissingApp] { all.filter { $0.app.source != .formula } }
     private var tools: [MissingApp] { all.filter { $0.app.source == .formula } }
 
@@ -362,9 +398,11 @@ private struct AppsPanel: View {
         if !everything.isEmpty {
             VStack(alignment: .leading, spacing: 14) {
                 PanelHeader(symbol: "square.grid.2x2.fill", title: "Apps on your other Macs",
-                            subtitle: "Switch off what this Mac doesn't need. MacSync remembers. Get the rest here.") {
+                            subtitle: "\(wanted) of \(everything.count) needed · switch off what this Mac doesn't need",
+                            isExpanded: $open) {
                     getAll(apps, label: "Get All")
                 }
+                if open {
                 if !apps.isEmpty {
                     VStack(spacing: 2) {
                         ForEach(apps) { AppRow(missing: $0, model: model) }
@@ -396,6 +434,7 @@ private struct AppsPanel: View {
                 if model.overview?.brewAvailable == false, all.contains(where: { $0.app.source == .cask || $0.app.source == .formula }) {
                     Label("Homebrew isn't on this Mac yet, so Homebrew apps can't be installed. Get it at brew.sh.", systemImage: "info.circle")
                         .font(.callout).foregroundStyle(.secondary)
+                }
                 }
             }
             .padding(18)
@@ -577,6 +616,7 @@ private struct ResultPanel: View {
 private struct SettingsPanel: View {
     let plan: SettingsPlan
     @ObservedObject var model: AppModel
+    @AppStorage("review.settings.open") private var open = true
 
     private var grouped: [(String, [SettingsChange])] {
         Dictionary(grouping: plan.changes, by: \.category).sorted { $0.key < $1.key }
@@ -585,9 +625,11 @@ private struct SettingsPanel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             PanelHeader(symbol: "gearshape.fill", title: "Settings",
-                        subtitle: "From \(plan.sourceMachine)" + (plan.needsLogout ? " · some need a log out" : "")) {
+                        subtitle: "\(plan.changes.count) from \(plan.sourceMachine)" + (plan.needsLogout ? " · some need a log out" : ""),
+                        isExpanded: $open) {
                 Toggle("Update settings", isOn: $model.applySettings).toggleStyle(.switch).labelsHidden()
             }
+            if open {
             VStack(alignment: .leading, spacing: 10) {
                 ForEach(grouped, id: \.0) { category, changes in
                     VStack(alignment: .leading, spacing: 4) {
@@ -606,6 +648,7 @@ private struct SettingsPanel: View {
                 }
             }
             .opacity(model.applySettings ? 1 : 0.55)
+            }
         }
         .padding(18)
         .glassPanel()

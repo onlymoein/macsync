@@ -144,7 +144,26 @@ final class AppModel: ObservableObject {
 
     func icon(for missing: MissingApp) -> NSImage? {
         if let id = missing.detail?.iconID, let image = cachedIcon(id) { return image }
-        return missing.detail?.bundleID.flatMap { cachedIcon(IconStore.id(bundleID: $0)) }
+        if let image = missing.detail?.bundleID.flatMap({ cachedIcon(IconStore.id(bundleID: $0)) }) { return image }
+        guard missing.app.source != .formula else { return nil }
+        return webIcon(bundleID: missing.detail?.bundleID, name: missing.displayName, missing: missing)
+    }
+
+    /// Logos fetched from the App Store or the developer, by app, while the other Mac hasn't shared one.
+    @Published private var webIcons: [String: NSImage] = [:]
+    private var webIconsAsked: Set<String> = []
+
+    private func webIcon(bundleID: String?, name: String, missing: MissingApp?) -> NSImage? {
+        let key = bundleID ?? name
+        if let image = webIcons[key] { return image }
+        guard !webIconsAsked.contains(key) else { return nil }
+        webIconsAsked.insert(key)
+        let engine = engine
+        Task {
+            let url = await Task.detached { engine.webIcon(bundleID: bundleID, name: name, missing: missing) }.value
+            if let url, let image = NSImage(contentsOf: url) { webIcons[key] = image }
+        }
+        return nil
     }
 
     private func cachedIcon(_ id: String) -> NSImage? {
@@ -316,7 +335,8 @@ final class AppModel: ObservableObject {
             if let path = Planner.resolve(item, locator: locator) { return NSWorkspace.shared.icon(forFile: path) }
             // Not on this Mac: use the icon the other Mac synced for that app.
             if let image = missingApp(for: item).flatMap({ icon(for: $0) }) { return image }
-            return item.bundleID.flatMap { cachedIcon(IconStore.id(bundleID: $0)) }
+            if let image = item.bundleID.flatMap({ cachedIcon(IconStore.id(bundleID: $0)) }) { return image }
+            return webIcon(bundleID: item.bundleID, name: name(for: item), missing: missingApp(for: item))
         }
     }
 

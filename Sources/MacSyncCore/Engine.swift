@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 
 public struct MachineSummary: Codable, Equatable, Identifiable {
@@ -231,6 +232,70 @@ public final class Engine {
         var search = URLComponents(string: "https://duckduckgo.com/")!
         search.queryItems = [URLQueryItem(name: "q", value: "\(name) Mac app download")]
         return search.url
+    }
+
+    /// A logo for an app this Mac doesn't have, from the App Store or the developer's site, for
+    /// when the Mac that has it hasn't shared one yet. Saved on this Mac only. Uses the network.
+    public func webIcon(bundleID: String?, name: String, missing: MissingApp?) -> URL? {
+        let key = String(Hashing.sha256(Data("web:\(bundleID ?? name)".utf8)).prefix(24))
+        let folder = env.dataDirectory.appendingPathComponent("web-icons", isDirectory: true)
+        let file = folder.appendingPathComponent(key + ".png")
+        let fm = FileManager.default
+        if fm.fileExists(atPath: file.path) { return file }
+        // Don't ask again for a day after nothing was found.
+        let miss = folder.appendingPathComponent(key + ".none")
+        if let at = (try? fm.attributesOfItem(atPath: miss.path)[.modificationDate]) as? Date, now().timeIntervalSince(at) < 86_400 { return nil }
+        try? fm.createDirectory(at: folder, withIntermediateDirectories: true)
+        func fetch(_ url: String) -> Data? {
+            let r = runner.run("/usr/bin/curl", ["-fsSL", "--proto", "=https", "--max-time", "15", url], input: nil, environment: [:])
+            return r.status == 0 && !r.stdout.isEmpty ? r.stdout : nil
+        }
+        var candidates: [String] = []
+        if let bundleID, DirectApp.isSafeBundleID(bundleID),
+           let data = fetch("https://itunes.apple.com/lookup?entity=macSoftware&bundleId=\(bundleID)"),
+           let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let art = (root["results"] as? [[String: Any]])?.first?["artworkUrl512"] as? String {
+            candidates.append(art)
+        }
+        let catalog = CaskCatalog.load(env: env, runner: runner, now: now())
+        let guess = name.lowercased().replacingOccurrences(of: " ", with: "-")
+        let token = missing?.app.source == .cask ? missing?.app.name
+            : (missing?.download?.cask ?? catalog?.cask(forApp: name + ".app")
+               ?? [guess, guess + "-app"].first { catalog?.entries[$0] != nil })
+        if let token, let page = catalog?.entries[token]?.homepage, let base = URL(string: page), let host = base.host {
+            candidates += ["https://\(host)/apple-touch-icon.png"]
+            // Icons the developer's page names, largest first: apple-touch-icon, then other icons.
+            if DirectApp.isSafeURL(page), let html = fetch(page).map({ String(decoding: $0.prefix(400_000), as: UTF8.self) }) {
+                candidates += Self.pageIcons(html, base: base)
+            }
+            candidates.append("https://\(host)/favicon.ico")
+        }
+        for url in candidates where DirectApp.isSafeURL(url) {
+            guard let data = fetch(url), let image = NSImage(data: data), image.isValid,
+                  let png = IconStore.png(image, side: 128) else { continue }
+            if (try? png.write(to: file, options: .atomic)) != nil { return file }
+        }
+        try? Data().write(to: miss)
+        return nil
+    }
+
+    static func pageIcons(_ html: String, base: URL) -> [String] {
+        guard let tag = try? NSRegularExpression(pattern: "<link[^>]+>", options: .caseInsensitive) else { return [] }
+        var found: [(rank: Int, url: String)] = []
+        for match in tag.matches(in: html, range: NSRange(html.startIndex..., in: html)).prefix(200) {
+            let link = String(html[Range(match.range, in: html)!])
+            func attr(_ name: String) -> String? {
+                guard let re = try? NSRegularExpression(pattern: "\\b\(name)\\s*=\\s*[\"']([^\"']+)[\"']", options: .caseInsensitive),
+                      let m = re.firstMatch(in: link, range: NSRange(link.startIndex..., in: link)),
+                      let r = Range(m.range(at: 1), in: link) else { return nil }
+                return String(link[r])
+            }
+            guard let rel = attr("rel")?.lowercased(), rel.contains("icon"), !rel.contains("mask"),
+                  let href = attr("href"), let url = URL(string: href, relativeTo: base)?.absoluteURL, url.scheme == "https" else { continue }
+            let size = attr("sizes").flatMap { Int($0.split(separator: "x").first ?? "") } ?? 0
+            found.append((rel.contains("apple-touch") ? 10_000 + size : size, url.absoluteString))
+        }
+        return found.sorted { $0.rank > $1.rank }.map(\.url).filter { !$0.hasSuffix(".svg") }
     }
 
     /// Marks an app as not needed on this Mac, or brings it back. Kept even after it stops being
