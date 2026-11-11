@@ -897,6 +897,18 @@ public final class Engine {
                            settingsChanged: settingsChanged, settingsSkipped: before.settingsSkipped, settingsError: settingsError)
     }
 
+    /// Homebrew's error in plain words: "Homebrew no longer has tldr. Did you mean tldx?"
+    static func brewProblem(_ stderr: String, name: String, status: Int32) -> String {
+        let lines = stderr.split(whereSeparator: \.isNewline).map { String($0).trimmingCharacters(in: .whitespaces) }
+        if let line = lines.first(where: { $0.contains("No available formula") || $0.contains("No available cask") || $0.contains("No casks found") }) {
+            let hint = line.range(of: "Did you mean")
+                .map { " " + line[$0.lowerBound...].trimmingCharacters(in: .whitespaces) } ?? ""
+            return "Homebrew no longer has \(name), so it can't be installed.\(hint) Switch it off if you don't need it."
+        }
+        let last = lines.last { !$0.isEmpty } ?? "brew exited with \(status)."
+        return last.replacingOccurrences(of: "^(Error|Warning): ", with: "", options: .regularExpression)
+    }
+
     /// Gets one app straight away, outside Apply: installs it with Homebrew, opens its App Store
     /// page, or downloads its installer from the developer. Nothing else on the Mac changes.
     public func getApp(_ missing: MissingApp) -> InstallResult {
@@ -943,8 +955,7 @@ public final class Engine {
             let args = app.source == .cask ? ["install", "--cask", app.name] : ["install", app.name]
             let result = runner.run(brew, args, input: nil, environment: InventoryReader.brewEnvironment(brew))
             guard result.status != 0 else { return InstallResult(app: app, outcome: .installed, message: nil) }
-            let lastLine = result.stderr.split(whereSeparator: \.isNewline).last.map(String.init)
-            return InstallResult(app: app, outcome: .failed, message: lastLine ?? "brew exited with \(result.status).")
+            return InstallResult(app: app, outcome: .failed, message: Self.brewProblem(result.stderr, name: app.name, status: result.status))
         }
     }
 

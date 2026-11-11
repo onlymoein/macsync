@@ -903,6 +903,7 @@ private struct AppRow: View {
     private var token: String { missing.app.token }
     private var isSkipped: Bool { model.overview?.skippedApps.contains(token) == true }
     private var result: InstallResult? { model.gotten[token] }
+    @State private var confirmRemove = false
 
     var body: some View {
         HStack(spacing: 12) {
@@ -920,6 +921,12 @@ private struct AppRow: View {
                 .padding(.horizontal, 8).padding(.vertical, 3)
                 .background(.quaternary.opacity(0.6), in: Capsule())
             action.frame(minWidth: 92, alignment: .trailing)
+            Button { confirmRemove = true } label: { Image(systemName: "trash") }
+                .buttonStyle(.borderless)
+                .foregroundStyle(.secondary)
+                .disabled(model.getting.contains(token) || model.removing.contains(token))
+                .help("Uninstall \(missing.displayName) from all your Macs")
+                .accessibilityLabel("Uninstall from all Macs")
             Toggle("", isOn: Binding(get: { !isSkipped }, set: { model.setSkipped(missing, !$0) }))
                 .toggleStyle(.switch).labelsHidden().controlSize(.small)
                 .disabled(model.getting.contains(token))
@@ -929,7 +936,12 @@ private struct AppRow: View {
         .padding(.horizontal, 8)
         .padding(.vertical, 6)
         .help(help)
-        .accessibilityElement(children: .combine)
+        .confirmationDialog("Uninstall \(missing.displayName) from all your Macs?", isPresented: $confirmRemove) {
+            Button("Uninstall from All Macs", role: .destructive) { model.removeEverywhere(missing) }
+        } message: {
+            Text(missing.fromMachines.isEmpty ? "Each Mac that has it lists it under Removed and uninstalls it when you click there."
+                 : "It's on \(missing.fromMachines.joined(separator: ", ")). Each of those Macs lists it under Removed and uninstalls it when you click there. MacSync stops offering it here.")
+        }
     }
 
     @ViewBuilder private var action: some View {

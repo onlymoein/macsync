@@ -578,6 +578,12 @@ final class EngineTests: XCTestCase {
         XCTAssertTrue(air.engine.restorePoints().allSatisfy { $0.undoneAt != nil })
     }
 
+    func testHomebrewErrorsAreInPlainWords() {
+        let gone = Engine.brewProblem("Warning: No available formula with the name \"tldr\". Did you mean tldx?\n", name: "tldr", status: 1)
+        XCTAssertEqual(gone, "Homebrew no longer has tldr, so it can't be installed. Did you mean tldx? Switch it off if you don't need it.")
+        XCTAssertEqual(Engine.brewProblem("Error: tldr needs a password\n", name: "tldr", status: 1), "tldr needs a password")
+    }
+
     func testOldICloudCopiesAreDeleted() throws {
         let world = try TestWorld()
         let old = world.sync.appendingPathComponent("apps/packages")

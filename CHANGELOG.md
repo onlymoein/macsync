@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.5.7
+- Uninstall any app or command-line tool from all your Macs right from the lists of apps on your other Macs.
+- Clearer message when Homebrew no longer has a package.
+
 ## 0.5.6
 - Apply Dock changes when you open the lid is now on by default.
 - History is in the gear menu, and the History section shows even before your first Apply.
