@@ -4,7 +4,7 @@
   "title": "MacSync",
   "description": "Keep your Macs set up the same way",
   "icon": "command-icon.png",
-  "author": "onlymehdi",
+  "author": "mehdi_saharkhiz",
   "license": "MIT",
   "commands": [
     {
