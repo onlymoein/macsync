@@ -70,14 +70,19 @@ public struct SelfUpdater {
 
     /// Installs the release in place of the running app. The caller relaunches afterwards.
     public func install(_ release: Release) -> Result<Void, EngineError> {
-        if let brew = brewPath, installedWithBrew {
-            // Refresh Homebrew's lists first, or it won't know the new version exists yet.
-            let env = InventoryReader.brewEnvironment(brew)
-            _ = runner.run(brew, ["update", "--quiet"], input: nil, environment: env)
-            let result = runner.run(brew, ["upgrade", "--cask", "macsync"], input: nil, environment: env)
-            return result.status == 0 ? .success(())
-                : .failure(.refused("Homebrew couldn't update MacSync: \(result.stderr.split(whereSeparator: \.isNewline).last ?? "")"))
-        }
+        // MacSync replaces itself even when Homebrew installed it: macOS lets an app update its own
+        // bundle, but stops Homebrew (run from MacSync) from doing it, and a half-finished Homebrew
+        // upgrade leaves no app behind. The cask is marked auto_updates, so Homebrew doesn't mind.
+        let direct = installDirectly(release)
+        guard case .failure = direct, let brew = brewPath, installedWithBrew,
+              FileManager.default.fileExists(atPath: appURL.path) else { return direct }
+        let env = InventoryReader.brewEnvironment(brew)
+        _ = runner.run(brew, ["update", "--quiet"], input: nil, environment: env)
+        let result = runner.run(brew, ["upgrade", "--cask", "macsync"], input: nil, environment: env)
+        return result.status == 0 ? .success(()) : direct
+    }
+
+    private func installDirectly(_ release: Release) -> Result<Void, EngineError> {
         guard let checksumURL = release.checksumURL else {
             return .failure(.refused("The release has no checksum, so MacSync didn't install it."))
         }

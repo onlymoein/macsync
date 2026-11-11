@@ -1210,6 +1210,9 @@ public final class Engine {
         return result
     }
 
+    /// Keeps Homebrew apps and tools, npm and uv up to date.
+    public var upgrader: Upgrader { Upgrader(env: env, runner: runner) }
+
     /// Which files this Mac would share, and which it keeps because of a secret. Reads only.
     public func scanFiles() -> (shared: [SharedFileInfo], kept: [KeptFile]) { extras.scan() }
 

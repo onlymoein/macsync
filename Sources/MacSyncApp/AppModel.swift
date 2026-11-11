@@ -51,6 +51,14 @@ final class AppModel: ObservableObject {
     private var applyDockUntil: Date?
     @Published var autoApplyMessage: String?
 
+    /// Keep Homebrew apps and tools, npm and uv on their newest versions.
+    @Published var autoUpgrade: Bool = UserDefaults.standard.object(forKey: "autoUpgrade") as? Bool ?? true {
+        didSet { UserDefaults.standard.set(autoUpgrade, forKey: "autoUpgrade"); if autoUpgrade { upgradeIfDue() } }
+    }
+    @Published var upgrading = false
+    @Published var upgradeReport: UpgradeReport?
+    @Published var upgradeBusy: Set<String> = []
+
     @Published var autoUpdate: Bool {
         didSet { UserDefaults.standard.set(autoUpdate, forKey: "autoUpdate") }
     }
@@ -218,6 +226,11 @@ final class AppModel: ObservableObject {
             case .success(let overview):
                 self.overview = overview
                 self.selectedApps = Set(overview.selectedApps)
+                // An app that was installed and then deleted is offered again, not shown as installed.
+                for app in overview.missingApps where gotten[app.app.token]?.outcome == .installed && !getting.contains(app.app.token) {
+                    gotten[app.app.token] = nil
+                }
+                upgradeIfDue()
                 self.errorMessage = nil
                 if refreshInventory { lastInventoryRefresh = Date() }
                 trimDockEdits(overview)

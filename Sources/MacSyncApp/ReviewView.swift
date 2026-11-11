@@ -1,6 +1,17 @@
 import MacSyncCore
 import SwiftUI
 
+// MARK: - Colors
+
+extension Color {
+    /// Orange that stays readable on glass: deep amber in light mode, soft amber in dark mode.
+    static let warning = Color(nsColor: NSColor(name: "MacSyncWarning") { appearance in
+        appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            ? NSColor(red: 1.0, green: 0.72, blue: 0.30, alpha: 1)
+            : NSColor(red: 0.62, green: 0.30, blue: 0.0, alpha: 1)
+    })
+}
+
 // MARK: - Glass
 
 extension View {
@@ -81,6 +92,7 @@ struct ReviewView: View {
                         SettingsMatchPanel(model: model)
                     }
                     if model.proEnabled { AppSettingsPanel(model: model) }
+                    UpdatesPanel(model: model)
                     SignInPanel(model: model)
                     HistoryPanel(model: model).id("history")
                     if let overview = model.overview, !overview.hasPendingChanges, !model.canApply, model.lastReport == nil {
@@ -149,7 +161,7 @@ struct ReviewView: View {
                     ProgressView().controlSize(.small)
                     Text(model.progress ?? "Applying…").lineLimit(1)
                 } else if let error = model.actionError ?? model.errorMessage {
-                    Label(error, systemImage: "exclamationmark.triangle.fill").foregroundStyle(.orange).lineLimit(2)
+                    Label(error, systemImage: "exclamationmark.triangle.fill").foregroundStyle(Color.warning).lineLimit(2)
                 } else if model.canApply {
                     Label("A restore point is saved first", systemImage: "clock.arrow.circlepath").lineLimit(1)
                 } else {
@@ -647,10 +659,10 @@ private struct ArtCraftPanel: View {
             VStack(alignment: .leading, spacing: 1) {
                 Text(app.name).font(.body.weight(.medium)).lineLimit(1)
                 if let error = model.craftErrors[app.id] {
-                    Text(error).font(.caption).foregroundStyle(.orange).lineLimit(2)
+                    Text(error).font(.caption).foregroundStyle(Color.warning).lineLimit(2)
                 } else if let from = removedEverywhere[app.skipToken] {
                     Text(app.isInstalled ? "Removed on \(from) · still on this Mac" : "Removed from all Macs on \(from)")
-                        .font(.caption).foregroundStyle(.orange).lineLimit(1)
+                        .font(.caption).foregroundStyle(Color.warning).lineLimit(1)
                 } else {
                     Text([app.tagline, app.publisher.flatMap { $0 == "ArtCraft" ? nil : "by \($0)" },
                           !app.availableOnMac ? "Not available for Mac yet"
@@ -828,7 +840,7 @@ private struct ToRemovePanel: View {
                                 if model.removing.contains(app.app.token) {
                                     ProgressView().controlSize(.small)
                                 } else if let result = model.removeResults[app.app.token], result.outcome == .failed {
-                                    Text(result.message ?? "Didn't uninstall").font(.caption).foregroundStyle(.orange).lineLimit(2)
+                                    Text(result.message ?? "Didn't uninstall").font(.caption).foregroundStyle(Color.warning).lineLimit(2)
                                     Button("Keep Here") { model.keepHere(app) }.glassButton().controlSize(.small)
                                     Button("Try Again") { model.uninstallHere([app]) }.primaryGlassButton().controlSize(.small)
                                 } else {
@@ -930,7 +942,7 @@ private struct ThisMacPanel: View {
             if model.removing.contains(token) {
                 ProgressView().controlSize(.small)
             } else if let result = model.removeResults[token], result.outcome == .failed {
-                Text(result.message ?? "Didn't uninstall").font(.caption).foregroundStyle(.orange).lineLimit(2).frame(maxWidth: 220)
+                Text(result.message ?? "Didn't uninstall").font(.caption).foregroundStyle(Color.warning).lineLimit(2).frame(maxWidth: 220)
                 Button("Try Again") { model.removeEverywhere(app) }.glassButton().controlSize(.small)
             } else {
                 Button { confirm = app } label: { Label("Remove", systemImage: "trash") }
@@ -1175,7 +1187,7 @@ private struct AppRow: View {
             VStack(alignment: .leading, spacing: 1) {
                 Text(missing.displayName).font(.body.weight(.medium)).lineLimit(1)
                 if let result, result.outcome == .failed, let message = result.message {
-                    Text(message).font(.caption).foregroundStyle(.orange).lineLimit(2)
+                    Text(message).font(.caption).foregroundStyle(Color.warning).lineLimit(2)
                 } else if let summary = missing.detail?.summary {
                     Text(summary).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                 }
@@ -1298,7 +1310,7 @@ private struct ResultPanel: View {
         VStack(alignment: .leading, spacing: 10) {
             Label(headline, systemImage: report.hasFailures ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
                 .font(.headline)
-                .foregroundStyle(report.hasFailures ? .orange : .green)
+                .foregroundStyle(report.hasFailures ? Color.warning : Color.green)
             line("Installed", .installed)
             line("Downloaded from the developer and opened. Finish installing them from Downloads", .downloaded)
             line("Opened in the App Store. Click Get to finish", .openedInAppStore)

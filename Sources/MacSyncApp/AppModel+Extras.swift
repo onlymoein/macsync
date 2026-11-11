@@ -50,6 +50,43 @@ extension AppModel {
         Task { _ = await Task.detached { try? engine.setFilesLocalOnly(paths, localOnly) }.value; runSync(refreshInventory: false) }
     }
 
+    // MARK: Keeping apps and tools up to date
+
+    /// Runs on open and after a sync, at most every six hours.
+    func upgradeIfDue() {
+        if upgradeReport == nil { upgradeReport = engine.upgrader.lastReport() }
+        guard autoUpgrade, !upgrading, !isApplying, engine.upgrader.isDue() else { return }
+        upgradeAll()
+    }
+
+    func upgradeAll() {
+        guard !upgrading else { return }
+        upgrading = true
+        let upgrader = engine.upgrader
+        Task {
+            let report = await Task.detached { upgrader.upgradeAll { message in
+                Task { @MainActor [weak self] in self?.progress = message }
+            } }.value
+            upgrading = false
+            progress = nil
+            upgradeReport = report
+            if !report.upgraded.isEmpty { runSync(refreshInventory: true) }
+        }
+    }
+
+    /// Quits an open app, updates it, and opens it again.
+    func upgradeNow(_ item: OutdatedItem) {
+        guard !upgradeBusy.contains(item.token) else { return }
+        upgradeBusy.insert(item.token)
+        let upgrader = engine.upgrader
+        Task {
+            let result = await Task.detached { upgrader.upgradeNow(item) }.value
+            upgradeBusy.remove(item.token)
+            upgradeReport = upgrader.lastReport()
+            if case .failure(let error) = result { upgradeReport?.failures.append("\(item.name): \(error.localizedDescription)") }
+        }
+    }
+
     // MARK: Signing in
 
     func addToSignIn(name: String, bundleID: String?) {

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.7.1
+- **Apps and tools stay up to date:** on open and every six hours, MacSync updates every Homebrew app and command-line tool, including apps that update themselves like Raycast, plus npm global packages and uv tools. An app that's open waits, with a Quit and Update button, so nothing quits under you. Switch it off in the menu or the new Updates section.
+- **Self-update no longer goes through Homebrew:** MacSync replaces itself directly, which macOS allows, instead of asking Homebrew to, which macOS can block halfway and leave no app behind ("It seems the App source '/Applications/MacSync.app' is not there").
+- An app deleted after MacSync installed it is offered again instead of still showing Installed.
+- Warnings use a darker amber that's easier to read on the menu's glass.
+
 ## 0.7.0
 - **Config files:** shell (zsh, fish, bash, Starship), Git, editors (VS Code, Cursor, Zed, Neovim), terminals (Ghostty, kitty, Alacritty, WezTerm, tmux), Raycast's config folder and your fonts. The newest copy wins; a newer edit on this Mac is never replaced; each change shows its lines before you apply it. Files a dotfiles folder manages through links are left alone.
 - **AI setup:** skills (`~/.agents`, Claude, Codex, Cursor), CLAUDE.md and AGENTS.md, agents, commands, rules, Claude Code settings, Claude Code and Claude app MCP servers, Codex config, Cursor rules and MCP servers. JSON files travel with secret-looking values taken out, and each Mac keeps its own keys when it's updated.

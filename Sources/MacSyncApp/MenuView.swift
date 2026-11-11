@@ -102,6 +102,9 @@ struct MenuView: View {
                 Toggle("Apply Dock Changes When I Open the Lid", isOn: $model.autoApplyDock)
                 Toggle("Open at Login", isOn: Binding(get: { model.openAtLogin }, set: { model.setOpenAtLogin($0) }))
                 Toggle("Update Automatically", isOn: $model.autoUpdate)
+                Toggle("Keep Apps and Tools Up to Date", isOn: $model.autoUpgrade)
+                Button(model.upgrading ? "Updating Apps and Tools…" : "Update Apps and Tools Now") { model.upgradeAll() }
+                    .disabled(model.upgrading)
                 Button("Check for Updates") { model.checkForUpdates(manual: true) }
                 Divider()
                 Button("Support MacSync…") { NSWorkspace.shared.open(URL(string: "https://buymeacoffee.com/onlymoein")!) }
@@ -128,7 +131,7 @@ struct MachineRow: View {
 
     private var state: (text: String, color: Color) {
         if machine.isLayoutSource { return ("Latest", .accentColor) }
-        return machine.dockMatchesSource ? ("In sync", .green) : ("Behind", .orange)
+        return machine.dockMatchesSource ? ("In sync", .green) : ("Behind", Color.warning)
     }
 
     private var symbol: String {
@@ -154,8 +157,11 @@ struct MachineRow: View {
                     .lineLimit(1)
                 Group {
                     if machine.isOutdated {
-                        Label("MacSync \(machine.appVersion) · update it on that Mac", systemImage: "exclamationmark.triangle.fill")
-                            .foregroundStyle(.orange)
+                        Label {
+                            Text("MacSync \(machine.appVersion) · update it on that Mac").foregroundStyle(.primary)
+                        } icon: {
+                            Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(Color.warning)
+                        }
                     } else {
                         Text("MacSync \(machine.appVersion)").foregroundStyle(.tertiary)
                     }

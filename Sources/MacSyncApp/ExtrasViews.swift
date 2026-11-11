@@ -50,7 +50,7 @@ private struct BusyOrError: View {
     let token: String
     var body: some View {
         if model.extraBusy.contains(token) { ProgressView().controlSize(.small) }
-        else if let error = model.extraErrors[token] { Text(error).font(.caption).foregroundStyle(.orange).lineLimit(2) }
+        else if let error = model.extraErrors[token] { Text(error).font(.caption).foregroundStyle(Color.warning).lineLimit(2) }
     }
 }
 
@@ -119,7 +119,7 @@ struct FilesPanel: View {
                 VStack(alignment: .leading, spacing: 1) {
                     Text(shortPath(change.path)).font(.body.weight(.medium).monospaced()).lineLimit(1).truncationMode(.middle)
                     Text("\(change.group) · \(change.isNew ? "new" : "changed") on \(change.sourceMachine) · \(change.detail)")
-                        .font(.caption).foregroundStyle(change.waiting ? .orange : .secondary).lineLimit(1)
+                        .font(.caption).foregroundStyle(change.waiting ? Color.warning : Color.secondary).lineLimit(1)
                 }
                 Spacer(minLength: 8)
                 BusyOrError(model: model, token: change.token)
@@ -155,7 +155,7 @@ struct FilesPanel: View {
     private var keptList: some View {
         VStack(alignment: .leading, spacing: 6) {
             Label("Kept on this Mac because they hold a key, token or password", systemImage: "key.slash")
-                .font(.callout.weight(.semibold)).foregroundStyle(.orange)
+                .font(.callout.weight(.semibold)).foregroundStyle(Color.warning)
             ForEach(kept) { file in
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
                     Text(shortPath(file.path)).font(.caption.monospaced()).lineLimit(1).truncationMode(.middle)
@@ -279,7 +279,7 @@ struct LoginItemsPanel: View {
                 }
                 if open {
                     if let issue {
-                        Label(issue, systemImage: "lock.shield").font(.caption).foregroundStyle(.orange)
+                        Label(issue, systemImage: "lock.shield").font(.caption).foregroundStyle(Color.warning)
                     }
                     ForEach(missing) { item in
                         let on = !skipped.contains(item.token)
@@ -457,6 +457,57 @@ struct SignInPanel: View {
                 }
                 Text("MacSync never types passwords or license keys. It only opens each app for you.")
                     .font(.caption).foregroundStyle(.secondary)
+            }
+        }
+        .padding(18)
+        .glassPanel()
+    }
+}
+
+// MARK: Updates
+
+struct UpdatesPanel: View {
+    @ObservedObject var model: AppModel
+    @AppStorage("review.updates.open") private var open = true
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            let report = model.upgradeReport
+            PanelHeader(symbol: "arrow.triangle.2.circlepath", title: "Updates",
+                        subtitle: model.upgrading ? (model.progress ?? "Updating…")
+                            : report.map { "\($0.summary) · checked \($0.ranAt.formatted(.relative(presentation: .named)))" }
+                            ?? "Homebrew apps and tools, npm and uv, kept on their newest versions",
+                        isExpanded: $open) {
+                Toggle("Automatic", isOn: $model.autoUpgrade).toggleStyle(.switch).controlSize(.small)
+                    .help("Check and update on open and every six hours")
+                Button(model.upgrading ? "Updating…" : "Update Now") { model.upgradeAll() }
+                    .glassButton().controlSize(.small).disabled(model.upgrading)
+            }
+            if open, let report {
+                if !report.waiting.isEmpty {
+                    Text("Open right now, so they wait. Quit and Update closes the app, updates it and opens it again.")
+                        .font(.caption).foregroundStyle(.secondary)
+                    ForEach(report.waiting) { item in
+                        HStack(spacing: 12) {
+                            if let image = model.icon(forApp: item.bundleID) { Image(nsImage: image).resizable().frame(width: 28, height: 28) }
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(item.name).font(.body.weight(.medium))
+                                Text("\(item.from) → \(item.to)").font(.caption).foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            if model.upgradeBusy.contains(item.token) { ProgressView().controlSize(.small) }
+                            else { Button("Quit and Update") { model.upgradeNow(item) }.primaryGlassButton().controlSize(.small) }
+                        }
+                        .padding(.horizontal, 8).padding(.vertical, 3)
+                    }
+                }
+                if !report.upgraded.isEmpty {
+                    Text("Updated: " + report.upgraded.map { "\($0.name) \($0.to)" }.joined(separator: ", "))
+                        .font(.caption).foregroundStyle(.secondary).lineLimit(3)
+                }
+                ForEach(report.failures, id: \.self) { failure in
+                    Label(failure, systemImage: "exclamationmark.triangle.fill").font(.caption).foregroundStyle(Color.warning).lineLimit(2)
+                }
             }
         }
         .padding(18)
