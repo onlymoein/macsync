@@ -209,7 +209,7 @@ public enum Planner {
         var details: [String: AppDetail] = [:]
         var downloads: [String: DirectApp] = [:]
         let casks = Set(local.casks)
-        let formulae = Set(local.formulae)
+        let formulae = Set(local.formulae + (local.allFormulae ?? []))
         let store = Set(local.appStore.map(\.id))
         let direct = Set((local.directApps ?? []).map(\.bundleID))
         for machine in others {

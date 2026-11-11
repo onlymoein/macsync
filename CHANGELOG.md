@@ -1,6 +1,13 @@
 # Changelog
 
-## 0.7.2
+## 0.7.3
+- No more "Checking your Macs…" forever: files another Mac shares that are still in iCloud download in the background and show as still arriving, instead of being waited for one by one.
+- Many files from one place (a folder of skills) fold into one row with Show, and a switch for all of them.
+- A formula that's on this Mac as another one's dependency (poppler, ruby) is no longer offered as missing.
+- The ArtCraft section shows ArtCraft's logo in its blue tile.
+- The file, login item and package lists have one dropdown, not two: shared files sit under a heading, a row per group, with Show.
+- Updates says Check Again when everything is up to date.
+- A folder over 300 MB (presets, fonts) stops being copied past that size.
 - After adding or removing a Craft app, ArtCraft Launcher comes back hidden in the menu bar, the way it was, instead of opening its window.
 - Automatic updates leave Craft apps to ArtCraft Launcher, which keeps them up to date itself.
 

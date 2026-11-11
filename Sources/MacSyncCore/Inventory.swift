@@ -88,6 +88,8 @@ public struct InventoryReader {
                 inventory.brewAvailable = true
                 inventory.casks = Self.lines(casks.output)
                 inventory.formulae = Self.lines(leaves.output)
+                let all = runner.run(brew, ["list", "--formula", "-1"], input: nil, environment: brewEnv)
+                if all.status == 0 { inventory.allFormulae = Self.lines(all.output) }
                 let info = runner.run(brew, ["info", "--json=v2", "--installed"], input: nil, environment: brewEnv)
                 if info.status == 0 { caskApps = addBrewDetails(info.output, to: &inventory) }
             }

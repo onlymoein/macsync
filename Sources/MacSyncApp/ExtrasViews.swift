@@ -60,7 +60,6 @@ struct FilesPanel: View {
     let area: FileArea
     @ObservedObject var model: AppModel
     @AppStorage private var open: Bool
-    @State private var showShared = false
     @State private var expanded: Set<String> = []
     @State private var remove: RemoveTarget?
 
@@ -99,7 +98,23 @@ struct FilesPanel: View {
                 }
                 if open {
                     if !changes.isEmpty {
-                        VStack(spacing: 2) { ForEach(changes) { change in changeRow(change) } }
+                        // Many files from one place (a folder of skills) fold into one row.
+                        let groups = Dictionary(grouping: changes, by: \.group).sorted { $0.key < $1.key }
+                        VStack(spacing: 2) {
+                            ForEach(groups, id: \.key) { group, items in
+                                if items.count <= 6 {
+                                    ForEach(items) { change in changeRow(change) }
+                                } else {
+                                    changeGroupRow(group, items)
+                                    if expanded.contains("changes:" + group) {
+                                        ForEach(items.prefix(60)) { change in changeRow(change) }
+                                        if items.count > 60 {
+                                            Text("and \(items.count - 60) more").font(.caption).foregroundStyle(.secondary).padding(.leading, 48)
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                     if !kept.isEmpty { keptList }
                     if !shared.isEmpty { sharedList }
@@ -109,6 +124,27 @@ struct FilesPanel: View {
             .glassPanel()
             .removeChoices($remove, model: model)
         }
+    }
+
+    private func changeGroupRow(_ group: String, _ items: [FileChange]) -> some View {
+        let on = items.filter { !skipped.contains($0.token) }.count
+        let sources = Set(items.map(\.sourceMachine)).sorted().joined(separator: ", ")
+        let waiting = items.filter(\.waiting).count
+        return HStack(spacing: 12) {
+            RowIcon(symbol: items[0].symbol)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(group).font(.body.weight(.medium))
+                Text("\(items.count) files from \(sources)" + (waiting > 0 ? " · \(waiting) still arriving through iCloud" : ""))
+                    .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+            }
+            Spacer()
+            Button(expanded.contains("changes:" + group) ? "Hide" : "Show") {
+                withAnimation { if expanded.contains("changes:" + group) { expanded.remove("changes:" + group) } else { expanded.insert("changes:" + group) } }
+            }
+            .buttonStyle(.link).font(.callout)
+            AllSwitch(onCount: on, total: items.count) { model.setSkipped(tokens: items.map(\.token), !$0) }
+        }
+        .padding(.horizontal, 8).padding(.vertical, 4)
     }
 
     private func changeRow(_ change: FileChange) -> some View {
@@ -173,26 +209,32 @@ struct FilesPanel: View {
     }
 
     private var sharedList: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Button { withAnimation { showShared.toggle() } } label: {
-                Label("\(shared.filter { !$0.localOnly }.count) shared from this Mac", systemImage: showShared ? "chevron.down" : "chevron.right")
-                    .font(.callout.weight(.medium))
-            }
-            .buttonStyle(.plain).foregroundStyle(.secondary)
-            if showShared {
-                let groups = Dictionary(grouping: shared, by: \.group).sorted { $0.key < $1.key }
-                ForEach(groups, id: \.key) { group, files in
-                    VStack(alignment: .leading, spacing: 2) {
-                        HStack {
-                            Text(group).font(.caption.weight(.semibold)).foregroundStyle(.secondary).textCase(.uppercase)
-                            Spacer()
-                            AllSwitch(onCount: files.filter { !$0.localOnly }.count, total: files.count) { on in
-                                model.setFilesLocalOnly(files.map(\.path), !on)
-                            }
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Shared from this Mac").font(.caption.weight(.semibold)).foregroundStyle(.secondary).textCase(.uppercase)
+                .padding(.top, changes.isEmpty && kept.isEmpty ? 0 : 6)
+            let groups = Dictionary(grouping: shared, by: \.group).sorted { $0.key < $1.key }
+            ForEach(groups, id: \.key) { group, files in
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 10) {
+                        RowIcon(symbol: files[0].symbol)
+                        VStack(alignment: .leading, spacing: 0) {
+                            Text(group).font(.body.weight(.medium))
+                            Text("\(files.filter { !$0.localOnly }.count) of \(files.count) file\(files.count == 1 ? "" : "s") sent to your other Macs")
+                                .font(.caption).foregroundStyle(.secondary)
                         }
+                        Spacer()
+                        Button(expanded.contains(group) ? "Hide" : "Show") {
+                            withAnimation { if expanded.contains(group) { expanded.remove(group) } else { expanded.insert(group) } }
+                        }
+                        .buttonStyle(.link).font(.callout)
+                        AllSwitch(onCount: files.filter { !$0.localOnly }.count, total: files.count) { on in
+                            model.setFilesLocalOnly(files.map(\.path), !on)
+                        }
+                    }
+                    .padding(.horizontal, 8).padding(.vertical, 3)
+                    if expanded.contains(group) {
                         ForEach(files.prefix(40)) { file in
                             HStack(spacing: 8) {
-                                Image(systemName: file.symbol).foregroundStyle(.secondary).frame(width: 18)
                                 Text(shortPath(file.path)).font(.caption.monospaced()).lineLimit(1).truncationMode(.middle)
                                 Spacer()
                                 BusyOrError(model: model, token: "file:" + file.path)
@@ -203,8 +245,11 @@ struct FilesPanel: View {
                                     .help(file.localOnly ? "Kept to this Mac" : "Sent to your other Macs")
                             }
                             .opacity(file.localOnly ? 0.5 : 1)
+                            .padding(.leading, 46).padding(.trailing, 8)
                         }
-                        if files.count > 40 { Text("and \(files.count - 40) more").font(.caption).foregroundStyle(.secondary) }
+                        if files.count > 40 {
+                            Text("and \(files.count - 40) more").font(.caption).foregroundStyle(.secondary).padding(.leading, 46)
+                        }
                     }
                 }
             }
@@ -256,7 +301,6 @@ struct ExtrasRemovedPanel: View {
 struct LoginItemsPanel: View {
     @ObservedObject var model: AppModel
     @AppStorage("review.loginItems.open") private var open = true
-    @State private var showMine = false
     @State private var remove: RemoveTarget?
 
     private var missing: [LoginItem] { model.overview?.extras.loginItems ?? [] }
@@ -300,22 +344,18 @@ struct LoginItemsPanel: View {
                         .padding(.horizontal, 8).padding(.vertical, 3)
                     }
                     if !mine.isEmpty {
-                        Button { withAnimation { showMine.toggle() } } label: {
-                            Label("\(mine.count) open at login on this Mac", systemImage: showMine ? "chevron.down" : "chevron.right")
-                                .font(.callout.weight(.medium))
-                        }
-                        .buttonStyle(.plain).foregroundStyle(.secondary)
-                        if showMine {
-                            ForEach(mine) { item in
-                                HStack(spacing: 10) {
-                                    appIcon(item).scaleEffect(0.8)
-                                    Text(item.name).font(.callout)
-                                    Spacer()
-                                    BusyOrError(model: model, token: item.token)
-                                    Button("Remove…") { remove = RemoveTarget(token: item.token, name: item.name) }
-                                        .glassButton().controlSize(.small)
-                                }
+                        Text("Open at login on this Mac").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                            .textCase(.uppercase).padding(.top, missing.isEmpty ? 0 : 6)
+                        ForEach(mine) { item in
+                            HStack(spacing: 10) {
+                                appIcon(item)
+                                Text(item.name).font(.body)
+                                Spacer()
+                                BusyOrError(model: model, token: item.token)
+                                Button { remove = RemoveTarget(token: item.token, name: item.name) } label: { Image(systemName: "trash") }
+                                    .buttonStyle(.plain).foregroundStyle(.secondary).help("Remove from this Mac or all Macs")
                             }
+                            .padding(.horizontal, 8).padding(.vertical, 2)
                         }
                     }
                 }
@@ -340,7 +380,7 @@ struct LoginItemsPanel: View {
 struct PackagesPanel: View {
     @ObservedObject var model: AppModel
     @AppStorage("review.packages.open") private var open = true
-    @State private var showMine = false
+    @State private var shownKinds: Set<String> = []
     @State private var remove: RemoveTarget?
 
     private var missing: [PackageItem] { model.overview?.extras.packages ?? [] }
@@ -397,23 +437,34 @@ struct PackagesPanel: View {
 
     private var mineList: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Button { withAnimation { showMine.toggle() } } label: {
-                Label("\(mine.count) on this Mac", systemImage: showMine ? "chevron.down" : "chevron.right").font(.callout.weight(.medium))
-            }
-            .buttonStyle(.plain).foregroundStyle(.secondary)
-            if showMine {
-                let groups = Dictionary(grouping: mine, by: \.kind)
-                ForEach(Packages.kinds.filter { groups[$0.kind] != nil }, id: \.kind) { kind in
-                    Text(kind.label).font(.caption.weight(.semibold)).foregroundStyle(.secondary).textCase(.uppercase).padding(.top, 4)
-                    ForEach(groups[kind.kind] ?? []) { item in
+            Text("On this Mac").font(.caption.weight(.semibold)).foregroundStyle(.secondary).textCase(.uppercase)
+                .padding(.top, missing.isEmpty ? 0 : 6)
+            let groups = Dictionary(grouping: mine, by: \.kind)
+            ForEach(Packages.kinds.filter { groups[$0.kind] != nil }, id: \.kind) { kind in
+                let items = groups[kind.kind] ?? []
+                HStack(spacing: 10) {
+                    RowIcon(symbol: kind.symbol)
+                    VStack(alignment: .leading, spacing: 0) {
+                        Text(kind.label).font(.body.weight(.medium))
+                        Text("\(items.count) on this Mac").font(.caption).foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Button(shownKinds.contains(kind.kind) ? "Hide" : "Show") {
+                        withAnimation { if shownKinds.contains(kind.kind) { shownKinds.remove(kind.kind) } else { shownKinds.insert(kind.kind) } }
+                    }
+                    .buttonStyle(.link).font(.callout)
+                }
+                .padding(.horizontal, 8).padding(.vertical, 3)
+                if shownKinds.contains(kind.kind) {
+                    ForEach(items) { item in
                         HStack(spacing: 8) {
-                            Image(systemName: kind.symbol).foregroundStyle(.secondary).frame(width: 18)
                             Text(item.name).font(.callout).lineLimit(1)
                             Spacer()
                             BusyOrError(model: model, token: item.token)
-                            Button { remove = RemoveTarget(token: item.token, name: item.name) } label: { Label("Remove", systemImage: "trash") }
-                                .glassButton().controlSize(.small)
+                            Button { remove = RemoveTarget(token: item.token, name: item.name) } label: { Image(systemName: "trash") }
+                                .buttonStyle(.plain).foregroundStyle(.secondary).help("Remove from this Mac or all Macs")
                         }
+                        .padding(.leading, 46).padding(.trailing, 8)
                     }
                 }
             }
@@ -480,7 +531,9 @@ struct UpdatesPanel: View {
                         isExpanded: $open) {
                 Toggle("Automatic", isOn: $model.autoUpgrade).toggleStyle(.switch).controlSize(.small)
                     .help("Check and update on open and every six hours")
-                Button(model.upgrading ? "Updating…" : "Update Now") { model.upgradeAll() }
+                let pending = !(report?.waiting.isEmpty ?? true) || !(report?.failures.isEmpty ?? true)
+                Button(model.upgrading ? "Checking…" : pending || report == nil ? "Update Now" : "Check Again") { model.upgradeAll() }
+                    .help("Look for newer versions now")
                     .glassButton().controlSize(.small).disabled(model.upgrading)
             }
             if open, let report {

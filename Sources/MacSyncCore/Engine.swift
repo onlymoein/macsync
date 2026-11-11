@@ -323,6 +323,7 @@ public final class Engine {
     /// The apps this Mac offers the others: everything, minus what the person switched off.
     private func sharedInventory(_ state: LocalState) -> Inventory? {
         guard var inventory = state.inventory else { return nil }
+        inventory.allFormulae = nil
         let hidden = Set(state.unshared ?? [])
         guard !hidden.isEmpty else { return inventory }
         inventory.casks.removeAll { hidden.contains(AppRef(source: .cask, name: $0).token) }

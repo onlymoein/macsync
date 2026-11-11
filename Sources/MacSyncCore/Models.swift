@@ -147,8 +147,13 @@ public struct Inventory: Codable, Equatable {
     public var details: [String: AppDetail]?
     /// Apps from neither Homebrew nor the App Store. Other Macs download them from where they are published.
     public var directApps: [DirectApp]?
+    /// Every formula on this Mac, including ones other formulae pulled in. Only `formulae` (what
+    /// was asked for) is offered to other Macs; this stops one that is here as a dependency
+    /// (poppler, ruby) being offered back as missing.
+    public var allFormulae: [String]?
     public init(brewAvailable: Bool = false, casks: [String] = [], formulae: [String] = [], appStore: [AppStoreApp] = [],
-                details: [String: AppDetail]? = nil, directApps: [DirectApp]? = nil) {
+                details: [String: AppDetail]? = nil, directApps: [DirectApp]? = nil, allFormulae: [String]? = nil) {
+        self.allFormulae = allFormulae
         self.directApps = directApps
         self.brewAvailable = brewAvailable
         self.casks = casks

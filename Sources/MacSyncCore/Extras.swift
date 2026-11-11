@@ -140,6 +140,7 @@ public enum ExtrasCatalog {
     static let skippedFolders: Set<String> = [".git", "node_modules", "__pycache__", ".venv", "cache", "Cache", "logs", ".system"]
     static let maxFileSize = 25 * 1024 * 1024
     static let maxFilesPerGroup = 3000
+    static let maxBytesPerGroup = 300_000_000
 
     static func isNeverShared(_ path: String) -> Bool {
         if neverPrefixes.contains(where: { path == $0 || path.hasPrefix($0 + "/") }) { return true }
@@ -492,8 +493,15 @@ final class Extras {
         let localOnly = Set(state.localOnly)
         for group in ExtrasCatalog.groups {
             if !group.needsApp.isEmpty && !group.needsApp.contains(where: appInstalled) { continue }
+            var groupBytes = 0
             for path in ExtrasFiles.list(group, home: env.homeDirectory) where files[path] == nil {
                 if localOnly.contains(path) { continue }
+                // A folder that grew huge (presets, fonts) stops being copied past the limit.
+                groupBytes += ((try? FileManager.default.attributesOfItem(atPath: ExtrasFiles.expand(path, home: env.homeDirectory))[.size]) as? NSNumber)?.intValue ?? 0
+                if groupBytes > ExtrasCatalog.maxBytesPerGroup {
+                    kept.append(KeptFile(path: path, area: group.area, reason: "\(group.label) is over \(ExtrasCatalog.maxBytesPerGroup / 1_000_000) MB, so the rest stays here"))
+                    continue
+                }
                 let stamp = Self.stamp(path, home: env.homeDirectory)
                 if let known = state.known[path], let stamp, state.stamps?[path] == stamp,
                    known.sha.map({ FileManager.default.fileExists(atPath: blobs.appendingPathComponent($0).path) }) ?? true {
@@ -612,7 +620,7 @@ final class Extras {
                                     sourceMachine: source, entry: entry, detail: "", preview: [], waiting: false)
             if let link = entry.link {
                 change.detail = "link to \(link)"
-            } else if let sha = entry.sha, let data = fm.contents(atPath: blobs.appendingPathComponent(sha).path) {
+            } else if let sha = entry.sha, blobReady(sha), let data = fm.contents(atPath: blobs.appendingPathComponent(sha).path) {
                 describe(&change, new: data, oldPath: exists ? full : nil, group: group)
             } else {
                 change.waiting = true
@@ -664,6 +672,18 @@ final class Extras {
         plan.installedLoginItems = state.loginItems ?? []
         _ = skipped
         return plan
+    }
+
+    /// Whether a shared file's copy is on this Mac. One still in iCloud is asked for in the
+    /// background: reading it here would wait for the download, once per file.
+    func blobReady(_ sha: String) -> Bool {
+        let url = blobs.appendingPathComponent(sha)
+        let values = try? url.resourceValues(forKeys: [.isUbiquitousItemKey, .ubiquitousItemDownloadingStatusKey])
+        if values?.isUbiquitousItem == true, values?.ubiquitousItemDownloadingStatus != .current {
+            try? FileManager.default.startDownloadingUbiquitousItem(at: url)
+            return false
+        }
+        return FileManager.default.fileExists(atPath: url.path)
     }
 
     private func describe(_ change: inout FileChange, new: Data, oldPath: String?, group: FileGroup) {
@@ -732,7 +752,9 @@ final class Extras {
                     if backup.existed { try fm.removeItem(atPath: full) }
                     try fm.createSymbolicLink(atPath: full, withDestinationPath: ExtrasFiles.expand(link, home: home))
                 } else {
-                    guard let sha = change.entry.sha, let blob = fm.contents(atPath: blobs.appendingPathComponent(sha).path),
+                    guard let sha = change.entry.sha else { throw EngineError.refused("its copy in iCloud is incomplete") }
+                    guard blobReady(sha) else { throw EngineError.refused("it's still arriving through iCloud; try again in a minute") }
+                    guard let blob = fm.contents(atPath: blobs.appendingPathComponent(sha).path),
                           AppDownloader.sha256Hex(blob) == sha else { throw EngineError.refused("its copy in iCloud is incomplete") }
                     var data = blob
                     switch group.mode {

@@ -195,6 +195,8 @@ struct PanelHeader<Trailing: View>: View {
     let symbol: String
     let title: String
     let subtitle: String?
+    /// A picture used in place of the symbol, drawn white on the blue tile (ArtCraft's logo).
+    var mark: NSImage? = nil
     /// When given, the header opens and closes its panel.
     var isExpanded: Binding<Bool>? = nil
     @ViewBuilder let trailing: Trailing
@@ -224,8 +226,10 @@ struct PanelHeader<Trailing: View>: View {
 
     private var label: some View {
         HStack(alignment: .center, spacing: 12) {
-            Image(systemName: symbol)
-                .font(.system(size: 15, weight: .semibold))
+            Group {
+                if let mark { Image(nsImage: mark).resizable().interpolation(.high).scaledToFit().padding(5) }
+                else { Image(systemName: symbol).font(.system(size: 15, weight: .semibold)) }
+            }
                 .foregroundStyle(.white)
                 .frame(width: 30, height: 30)
                 .background(LinearGradient(colors: [Color(red: 0.23, green: 0.17, blue: 0.84), Color(red: 0.12, green: 0.49, blue: 1.0)],
@@ -605,7 +609,7 @@ private struct ArtCraftPanel: View {
             PanelHeader(symbol: "paintpalette.fill", title: "ArtCraft",
                         subtitle: apps.isEmpty ? (model.craftLoading ? "Loading ArtCraft's apps…" : "ArtCraft's list isn't reachable right now")
                             : "\(installed) of \(apps.count) apps on this Mac" + (toUpdate.isEmpty ? "" : " · \(toUpdate.count) to update"),
-                        isExpanded: $open) {
+                        mark: ArtCraftMark.image, isExpanded: $open) {
                 HStack(spacing: 10) {
                     if !toRemoveHere.isEmpty {
                         Button("Remove \(toRemoveHere.count) Removed Elsewhere") { model.removeCraft(toRemoveHere) }

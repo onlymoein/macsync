@@ -168,3 +168,12 @@ final class ExtrasTests: XCTestCase {
         XCTAssertEqual(catalog.cask(forApp: "zoom.us.app"), "zoom")
     }
 }
+
+final class DependencyFormulaTests: XCTestCase {
+    func testAFormulaHereAsADependencyIsNotMissing() {
+        var other = TestWorld.snapshot(id: "studio", apps: [], changedAt: Date())
+        other.inventory = Inventory(brewAvailable: true, formulae: ["poppler", "jq"])
+        let local = Inventory(brewAvailable: true, formulae: [], allFormulae: ["poppler"])
+        XCTAssertEqual(Planner.missingApps(local: local, others: [other]).map(\.app.name), ["jq"])
+    }
+}
