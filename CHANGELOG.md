@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.7.2
+- After adding or removing a Craft app, ArtCraft Launcher comes back hidden in the menu bar, the way it was, instead of opening its window.
+- Automatic updates leave Craft apps to ArtCraft Launcher, which keeps them up to date itself.
+
 ## 0.7.1
 - **Apps and tools stay up to date:** on open and every six hours, MacSync updates every Homebrew app and command-line tool, including apps that update themselves like Raycast, plus npm global packages and uv tools. An app that's open waits, with a Quit and Update button, so nothing quits under you. Switch it off in the menu or the new Updates section.
 - **Self-update no longer goes through Homebrew:** MacSync replaces itself directly, which macOS allows, instead of asking Homebrew to, which macOS can block halfway and leave no app behind ("It seems the App source '/Applications/MacSync.app' is not there").

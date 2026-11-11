@@ -39,6 +39,7 @@ public struct Upgrader {
     public init(env: MacSyncEnvironment, runner: CommandRunning) { self.env = env; self.runner = runner }
 
     public static let interval: TimeInterval = 6 * 3600
+    static let leftToTheirLauncher: Set<String> = Set(AppSuite.all.flatMap { $0.members.map(\.cask) })
     var stateURL: URL { env.dataDirectory.appendingPathComponent("upgrades.json") }
 
     public func lastReport() -> UpgradeReport? {
@@ -66,7 +67,8 @@ public struct Upgrader {
                                       to: formula["current_version"] as? String ?? "?"))
         }
         let casks = (root["casks"] as? [[String: Any]] ?? []).compactMap { $0["name"] as? String }
-            .filter { $0 != "macsync" && AppRef(source: .cask, name: $0).isSafe }
+            // ArtCraft Launcher keeps the Craft apps up to date itself.
+            .filter { $0 != "macsync" && !Self.leftToTheirLauncher.contains($0) && !$0.hasSuffix("craft") && AppRef(source: .cask, name: $0).isSafe }
         let apps = casks.isEmpty ? [:] : appNames(casks, brew: brew)
         for cask in root["casks"] as? [[String: Any]] ?? [] {
             guard let name = cask["name"] as? String, casks.contains(name) else { continue }

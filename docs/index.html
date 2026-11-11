@@ -645,6 +645,7 @@ macsync restore-points</pre>
   <section id="faq">
     <p class="eyebrow">Questions</p>
     <h2>Good to know</h2>
+    <details><summary>macOS says it can't verify MacSync</summary><p>That happens while Apple is still checking a new release. Open System Settings → Privacy &amp; Security and click Open Anyway, or run <code>xattr -dr com.apple.quarantine /Applications/MacSync.app</code> in Terminal, then open MacSync again.</p></details>
     <details><summary>Do I need an account or a server?</summary><p>No. MacSync only uses your own iCloud Drive. Turn on iCloud Drive on each Mac, signed in to the same Apple Account.</p></details>
     <details><summary>Will it delete my apps?</summary><p>Only when you ask. "Remove from all Macs" uninstalls an app after you confirm, and each other Mac asks before removing it there. Homebrew uninstalls its own apps; anything else goes to the Trash, where you can put it back.</p></details>
     <details><summary>How does it install apps I downloaded myself?</summary><p>It finds where the app is published, through Homebrew's public list or the app's own update feed, downloads it from there, checks it, and installs it or opens the installer for you.</p></details>

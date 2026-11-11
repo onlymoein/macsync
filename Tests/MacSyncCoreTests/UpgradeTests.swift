@@ -7,7 +7,7 @@ final class UpgradeTests: XCTestCase {
         func run(_ executable: String, _ arguments: [String], input: Data?, environment: [String: String]) -> CommandResult {
             calls.append(arguments)
             if arguments.first == "outdated" {
-                let json = #"{"formulae": [{"name": "jq", "installed_versions": ["1.6"], "current_version": "1.7"}], "casks": [{"name": "raycast", "installed_versions": ["1.0"], "current_version": "1.1"}, {"name": "ghostty", "installed_versions": ["1.0"], "current_version": "1.2"}, {"name": "macsync", "installed_versions": ["0.6"], "current_version": "0.7"}]}"#
+                let json = #"{"formulae": [{"name": "jq", "installed_versions": ["1.6"], "current_version": "1.7"}], "casks": [{"name": "deckcraft", "installed_versions": ["0.1"], "current_version": "0.2"}, {"name": "raycast", "installed_versions": ["1.0"], "current_version": "1.1"}, {"name": "ghostty", "installed_versions": ["1.0"], "current_version": "1.2"}, {"name": "macsync", "installed_versions": ["0.6"], "current_version": "0.7"}]}"#
                 return CommandResult(status: 0, stdout: Data(json.utf8))
             }
             if arguments.first == "info" {

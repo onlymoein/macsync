@@ -341,7 +341,12 @@ public struct ArtCraft {
             try? data.write(to: recordsURL, options: .atomic)
         }
         if !running.isEmpty, let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: Self.launcherBundleID) {
-            NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration())
+            // Back in the menu bar the way it was, not as a window in front of you.
+            let configuration = NSWorkspace.OpenConfiguration()
+            configuration.arguments = ["--hidden"]
+            configuration.activates = false
+            configuration.addsToRecentItems = false
+            NSWorkspace.shared.openApplication(at: url, configuration: configuration)
         }
     }
 
