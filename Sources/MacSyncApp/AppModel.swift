@@ -41,6 +41,7 @@ final class AppModel: ObservableObject {
     private var timer: Timer?
     private var lastInventoryRefresh = Date.distantPast
     private var wakeObserver: NSObjectProtocol?
+    private var dockWatcher: DockWatcher?
 
     private static let syncInterval: TimeInterval = 5 * 60
     private static let inventoryInterval: TimeInterval = 30 * 60
@@ -52,6 +53,15 @@ final class AppModel: ObservableObject {
         wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
             Task { @MainActor in self?.backgroundSync() }
+        }
+        let env = MacSyncEnvironment.current()
+        let dockFile = env.dockFile ?? URL(fileURLWithPath: env.homeDirectory)
+            .appendingPathComponent("Library/Preferences/com.apple.dock.plist")
+        dockWatcher = DockWatcher(file: dockFile) { [weak self] in
+            Task { @MainActor in
+                guard let self, self.autoSync, !self.isApplying else { return }
+                self.runSync(refreshInventory: false)
+            }
         }
         syncNow()
         checkForUpdates()
