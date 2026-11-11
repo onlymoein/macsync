@@ -63,7 +63,10 @@ public struct SyncOverview: Codable, Equatable {
     /// Settings this Mac keeps to itself.
     public var excludedSettings: [String] = []
 
-    public var hasPendingChanges: Bool { dockPlan != nil || settingsPlan != nil || !wantedApps.isEmpty || !toRemove.isEmpty }
+    /// Suggested suites (ArtCraft) are offered in the window but don't count as something to do.
+    public var hasPendingChanges: Bool {
+        dockPlan != nil || settingsPlan != nil || wantedApps.contains { !$0.fromMachines.isEmpty } || !toRemove.isEmpty
+    }
     /// Missing apps, minus the ones this Mac doesn't need.
     public var wantedApps: [MissingApp] { missingApps.filter { !skippedApps.contains($0.app.token) } }
 }
@@ -194,9 +197,13 @@ public final class Engine {
             && FileManager.default.isWritableFile(atPath: url.path)
     }
 
+    /// Suites always offered (ArtCraft). Tests pass none.
+    let suites: [AppSuite]
+
     public init(env: MacSyncEnvironment, dock: DockStoring, locator: AppLocating, runner: CommandRunning,
                 prefs: PreferencesStoring = InMemoryPreferences(), proUnlocked: Bool = ProLicense.isUnlocked,
-                now: @escaping () -> Date = Date.init) {
+                suites: [AppSuite] = AppSuite.all, now: @escaping () -> Date = Date.init) {
+        self.suites = suites
         self.prefs = prefs
         self.proUnlocked = proUnlocked
         self.env = env
@@ -788,7 +795,19 @@ public final class Engine {
     /// Apps on other Macs that this one lacks, leaving out any this Mac already has under another
     /// name or source (AnyDesk from Homebrew on one Mac, downloaded on another).
     private func missingApps(_ state: LocalState, others: [MachineSnapshot]) -> [MissingApp] {
-        let found = Planner.missingApps(local: state.inventory ?? Inventory(), others: others)
+        var found = Planner.missingApps(local: state.inventory ?? Inventory(), others: others)
+        // Suites MacSync always offers (ArtCraft): any member this Mac lacks, from Homebrew.
+        let inventory = state.inventory ?? Inventory()
+        let have = Set(inventory.casks)
+        let haveBundles = Set((inventory.directApps ?? []).map(\.bundleID))
+        let offered = Set(found.compactMap { $0.detail?.bundleID } + found.map(\.app.name))
+        for suite in suites {
+            for member in suite.members where !have.contains(member.cask) && !haveBundles.contains(member.bundleID)
+                && !offered.contains(member.bundleID) && !offered.contains(member.cask) {
+                found.append(MissingApp(app: AppRef(source: .cask, name: member.cask), fromMachines: [],
+                                        detail: AppDetail(displayName: member.name, bundleID: member.bundleID)))
+            }
+        }
         // A Mac on an older MacSync sends only cask names: fill in the real names from Homebrew's list.
         let catalog = found.contains { $0.app.source == .cask && $0.detail?.displayName == nil }
             ? CaskCatalog.load(env: env, runner: runner, now: now()) : nil

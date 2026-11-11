@@ -105,10 +105,11 @@ final class TestWorld {
             dockFile: nil, brewPath: "/fake/brew", applicationsDirectory: folder.appendingPathComponent("Applications"),
             homeDirectory: "/Users/test")
         return Engine(env: env, dock: dock, locator: TestLocator(apps: locate), runner: mac.runner, prefs: mac.prefs,
-                      now: { [unowned self] in self.clock })
+                      suites: [], now: { [unowned self] in self.clock })
     }
 
-    func mac(_ id: String, dock: [String], locate: Set<String>? = nil, brew: String? = "/fake/brew", pro: Bool = true) throws -> Mac {
+    func mac(_ id: String, dock: [String], locate: Set<String>? = nil, brew: String? = "/fake/brew", pro: Bool = true,
+             suites: [AppSuite] = []) throws -> Mac {
         let folder = root.appendingPathComponent(id)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         let dockURL = folder.appendingPathComponent("dock.plist")
@@ -121,7 +122,7 @@ final class TestWorld {
         let runner = FakeRunner()
         let prefs = InMemoryPreferences()
         let engine = Engine(env: env, dock: store, locator: TestLocator(apps: locate ?? Set(dock)), runner: runner,
-                            prefs: prefs, proUnlocked: pro, now: { [unowned self] in self.clock })
+                            prefs: prefs, proUnlocked: pro, suites: suites, now: { [unowned self] in self.clock })
         return Mac(engine: engine, dockStore: store, runner: runner, id: id, prefs: prefs)
     }
 

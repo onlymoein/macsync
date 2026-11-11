@@ -165,8 +165,8 @@ final class AppModel: ObservableObject {
         if let plan = overview.settingsPlan {
             return "New settings from \(plan.sourceMachine)"
         }
-        if !overview.wantedApps.isEmpty {
-            let count = overview.wantedApps.count
+        if overview.wantedApps.contains(where: { !$0.fromMachines.isEmpty }) {
+            let count = overview.wantedApps.filter { !$0.fromMachines.isEmpty }.count
             return "\(count) app\(count == 1 ? "" : "s") on your other Macs"
         }
         return overview.machines.count > 1 ? "Your Macs match" : "This Mac is saved. Add another Mac to sync."

@@ -574,7 +574,8 @@ struct AppFamily: Identifiable {
             if let k = key(app), let members = byKey[k] {
                 guard seen.insert(k).inserted else { continue }
                 let launcher = members.first { $0.displayName.hasSuffix(" Launcher") }
-                let name = launcher.map { String($0.displayName.dropLast(" Launcher".count)) }
+                let suite = AppSuite.all.first { suite in suite.members.contains { $0.bundleID.lowercased().hasPrefix(k + ".") } }
+                let name = suite?.name ?? launcher.map { String($0.displayName.dropLast(" Launcher".count)) }
                     ?? k.split(separator: ".").reversed().joined(separator: ".")
                 let sorted = members.sorted { a, b in
                     (a.displayName.hasSuffix(" Launcher") ? 0 : 1, a.displayName) < (b.displayName.hasSuffix(" Launcher") ? 0 : 1, b.displayName)
@@ -1101,7 +1102,8 @@ private struct AppRow: View {
 
     private var help: String {
         switch missing.app.source {
-        case .cask, .formula: return "Installs with Homebrew. On \(missing.fromMachines.joined(separator: ", "))."
+        case .cask, .formula: return missing.fromMachines.isEmpty ? "Installs with Homebrew. Suggested by MacSync."
+            : "Installs with Homebrew. On \(missing.fromMachines.joined(separator: ", "))."
         case .appStore: return "Opens its App Store page. Click Get there."
         case .direct:
             return missing.canInstall

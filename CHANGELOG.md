@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.6.3
+- The ArtCraft suite is always offered as one row, even when none of your Macs has it. Get All installs the missing Craft apps with Homebrew into the folder you choose.
+
 ## 0.6.2
 - Get All on a group asks which folder to install into, and remembers it (for example Applications/ArtCraft).
 - A downloaded app that Homebrew also publishes installs fully through Homebrew instead of opening its installer.

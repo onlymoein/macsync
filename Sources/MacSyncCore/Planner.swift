@@ -266,6 +266,29 @@ public enum Planner {
     }
 }
 
+/// A set of apps from one developer that MacSync always offers, even when no Mac has them yet.
+public struct AppSuite {
+    public struct Member { public let cask: String; public let bundleID: String; public let name: String }
+    public let name: String
+    public let members: [Member]
+
+    public static let all: [AppSuite] = [
+        AppSuite(name: "ArtCraft", members: [
+            Member(cask: "artcraft-launcher", bundleID: "ai.storyteller.artcraft-launcher", name: "ArtCraft Launcher"),
+            Member(cask: "deckcraft", bundleID: "ai.storyteller.deckcraft", name: "DeckCraft"),
+            Member(cask: "designcraft", bundleID: "ai.storyteller.designcraft", name: "DesignCraft"),
+            Member(cask: "effectcraft", bundleID: "ai.storyteller.effectcraft", name: "EffectCraft"),
+            Member(cask: "filmcraft", bundleID: "ai.storyteller.filmcraft", name: "FilmCraft"),
+            Member(cask: "gridcraft", bundleID: "ai.storyteller.gridcraft", name: "GridCraft"),
+            Member(cask: "lightcraft", bundleID: "ai.storyteller.lightcraft", name: "LightCraft"),
+            Member(cask: "pdfcraft", bundleID: "ai.storyteller.pdfcraft", name: "PdfCraft"),
+            Member(cask: "photocraft", bundleID: "ai.storyteller.photocraft", name: "PhotoCraft"),
+            Member(cask: "vectorcraft", bundleID: "ai.storyteller.vectorcraft", name: "VectorCraft"),
+            Member(cask: "wordcraft", bundleID: "ai.storyteller.wordcraft", name: "WordCraft"),
+        ]),
+    ]
+}
+
 public struct MissingApp: Equatable, Identifiable, Codable {
     public var app: AppRef
     public var fromMachines: [String]

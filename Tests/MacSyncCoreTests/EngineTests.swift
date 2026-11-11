@@ -656,6 +656,17 @@ final class EngineTests: XCTestCase {
         XCTAssertTrue(air.runner.calls.contains(["/fake/brew", "install", "--cask", "--appdir=\(folder.path)", "photocraft"]))
     }
 
+    func testArtCraftSuiteIsOfferedEvenWhenNoMacHasIt() throws {
+        let world = try TestWorld()
+        let air = try world.mac("air", dock: ["a"], suites: AppSuite.all)
+        air.runner.casks = ["photocraft"]
+        let offered = try air.engine.sync().missingApps.map(\.app.token)
+        XCTAssertTrue(offered.contains("cask:wordcraft"))
+        XCTAssertTrue(offered.contains("cask:artcraft-launcher"))
+        XCTAssertFalse(offered.contains("cask:photocraft"))
+        XCTAssertEqual(offered.filter { $0.hasPrefix("cask:") }.count, 10)
+    }
+
     func testOldICloudCopiesAreDeleted() throws {
         let world = try TestWorld()
         let old = world.sync.appendingPathComponent("apps/packages")
