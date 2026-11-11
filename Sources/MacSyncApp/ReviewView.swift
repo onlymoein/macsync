@@ -177,7 +177,9 @@ struct ReviewView: View {
                     VStack(alignment: .leading, spacing: 4) {
                         ProgressView(value: Double(min(job.done, job.total)), total: Double(max(job.total, 1)))
                             .progressViewStyle(.linear).frame(maxWidth: 260)
-                        Text(job.line).font(.caption).lineLimit(1).truncationMode(.middle)
+                        TimelineView(.periodic(from: .now, by: 5)) { time in
+                            Text(job.line(at: time.date)).font(.caption).lineLimit(1).truncationMode(.middle)
+                        }
                     }
                 } else if model.isApplying {
                     ProgressView().controlSize(.small)
@@ -608,6 +610,7 @@ private struct ArtCraftPanel: View {
     @ObservedObject var model: AppModel
     @AppStorage("review.artcraft.open") private var open = true
     @State private var confirmRemove: [CraftApp] = []
+    @State private var confirmInstall: [CraftApp] = []
 
     private var apps: [CraftApp] { model.craftApps }
     private var skipped: Set<String> { Set(model.overview?.skippedApps ?? []) }
@@ -646,19 +649,35 @@ private struct ArtCraftPanel: View {
                     if !toUpdate.isEmpty {
                         Button("Update All \(toUpdate.count)") { model.installCraft(toUpdate) }.glassButton().controlSize(.small)
                     }
-                    Button(toInstall.isEmpty ? "Install All" : "Install All \(toInstall.count)") { model.installCraft(toInstall) }
+                    Button(toInstall.isEmpty ? "Install All" : "Install All \(toInstall.count)") { confirmInstall = toInstall }
                         .primaryGlassButton().controlSize(.small).disabled(toInstall.isEmpty)
                 }
             }
             if open && !apps.isEmpty {
-                Text("From ArtCraft's own downloads, checked against their published checksums, into ArtCraft Launcher's install folder. The launcher knows about them and keeps them updated.")
+                Text("From ArtCraft's own downloads, checked against their published checksums. ArtCraft Launcher installs first; it knows about the others and keeps them updated.")
                     .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                HStack(spacing: 6) {
+                    Image(systemName: "folder").foregroundStyle(.secondary)
+                    Text("Installs into \(model.craftFolder.path)").font(.caption).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
+                    Button("Change…") { model.chooseCraftFolder() }.buttonStyle(.link).font(.caption)
+                }
                 VStack(spacing: 2) { ForEach(apps) { row($0) } }
             }
         }
         .padding(18)
         .glassPanel()
         .onAppear { model.loadCraft() }
+        .confirmationDialog("Install \(confirmInstall.count) ArtCraft app\(confirmInstall.count == 1 ? "" : "s") into \(model.craftFolder.path)?",
+                            isPresented: Binding(get: { !confirmInstall.isEmpty }, set: { if !$0 { confirmInstall = [] } })) {
+            Button("Install") { model.installCraft(confirmInstall); confirmInstall = [] }
+            Button("Choose Another Folder…") {
+                let apps = confirmInstall
+                confirmInstall = []
+                if model.chooseCraftFolder() { model.installCraft(apps) }
+            }
+        } message: {
+            Text("ArtCraft Launcher goes in first, then each app downloads from ArtCraft, is checked, and is added to the launcher's list.")
+        }
         .confirmationDialog(confirmRemove.count == 1 ? "Remove \(confirmRemove[0].name)?"
                                 : "Remove \(confirmRemove.count) ArtCraft apps?",
                             isPresented: Binding(get: { !confirmRemove.isEmpty }, set: { if !$0 { confirmRemove = [] } })) {

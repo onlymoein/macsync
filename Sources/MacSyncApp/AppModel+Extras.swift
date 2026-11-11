@@ -223,6 +223,8 @@ struct WorkProgress: Equatable {
     var current: String?
     /// What's happening to the current item ("Downloading AniCraft… 40%").
     var status: String?
+    /// When the current item started, so a slow one shows it's still going.
+    var since = Date()
     var total: Int { names.count }
     var next: String? {
         guard let current, let i = names.firstIndex(of: current), i + 1 < names.count else { return nil }
@@ -237,6 +239,13 @@ struct WorkProgress: Equatable {
         if failed > 0 { text += " · \(failed) failed" }
         return text
     }
+
+    /// The line, with how long the current item has taken once it's been a while.
+    func line(at now: Date) -> String {
+        let seconds = Int(now.timeIntervalSince(since))
+        guard seconds >= 20 else { return line }
+        return line + (seconds < 60 ? " · \(seconds)s" : " · \(seconds / 60) min")
+    }
 }
 
 extension AppModel {
@@ -245,6 +254,7 @@ extension AppModel {
         guard var w = work[job] else { return }
         let name = w.names.first { message.contains($0) }
         if let name, let index = w.names.firstIndex(of: name) {
+            if w.current != name { w.since = Date() }
             w.done = index
             w.current = name
             workCurrent[job] = ids[name]
@@ -258,6 +268,29 @@ extension AppModel {
     var activeWork: WorkProgress? {
         for key in ["get", "craft", "remove", "craftRemove", "brew"] { if let w = work[key] { return w } }
         return nil
+    }
+
+    /// Where ArtCraft apps go: the folder picked here, else ArtCraft Launcher's own.
+    var craftFolder: URL {
+        if let path = UserDefaults.standard.string(forKey: "craft.folder") { return URL(fileURLWithPath: path) }
+        return engine.craftInstallFolder()
+    }
+
+    /// Asks where ArtCraft apps go. True when a folder was picked.
+    @discardableResult
+    func chooseCraftFolder() -> Bool {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.canCreateDirectories = true
+        panel.directoryURL = craftFolder.deletingLastPathComponent()
+        panel.prompt = "Install Here"
+        panel.message = "Choose where ArtCraft apps go. ArtCraft Launcher looks in this folder too."
+        NSApp.activate(ignoringOtherApps: true)
+        guard panel.runModal() == .OK, let url = panel.url else { return false }
+        UserDefaults.standard.set(url.path, forKey: "craft.folder")
+        objectWillChange.send()
+        return true
     }
 
     /// The current ArtCraft download's percentage, while it's downloading.

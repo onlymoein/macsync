@@ -501,17 +501,27 @@ final class AppModel: ObservableObject {
         guard !fresh.isEmpty else { return }
         for app in fresh { craftBusy.insert(app.id); craftErrors[app.id] = nil }
         let engine = engine
-        let ids = Dictionary(fresh.map { ($0.name, $0.id) }, uniquingKeysWith: { a, _ in a })
-        work["craft"] = WorkProgress(verb: "Installing ArtCraft apps", names: fresh.filter(\.availableOnMac).map(\.name))
+        // The launcher goes first, and comes along when it isn't on this Mac yet.
+        var ordered = fresh.filter(\.availableOnMac).sorted { ($0.id == "artcraft-launcher" ? 0 : 1) < ($1.id == "artcraft-launcher" ? 0 : 1) }
+        if !ordered.contains(where: { $0.id == "artcraft-launcher" }),
+           let launcher = craftApps.first(where: { $0.id == "artcraft-launcher" && !$0.isInstalled }) {
+            ordered.insert(launcher, at: 0)
+            craftBusy.insert(launcher.id)
+        }
+        let ids = Dictionary(ordered.map { ($0.name, $0.id) }, uniquingKeysWith: { a, _ in a })
+        work["craft"] = WorkProgress(verb: "Installing ArtCraft apps", names: ordered.map(\.name))
+        let folder = craftFolder
+        let launcherID = ordered.first?.id
         Task {
             let results = await Task.detached { () -> [(CraftApp, Result<String, EngineError>)] in
                 engine.installCraftAgain(fresh)
-                return engine.installCraft(fresh) { message in
+                return engine.installCraft(fresh, into: folder) { message in
                     Task { @MainActor [weak self] in self?.advance("craft", message: message, ids: ids) }
                 }
             }.value
             work["craft"] = nil
             workCurrent["craft"] = nil
+            if let launcherID, launcherID == "artcraft-launcher" { craftBusy.remove(launcherID) }
             for (app, result) in results {
                 craftBusy.remove(app.id)
                 if case .failure(let error) = result { craftErrors[app.id] = error.localizedDescription }
@@ -579,6 +589,8 @@ final class AppModel: ObservableObject {
         guard let next = getQueue.first else { work["get"] = nil; workCurrent["get"] = nil; syncNow(); return }
         workCurrent["get"] = next.app.token
         work["get"]?.current = next.displayName
+        work["get"]?.status = nil
+        work["get"]?.since = Date()
         let engine = engine
         progress = "Getting \(next.displayName)…"
         Task {

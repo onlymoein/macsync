@@ -19,7 +19,9 @@ struct MenuView: View {
             if let job = model.activeWork {
                 VStack(alignment: .leading, spacing: 5) {
                     ProgressView(value: Double(min(job.done, job.total)), total: Double(max(job.total, 1))).progressViewStyle(.linear)
-                    Text(job.line).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+                    TimelineView(.periodic(from: .now, by: 5)) { time in
+                        Text(job.line(at: time.date)).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+                    }
                 }
                 .padding(.horizontal, 14).padding(.vertical, 10)
                 Divider()

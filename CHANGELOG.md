@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.8.1
+- ArtCraft Launcher always installs first, and comes along when you install any Craft app on a Mac that doesn't have it.
+- The ArtCraft section shows where apps go ("Installs into /Applications/Artcraft"), with Change…, and Install All asks first: Install, or Choose Another Folder…. A new Mac gets the launcher's own folder, /Applications/Artcraft, not Applications itself.
+- A download without a published size shows how much has arrived (Downloading AniCraft… 84 MB) instead of sitting on Starting.
+- The progress line shows how long the current item has taken once it's been a while (btop · 2 min), so slow doesn't look stuck.
+
 ## 0.8.0
 - **Share My Setup:** the Share button in the sync window (or the settings menu) makes a .macsync file for a friend. Switch on the sections to give: apps, App Store apps, command-line tools and taps, extensions and plugins, settings, config files, AI setup, login items. Save it, or send it with AirDrop, Messages or Mail.
 - Your friend double-clicks the file (or uses Open a Shared Setup…): everything in it shows up as "Your name's setup", with the usual preview and a switch on each item. Apps download from where they're published. A Shared with you section lists it, with Remove.

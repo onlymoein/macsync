@@ -187,7 +187,11 @@ public struct ArtCraft {
 
     /// ArtCraft Launcher's install folder, from its settings; otherwise Applications/Artcraft if it
     /// exists; otherwise Applications.
+    /// A folder the person picked in MacSync, used over the launcher's own setting.
+    var chosenFolder: URL?
+
     func installFolder() -> URL {
+        if let chosenFolder { return chosenFolder }
         if let text = try? String(contentsOf: settingsURL, encoding: .utf8),
            let regex = try? NSRegularExpression(pattern: #"install_locations:\(root:Some\(\\?"([^"\\]+)\\?"\)"#),
            let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
@@ -195,8 +199,8 @@ public struct ArtCraft {
             let path = String(text[range])
             if path.hasPrefix("/") { return URL(fileURLWithPath: path) }
         }
-        let suite = env.applicationsDirectory.appendingPathComponent("Artcraft")
-        return Engine.isUsableFolder(suite) ? suite : env.applicationsDirectory
+        // The launcher's own default. Installing makes it if this Mac doesn't have it yet.
+        return env.applicationsDirectory.appendingPathComponent("Artcraft")
     }
 
     /// The launcher's list of what it installed: id → (version, path).
@@ -232,7 +236,8 @@ public struct ArtCraft {
 
     /// Installs or updates apps one by one, then records them in the launcher's list in one go.
     public func install(_ apps: [CraftApp], progress: (String) -> Void = { _ in }) -> [(CraftApp, Result<String, EngineError>)] {
-        let apps = apps.filter(\.availableOnMac)
+        // The launcher first: it knows about the others and keeps them up to date.
+        let apps = apps.filter(\.availableOnMac).sorted { ($0.id == "artcraft-launcher" ? 0 : 1) < ($1.id == "artcraft-launcher" ? 0 : 1) }
         let folder = installFolder()
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         var results: [(CraftApp, Result<String, EngineError>)] = []
@@ -250,7 +255,7 @@ public struct ArtCraft {
 
     /// Downloads with curl while watching the file grow, so the window can show how far it is.
     static func watchedDownload(runner: CommandRunning, url: String, to file: URL, expected: Int64?,
-                                progress: @escaping (Int) -> Void) -> CommandResult {
+                                progress: @escaping (Int?, Int64) -> Void) -> CommandResult {
         var result = CommandResult(status: -1)
         let done = DispatchSemaphore(value: 0)
         DispatchQueue.global(qos: .userInitiated).async {
@@ -258,12 +263,13 @@ public struct ArtCraft {
                                                   "-o", file.path, url], input: nil, environment: [:])
             done.signal()
         }
-        var last = -1
+        var last: Int64 = -1
         while done.wait(timeout: .now() + 0.5) == .timedOut {
-            guard let expected, expected > 0,
-                  let size = (try? FileManager.default.attributesOfItem(atPath: file.path)[.size]) as? NSNumber else { continue }
-            let percent = min(99, Int(size.int64Value * 100 / expected))
-            if percent != last { last = percent; progress(percent) }
+            guard let size = ((try? FileManager.default.attributesOfItem(atPath: file.path)[.size]) as? NSNumber)?.int64Value,
+                  size != last else { continue }
+            last = size
+            // Without a published size, say how much has arrived.
+            progress(expected.flatMap { $0 > 0 ? min(99, Int(size * 100 / $0)) : nil }, size)
         }
         return result
     }
@@ -274,8 +280,9 @@ public struct ArtCraft {
         defer { try? fm.removeItem(at: work) }
         try? fm.createDirectory(at: work, withIntermediateDirectories: true)
         let dmg = work.appendingPathComponent(app.id + ".dmg")
-        let get = Self.watchedDownload(runner: runner, url: app.dmgURL, to: dmg, expected: app.sizeBytes) { percent in
-            progress("Downloading \(app.name)… \(percent)%")
+        let get = Self.watchedDownload(runner: runner, url: app.dmgURL, to: dmg, expected: app.sizeBytes) { percent, bytes in
+            progress(percent.map { "Downloading \(app.name)… \($0)%" }
+                     ?? "Downloading \(app.name)… \(ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file))")
         }
         progress("Checking and installing \(app.name)…")
         guard get.status == 0, fm.fileExists(atPath: dmg.path) else { return .failure(.refused("\(app.name) didn't download.")) }
@@ -412,8 +419,24 @@ extension Engine {
         ArtCraft(env: env, runner: runner, now: now).status(refresh: refresh)
     }
 
-    public func installCraft(_ apps: [CraftApp], progress: (String) -> Void = { _ in }) -> [(CraftApp, Result<String, EngineError>)] {
-        ArtCraft(env: env, runner: runner, now: now).install(apps, progress: progress)
+    public func installCraft(_ apps: [CraftApp], into folder: URL? = nil,
+                             progress: (String) -> Void = { _ in }) -> [(CraftApp, Result<String, EngineError>)] {
+        var craft = ArtCraft(env: env, runner: runner, now: now)
+        craft.chosenFolder = folder
+        var apps = apps
+        // A Craft app without the launcher: get the launcher too, first.
+        if !apps.contains(where: { $0.id == "artcraft-launcher" }),
+           let launcher = craft.status().first(where: { $0.id == "artcraft-launcher" }), !launcher.isInstalled, launcher.availableOnMac {
+            apps.insert(launcher, at: 0)
+        }
+        return craft.install(apps, progress: progress)
+    }
+
+    /// Where ArtCraft apps go on this Mac: the folder picked in MacSync, else the launcher's.
+    public func craftInstallFolder(chosen: URL? = nil) -> URL {
+        var craft = ArtCraft(env: env, runner: runner, now: now)
+        craft.chosenFolder = chosen
+        return craft.installFolder()
     }
 
     public func removeCraft(_ apps: [CraftApp], everywhere: Bool = false,
