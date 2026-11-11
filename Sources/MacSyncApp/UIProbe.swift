@@ -60,12 +60,22 @@ enum UIProbe {
         write(ReviewView(model: model).frame(width: 680, height: height).background(background), dir, review)
         write(MenuView(model: model).background(background), dir, menu)
         write(AppPrefsView(model: model).frame(width: 460, height: 560).background(background), dir, "appsettings-" + menu)
+        if ProcessInfo.processInfo.environment["MACSYNC_UI_PROBE_SECTIONS"] != nil {
+            let suffix = review.hasSuffix("dark") ? "dark" : "light"
+            for key in ReviewView.probeSections {
+                if let view = ReviewView.probeSection(key, model: model) { write(view, dir, "section-\(key)-\(suffix)") }
+            }
+        }
     }
 
     private static func write<V: View>(_ view: V, _ dir: String, _ name: String) {
         let host = NSHostingView(rootView: view)
         host.frame = NSRect(origin: .zero, size: host.fittingSize)
         host.appearance = NSApp.appearance
+        host.layoutSubtreeIfNeeded()
+        // Let onAppear fill in lists, then size again to fit them.
+        RunLoop.main.run(until: Date().addingTimeInterval(0.4))
+        host.frame = NSRect(origin: .zero, size: host.fittingSize)
         host.layoutSubtreeIfNeeded()
         let bounds = host.bounds
         guard let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: Int(bounds.width * 2), pixelsHigh: Int(bounds.height * 2),

@@ -1419,3 +1419,33 @@ private struct SettingsPanel: View {
         .glassPanel()
     }
 }
+
+#if UIPROBE
+/// Test builds only: one section of the sync window on its own, for the website's pictures.
+extension ReviewView {
+    static let probeSections = ["dock", "notInstalled", "artcraft", "apps", "appStore", "tools", "toRemove", "settings", "history"]
+
+    @MainActor static func probeSection(_ key: String, model: AppModel) -> AnyView? {
+        let o = model.overview
+        let panel: AnyView
+        switch key {
+        case "dock":
+            guard let plan = o?.dockPlan ?? o?.dockPreview else { return nil }
+            panel = AnyView(DockPanel(plan: plan, model: model, matches: o?.dockPlan == nil))
+        case "notInstalled":
+            guard let plan = o?.dockPlan ?? o?.dockPreview, !plan.missing.isEmpty else { return nil }
+            panel = AnyView(NotInstalledPanel(items: plan.missing, model: model))
+        case "artcraft": panel = AnyView(ArtCraftPanel(model: model))
+        case "apps": panel = AnyView(AppsPanel(kind: .apps, model: model))
+        case "appStore": panel = AnyView(AppsPanel(kind: .appStore, model: model))
+        case "tools": panel = AnyView(AppsPanel(kind: .tools, model: model))
+        case "toRemove": panel = AnyView(ToRemovePanel(model: model))
+        case "settings":
+            panel = o?.settingsPlan.map { AnyView(SettingsPanel(plan: $0, model: model)) } ?? AnyView(SettingsMatchPanel(model: model))
+        case "history": panel = AnyView(HistoryPanel(model: model))
+        default: return nil
+        }
+        return AnyView(panel.padding(22).frame(width: 680).background(Backdrop()))
+    }
+}
+#endif

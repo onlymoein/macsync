@@ -46,7 +46,9 @@ snap = {
              "others": [{"kind": "folder", "label": "Downloads", "path": "~/Downloads",
                          "folder": {"arrangement": 2, "displayAs": 0, "showAs": 1, "preferredItemSize": -1}}]},
     "inventory": {"brewAvailable": True, "casks": ["ghostty", "raycast", "rectangle"], "formulae": ["bat", "jq", "ripgrep"],
-                  "appStore": [{"id": "497799835", "name": "Xcode"}, {"id": "899247664", "name": "TestFlight"}]},
+                  "appStore": [{"id": "424389933", "name": "Final Cut Pro"}, {"id": "1289583905", "name": "Pixelmator Pro"}]},
+    "removals": [{"token": "cask:rectangle", "name": "Rectangle", "bundleID": "com.knollsoft.Rectangle",
+                  "at": iso(now - datetime.timedelta(hours=2)), "active": True, "fromMachine": "Mac Studio"}],
     "settings": {"changedAt": iso(now + datetime.timedelta(minutes=1)), "covered": list(values), "values": values, "appDomains": []},
 }
 json.dump(snap, open(work + "/icloud/MacSync/machines/demo-studio.json", "w"))
@@ -66,15 +68,21 @@ chmod +x "$WORK/brew"
 
 run() { # extra env for this run; each run starts from a fresh copy of the demo Air
   rm -rf "$WORK/air/data"; cp "$WORK/air/dock.plist" "$WORK/air/dock.start"
-  env MACSYNC_UI_PROBE="$OUT" MACSYNC_UI_PROBE_SELECT=all MACSYNC_UI_PROBE_HEIGHT="${HEIGHT:-1180}" \
+  env MACSYNC_UI_PROBE="$OUT" MACSYNC_UI_PROBE_SECTIONS=1 MACSYNC_UI_PROBE_SELECT=all MACSYNC_UI_PROBE_HEIGHT="${HEIGHT:-1180}" \
     MACSYNC_SYNC_DIR="$WORK/icloud/MacSync" MACSYNC_DATA_DIR="$WORK/air/data" MACSYNC_DOCK_FILE="$WORK/air/dock.plist" \
     MACSYNC_MACHINE_ID=demo-air MACSYNC_MACHINE_NAME="MacBook Air" MACSYNC_BREW="$WORK/brew" "$@" \
     build/MacSync.app/Contents/MacOS/MacSync
 }
 UIPROBE=1 scripts/build-app.sh >/dev/null
-rm -f "$OUT"/review-*.png "$OUT"/menu-*.png "$OUT"/applied-*.png "$OUT"/menu-applied-*.png
+for k in dock notInstalled artcraft apps appStore tools toRemove settings history; do
+  defaults write com.onlymehdi.macsync "review.$k.open" -bool true
+done
+rm -f "$OUT"/section-*.png "$OUT"/review-*.png "$OUT"/menu-*.png "$OUT"/applied-*.png "$OUT"/menu-applied-*.png
 run MACSYNC_UI_PROBE_DUMMY=1
 cp "$WORK/air/dock.start" "$WORK/air/dock.plist"
 run MACSYNC_UI_PROBE_DARK=1
+for k in dock notInstalled artcraft apps appStore tools toRemove settings history; do
+  defaults delete com.onlymehdi.macsync "review.$k.open" 2>/dev/null || true
+done
 scripts/build-app.sh >/dev/null   # leave a normal build behind, without the probe
 ls -1 "$OUT"
