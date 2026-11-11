@@ -1,6 +1,7 @@
 # Changelog
 
 ## 0.8.2
+- The update check also reads GitHub's releases feed. GitHub's "latest release" address is cached and can point at the previous release for a while, which made a new release look missing ("0.8.0 is the latest version" when 0.8.1 was out).
 - New MacSync releases show up sooner: opening the menu checks when it's been a couple of minutes, and MacSync looks every 10 minutes instead of every 30. `macsync://update` checks now.
 
 ## 0.8.1

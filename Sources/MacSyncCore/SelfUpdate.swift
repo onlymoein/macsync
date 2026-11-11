@@ -36,11 +36,28 @@ public struct SelfUpdater {
     /// release" page points rather than GitHub's API, which limits each network to 60 requests an
     /// hour; the files follow the release's fixed names.
     public func check() -> Release? {
+        var found: [Release] = []
         let result = runner.run("/usr/bin/curl", ["-sS", "--proto", "=https", "--max-time", "30", "-o", "/dev/null",
                                                   "-w", "%{redirect_url}", Self.releasesPage], input: nil, environment: [:])
-        guard result.status == 0, let release = Self.release(fromRedirect: result.output),
-              Self.isNewer(release.version, than: currentVersion) else { return nil }
-        return release
+        if result.status == 0, let release = Self.release(fromRedirect: result.output) { found.append(release) }
+        // GitHub's "latest" address is cached and can point at the previous release for a while;
+        // the releases feed has the new one straight away.
+        let feed = runner.run("/usr/bin/curl", ["-sS", "--proto", "=https", "--max-time", "30", Self.releasesFeed],
+                              input: nil, environment: [:])
+        if feed.status == 0 { found += Self.releases(fromFeed: feed.output) }
+        guard let newest = found.max(by: { Self.isNewer($1.version, than: $0.version) }),
+              Self.isNewer(newest.version, than: currentVersion) else { return nil }
+        return newest
+    }
+
+    static let releasesFeed = "https://github.com/onlymoein/macsync/releases.atom"
+
+    /// Releases named in GitHub's releases feed.
+    static func releases(fromFeed text: String) -> [Release] {
+        guard let regex = try? NSRegularExpression(pattern: "onlymoein/macsync/releases/tag/(v[0-9.]+)") else { return [] }
+        return regex.matches(in: text, range: NSRange(text.startIndex..., in: text)).compactMap { match in
+            Range(match.range(at: 1), in: text).flatMap { release(fromRedirect: "/releases/tag/" + text[$0]) }
+        }
     }
 
     static func release(fromRedirect url: String) -> Release? {

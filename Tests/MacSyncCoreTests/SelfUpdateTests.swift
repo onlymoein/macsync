@@ -49,3 +49,13 @@ final class SelfUpdateTests: XCTestCase {
         guard case .failure = result else { return XCTFail("should refuse") }
     }
 }
+
+final class FeedTests: XCTestCase {
+    func testTheFeedWinsWhenTheLatestLinkIsStale() {
+        let runner = FakeRunner()
+        runner.web[SelfUpdater.releasesPage] = Data("https://github.com/onlymoein/macsync/releases/tag/v0.8.0".utf8)
+        runner.web[SelfUpdater.releasesFeed] = Data("<feed><entry><link href=\"https://github.com/onlymoein/macsync/releases/tag/v0.8.1\"/></entry><entry><link href=\"https://github.com/onlymoein/macsync/releases/tag/v0.8.0\"/></entry></feed>".utf8)
+        let updater = SelfUpdater(runner: runner, brewPath: nil, appURL: URL(fileURLWithPath: "/tmp/x.app"), currentVersion: "0.8.0")
+        XCTAssertEqual(updater.check()?.version, "0.8.1")
+    }
+}
