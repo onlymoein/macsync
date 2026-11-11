@@ -421,6 +421,19 @@ final class AppModel: ObservableObject {
         return url
     }
 
+    /// Apps to open once they are installed (ArtCraft Launcher, so it can install the rest).
+    private var openAfter: [String: String] = [:]
+
+    func get(_ apps: [MissingApp], thenOpen bundleID: String) {
+        for app in apps { openAfter[app.app.token] = bundleID }
+        get(apps)
+    }
+
+    func openApp(bundleID: String) {
+        guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) else { return }
+        NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration())
+    }
+
     func get(_ apps: [MissingApp], into folder: URL) {
         for app in apps { installFolders[app.app.token] = folder }
         get(apps)
@@ -441,14 +454,15 @@ final class AppModel: ObservableObject {
         let engine = engine
         progress = "Getting \(next.displayName)…"
         Task {
-            // A suite's apps always go into Applications, where its launcher finds them.
-            let inSuite = AppSuite.all.contains { $0.member(for: next) != nil }
-            let chosen = installFolders.removeValue(forKey: next.app.token)
-            let folder = inSuite ? nil : chosen
+            let folder = installFolders.removeValue(forKey: next.app.token)
             let result = await Task.detached { engine.getApp(next, into: folder) }.value
             getQueue.removeFirst()
             getting.remove(next.app.token)
             gotten[next.app.token] = result
+            if result.outcome == .installed, let bundleID = openAfter.removeValue(forKey: next.app.token) {
+                // LaunchServices may need a moment to notice the new app.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in self?.openApp(bundleID: bundleID) }
+            }
             progress = nil
             getNext()
         }

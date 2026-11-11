@@ -549,7 +549,9 @@ extension AppSuite {
     public static func contains(_ app: MissingApp) -> Bool { all.contains { $0.member(for: app) != nil } }
 }
 
-/// A suite MacSync always offers (ArtCraft), in a section of its own.
+/// A suite MacSync always offers (ArtCraft), in a section of its own. ArtCraft Launcher keeps its
+/// own list of what it installed and where, so it does the installing: MacSync installs the
+/// launcher if needed, then opens it.
 private struct SuitePanel: View {
     let suite: AppSuite
     @ObservedObject var model: AppModel
@@ -561,41 +563,66 @@ private struct SuitePanel: View {
         _open = AppStorage(wrappedValue: true, "review.suite.\(suite.name).open")
     }
 
+    private var launcherMember: AppSuite.Member? { suite.members.first { $0.name.hasSuffix(" Launcher") } }
     private var missing: [MissingApp] {
         (model.overview?.missingApps ?? []).filter { suite.member(for: $0) != nil }
-            .sorted { a, b in
-                (a.displayName.hasSuffix(" Launcher") ? 0 : 1, a.displayName) < (b.displayName.hasSuffix(" Launcher") ? 0 : 1, b.displayName)
-            }
+            .sorted { $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending }
     }
+    private var launcherMissing: MissingApp? { missing.first { suite.member(for: $0)?.cask == launcherMember?.cask } }
+    private var apps: [MissingApp] { missing.filter { suite.member(for: $0)?.cask != launcherMember?.cask } }
     private var skipped: Set<String> { Set(model.overview?.skippedApps ?? []) }
     private var wanted: [MissingApp] { missing.filter { !skipped.contains($0.app.token) } }
-    private var left: [MissingApp] {
-        wanted.filter { $0.canInstall && model.gotten[$0.app.token] == nil && !model.getting.contains($0.app.token) }
-    }
 
     var body: some View {
         if !missing.isEmpty {
             let onMac = suite.members.count - missing.count
             VStack(alignment: .leading, spacing: 14) {
                 PanelHeader(symbol: "paintpalette.fill", title: suite.name,
-                            subtitle: "\(onMac) of \(suite.members.count) apps on this Mac · Homebrew installs the rest into Applications",
+                            subtitle: "\(onMac) of \(suite.members.count) apps on this Mac · ArtCraft Launcher installs and updates them",
                             isExpanded: $open) {
                     HStack(spacing: 12) {
-                        // Straight into Applications: ArtCraft Launcher doesn't look in subfolders.
-                        Button(left.isEmpty ? "Get All" : "Get All \(left.count)") { model.get(left) }
-                            .glassButton().controlSize(.small).disabled(left.isEmpty)
-                            .help("Install them all into Applications with Homebrew, where ArtCraft Launcher finds them")
+                        action
                         AllSwitch(onCount: wanted.count, total: missing.count) { on in
                             model.setSkipped(tokens: missing.map(\.app.token), !on)
                         }
                     }
                 }
                 if open {
-                    VStack(spacing: 2) { ForEach(missing) { AppRow(missing: $0, model: model) } }
+                    Text(launcherMissing == nil
+                         ? "Open ArtCraft Launcher and press Install on the ones you want. It puts them in its install folder and keeps them updated."
+                         : "MacSync installs ArtCraft Launcher with Homebrew, then opens it so you can install the apps you want.")
+                        .font(.caption).foregroundStyle(.secondary)
+                    VStack(spacing: 2) {
+                        ForEach(apps) { app in
+                            HStack(spacing: 12) {
+                                AppIcon(missing: app, image: model.icon(for: app))
+                                Text(app.displayName).font(.body.weight(.medium))
+                                Spacer()
+                                Toggle("", isOn: Binding(get: { !skipped.contains(app.app.token) }, set: { model.setSkipped(app, !$0) }))
+                                    .toggleStyle(.switch).labelsHidden().controlSize(.small)
+                            }
+                            .padding(.horizontal, 8).padding(.vertical, 4)
+                            .opacity(skipped.contains(app.app.token) ? 0.5 : 1)
+                        }
+                    }
                 }
             }
             .padding(18)
             .glassPanel()
+        }
+    }
+
+    @ViewBuilder private var action: some View {
+        if let launcher = launcherMissing {
+            if model.getting.contains(launcher.app.token) {
+                ProgressView().controlSize(.small)
+            } else {
+                Button("Install ArtCraft Launcher") { model.get([launcher], thenOpen: "ai.storyteller.artcraft-launcher") }
+                    .primaryGlassButton().controlSize(.small)
+            }
+        } else {
+            Button("Open ArtCraft Launcher") { model.openApp(bundleID: "ai.storyteller.artcraft-launcher") }
+                .primaryGlassButton().controlSize(.small)
         }
     }
 }
