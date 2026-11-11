@@ -41,6 +41,10 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>CFBundleVersion</key><string>$VERSION</string>
   <key>LSMinimumSystemVersion</key><string>13.0</string>
   <key>LSUIElement</key><true/>
+  <key>CFBundleURLTypes</key><array><dict>
+    <key>CFBundleURLName</key><string>com.onlymehdi.macsync</string>
+    <key>CFBundleURLSchemes</key><array><string>macsync</string></array>
+  </dict></array>
   <key>NSHumanReadableCopyright</key><string>MIT License</string>
 </dict></plist>
 PLIST
@@ -52,7 +56,7 @@ if [ "$IDENTITY" != "-" ]; then TS="--timestamp"; fi
 # SIGN_KEYCHAIN: a keychain used only for signing, so codesign never asks for the login password.
 KC=()
 if [ -n "${SIGN_KEYCHAIN:-}" ]; then KC=(--keychain "$SIGN_KEYCHAIN"); fi
-codesign --force --options runtime $TS "${KC[@]}" --sign "$IDENTITY" "$APP/Contents/Helpers/macsync"
-codesign --force --options runtime $TS "${KC[@]}" --sign "$IDENTITY" "$APP"
+codesign --force --options runtime $TS ${KC[@]+"${KC[@]}"} --sign "$IDENTITY" "$APP/Contents/Helpers/macsync"
+codesign --force --options runtime $TS ${KC[@]+"${KC[@]}"} --sign "$IDENTITY" "$APP"
 codesign --verify --strict "$APP"
 echo "Built $APP ($VERSION), signed with: $IDENTITY"

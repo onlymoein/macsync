@@ -13,6 +13,8 @@ type ExtensionPreferences = {}
 declare type Preferences = ExtensionPreferences
 
 declare namespace Preferences {
+  /** Preferences accessible in the `open-window` command */
+  export type OpenWindow = ExtensionPreferences & {}
   /** Preferences accessible in the `sync` command */
   export type Sync = ExtensionPreferences & {}
   /** Preferences accessible in the `pull` command */
@@ -21,9 +23,13 @@ declare namespace Preferences {
   export type Undo = ExtensionPreferences & {}
   /** Preferences accessible in the `status` command */
   export type Status = ExtensionPreferences & {}
+  /** Preferences accessible in the `history` command */
+  export type History = ExtensionPreferences & {}
 }
 
 declare namespace Arguments {
+  /** Arguments passed to the `open-window` command */
+  export type OpenWindow = {}
   /** Arguments passed to the `sync` command */
   export type Sync = {}
   /** Arguments passed to the `pull` command */
@@ -32,5 +38,7 @@ declare namespace Arguments {
   export type Undo = {}
   /** Arguments passed to the `status` command */
   export type Status = {}
+  /** Arguments passed to the `history` command */
+  export type History = {}
 }
 

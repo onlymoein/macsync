@@ -34,6 +34,17 @@
   .card b { display:block; margin-bottom:4px; }
   .card span { color:var(--muted); font-size:15px; }
   code.inline { font: 14px ui-monospace, "SF Mono", Menlo, monospace; background: var(--card); border:1px solid var(--line); border-radius:6px; padding:1px 6px; }
+  .steps { counter-reset: step; display:grid; grid-template-columns: repeat(3, 1fr); gap:16px; margin-top:24px; }
+  .steps .card::before { counter-increment: step; content: counter(step); display:inline-flex; width:28px; height:28px; border-radius:50%;
+    align-items:center; justify-content:center; background:var(--accent); color:#fff; font-weight:700; font-size:14px; margin-bottom:10px; }
+  .two { display:grid; grid-template-columns: 1fr 1fr; gap:16px; margin-top:24px; }
+  .two ul { margin:8px 0 0; padding-left:20px; color:var(--muted); }
+  .two li { margin:4px 0; }
+  details { border-bottom:1px solid var(--line); padding:14px 0; }
+  details summary { cursor:pointer; font-weight:600; }
+  details p { color:var(--muted); margin:8px 0 0; }
+  pre.term { background:var(--code); color:var(--codefg); border-radius:12px; padding:14px 16px; overflow-x:auto; font:14px/1.6 ui-monospace, "SF Mono", Menlo, monospace; }
+  .badge { display:inline-block; font-size:14px; color:var(--muted); border:1px solid var(--line); border-radius:999px; padding:4px 12px; margin: 0 4px 8px; }
   footer { margin-top: 72px; padding-top: 24px; border-top:1px solid var(--line); color:var(--muted); font-size:15px; text-align:center; }
   a { color: var(--accent); }
   .shot-light { display:block; } .shot-dark { display:none; }
@@ -41,7 +52,7 @@
   @media (max-width: 700px) {
     h1 { font-size: 42px; } .tagline { font-size: 19px; }
     .row { grid-template-columns: 1fr; } .row.flip > :first-child { order:0; }
-    .grid { grid-template-columns: 1fr; }
+    .grid, .steps, .two { grid-template-columns: 1fr; }
   }
 </style>
 </head>
@@ -51,6 +62,7 @@
     <img src="assets/icon.png" alt="MacSync app icon">
     <h1>MacSync</h1>
     <p class="tagline">Keep all your Macs set up the same way.</p>
+    <p><span class="badge">Free and open source</span><span class="badge">Signed and notarized by Apple</span><span class="badge">macOS 13 or later</span></p>
   </header>
 
   <div class="install">
@@ -101,8 +113,73 @@ brew install --cask macsync</pre>
   </section>
 
   <section>
+    <h2>How it works</h2>
+    <div class="steps">
+      <div class="card"><b>Each Mac saves its setup</b><span>MacSync writes a small file for each Mac to your iCloud Drive: its Dock, its list of apps, and the settings you chose. Moving a Dock icon is saved within seconds.</span></div>
+      <div class="card"><b>The others see what's different</b><span>Every Mac reads the others' files and works out what would change: apps to add, Dock changes, settings. You see it all in one window.</span></div>
+      <div class="card"><b>You press Apply</b><span>Nothing changes until you do. A restore point is saved first, so you can undo it, or go back to any of the last 20 from History.</span></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>What syncs, and what never does</h2>
+    <div class="two">
+      <div class="card"><b>Kept the same on every Mac</b>
+        <ul>
+          <li>Dock apps, their order, icon size and position</li>
+          <li>Apps from Homebrew, the App Store or the developer's own download</li>
+          <li>Command-line tools from Homebrew</li>
+          <li>Trackpad, keyboard, Finder, Dock and screenshot settings</li>
+          <li>The settings of apps you pick</li>
+        </ul>
+      </div>
+      <div class="card"><b>Never copied</b>
+        <ul>
+          <li>Passwords, tokens and license keys</li>
+          <li>Window positions and anything that only makes sense on one Mac</li>
+          <li>Your files and documents</li>
+          <li>Apps themselves: they're installed from where they're published, so iCloud only holds small sync files</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>You stay in control</h2>
+    <div class="grid">
+      <div class="card"><b>Not needed here</b><span>Switch off an app a Mac doesn't need, like Blender on a laptop. MacSync remembers and stops offering it.</span></div>
+      <div class="card"><b>Choose what's shared</b><span>Each app on this Mac has a switch for whether your other Macs are offered it.</span></div>
+      <div class="card"><b>One Dock order</b><span>Pick which Mac's Dock order every Mac keeps, or let the most recent change win.</span></div>
+      <div class="card"><b>Opening the lid</b><span>Dock changes from your other Macs can apply by themselves when you open the lid, with Undo one click away.</span></div>
+      <div class="card"><b>Keep a setting local</b><span>Each setting has its own switch, so a Mac can keep, say, its own trackpad speed.</span></div>
+      <div class="card"><b>Updates itself</b><span>MacSync checks for a new version once a day, installs it, and restarts into it.</span></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>From the keyboard</h2>
+    <p style="color:var(--muted)">The <code class="inline">macsync</code> command comes with the app. The Raycast extension runs the same commands: Sync Now, Apply Dock Layout, Undo Last Apply and Show Status.</p>
+    <pre class="term">macsync status        # each Mac and whether it's in sync
+macsync preview       # what applying would change
+macsync apply         # apply, after showing the preview
+macsync restore-points
+macsync undo</pre>
+  </section>
+
+  <section>
+    <h2>Questions</h2>
+    <details><summary>Do I need an account or a server?</summary><p>No. MacSync only uses your own iCloud Drive. Turn on iCloud Drive on each Mac, signed in to the same Apple Account.</p></details>
+    <details><summary>Will it delete my apps?</summary><p>Only when you ask. "Remove from all Macs" uninstalls an app after you confirm, and each other Mac asks before removing it there. Homebrew uninstalls its own apps; anything else goes to the Trash, where you can put it back.</p></details>
+    <details><summary>How does it install apps I downloaded myself?</summary><p>MacSync finds where the app is published, through Homebrew's public list or the app's own update feed, downloads the installer from there, checks it, and opens it for you.</p></details>
+    <details><summary>What if I don't like a change?</summary><p>Press Undo in the menu, or open History and restore any of the last 20 applies. Installed apps stay installed.</p></details>
+    <details><summary>Does it work when my Mac is asleep?</summary><p>iCloud keeps uploading and downloading while the Mac sleeps. MacSync applies the changes when you open the lid, if you've left that setting on.</p></details>
+    <details><summary>Is it open source?</summary><p>Yes, under the MIT license. The code is on <a href="https://github.com/onlymoein/macsync">GitHub</a>.</p></details>
+  </section>
+
+  <section>
     <h2>Get started</h2>
     <p style="color:var(--muted)">Install MacSync on each Mac, signed in to the same Apple Account with iCloud Drive on. Each Mac saves its setup by itself. Open the menu on any Mac and press <b>Review Changes</b>. MacSync updates itself.</p>
+    <p style="color:var(--muted)">Already downloaded MacSync by hand? Run <code class="inline">brew install --cask --force macsync</code> once to let Homebrew manage it.</p>
   </section>
 
   <footer>

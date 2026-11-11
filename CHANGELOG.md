@@ -4,6 +4,7 @@
 - Signed with a Developer ID and notarized by Apple: no more "Move to Trash" or "Open Anyway".
 - Settings and App settings sit lower in the sync window, after the Dock and apps.
 - Apply Dock changes when you open the lid is on by default. History is in the gear menu.
+- macsync:// links open the sync window or History; Raycast gains Open Sync Window and Show History.
 
 ## 0.5.7
 - Each system setting has its own switch: keep one to this Mac, applied with Apply. The Settings section sits at the bottom when nothing needs applying.

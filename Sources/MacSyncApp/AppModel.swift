@@ -120,6 +120,9 @@ final class AppModel: ObservableObject {
         replacedCheck = Timer.scheduledTimer(withTimeInterval: 20, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.relaunchIfReplaced() }
         }
+        URLHandler.shared.model = self
+        NSAppleEventManager.shared().setEventHandler(URLHandler.shared, andSelector: #selector(URLHandler.handle(_:reply:)),
+                                                     forEventClass: AEEventClass(kInternetEventClass), andEventID: AEEventID(kAEGetURL))
         syncNow()
         checkForUpdates()
         if CommandLine.arguments.contains("--review") {
@@ -662,5 +665,28 @@ final class AppModel: ObservableObject {
         task.arguments = ["-c", "sleep 3; /usr/bin/open \"$0\"", path]
         try? task.run()
         NSApp.terminate(nil)
+    }
+}
+
+
+/// Opens MacSync's windows from links, for Raycast and the command line:
+/// macsync://review (or macsync://open), macsync://history, macsync://sync.
+@MainActor
+final class URLHandler: NSObject {
+    static let shared = URLHandler()
+    weak var model: AppModel?
+
+    @objc func handle(_ event: NSAppleEventDescriptor, reply: NSAppleEventDescriptor) {
+        guard let text = event.paramDescriptor(forKeyword: AEKeyword(keyDirectObject))?.stringValue,
+              let url = URL(string: text), url.scheme == "macsync", let model else { return }
+        switch url.host ?? url.path {
+        case "history":
+            model.showHistory = true
+            ReviewWindow.shared.show(model: model)
+        case "sync":
+            model.syncNow()
+        default:
+            ReviewWindow.shared.show(model: model)
+        }
     }
 }
