@@ -233,12 +233,36 @@ public enum Planner {
                 }
             }
         }
-        return found.map { ref, machines in
+        let all = found.map { ref, machines in
             MissingApp(app: ref, fromMachines: machines.sorted(), detail: details[ref.token],
                        download: ref.source == .direct ? downloads[ref.name] : nil)
         }
             .filter { $0.app.isSafe }
-            .sorted { $0.app < $1.app }
+        return dedupedApps(all, localCasks: casks).sorted { $0.app < $1.app }
+    }
+
+    /// One row per app. An app downloaded by hand on one Mac and installed with Homebrew on
+    /// another (ArtCraft Launcher, Creative Cloud) shows once, as the Homebrew row, which installs
+    /// by itself. It is left out entirely when this Mac already has that cask.
+    static func dedupedApps(_ apps: [MissingApp], localCasks: Set<String>) -> [MissingApp] {
+        var casks: [String: Int] = [:]
+        var caskBundles: [String: Int] = [:]
+        var caskNames: [String: Int] = [:]
+        for (i, app) in apps.enumerated() where app.app.source == .cask {
+            casks[app.app.name] = i
+            if let id = app.detail?.bundleID { caskBundles[id] = i }
+            caskNames[app.displayName.lowercased()] = i
+        }
+        var result = apps
+        var drop = Set<Int>()
+        for (i, app) in apps.enumerated() where app.app.source == .direct {
+            if let token = app.download?.cask, localCasks.contains(token) { drop.insert(i); continue }
+            let twin = app.download?.cask.flatMap { casks[$0] } ?? caskBundles[app.app.name] ?? caskNames[app.displayName.lowercased()]
+            guard let twin else { continue }
+            result[twin].fromMachines = Array(Set(result[twin].fromMachines + app.fromMachines)).sorted()
+            drop.insert(i)
+        }
+        return result.enumerated().filter { !drop.contains($0.offset) }.map(\.element)
     }
 }
 

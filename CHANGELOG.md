@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.1
+- An app installed with Homebrew on one Mac and downloaded on another shows once, as the Homebrew one.
+- A Homebrew package that is already on the Mac another way counts as installed; one Homebrew no longer has stops being offered.
+- Updates arrive soon after you start using the Mac: MacSync checks when it wakes, unlocks or you log in, and at most every 30 minutes. Homebrew copies refresh Homebrew first.
+- Support MacSync in the gear menu.
+
 ## 0.6.0
 - Signed with a Developer ID and notarized by Apple: no more "Move to Trash" or "Open Anyway".
 - Settings and App settings sit lower in the sync window, after the Dock and apps.

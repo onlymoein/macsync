@@ -55,7 +55,9 @@ final class AppModel: ObservableObject {
         didSet { UserDefaults.standard.set(autoUpdate, forKey: "autoUpdate") }
     }
     private var lastUpdateCheck = Date.distantPast
-    private static let updateInterval: TimeInterval = 24 * 3600
+    /// At most this often; checks also happen whenever the Mac wakes, unlocks or a login session
+    /// becomes active, so a new version arrives soon after you sit down.
+    private static let updateInterval: TimeInterval = 30 * 60
 
     private let engine = Engine.live()
     private let locator = SystemAppLocator()
@@ -120,6 +122,17 @@ final class AppModel: ObservableObject {
         replacedCheck = Timer.scheduledTimer(withTimeInterval: 20, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.relaunchIfReplaced() }
         }
+        // Starting to use the Mac (wake, screen on, unlock, switching back to this login): look for an update.
+        let center = NSWorkspace.shared.notificationCenter
+        for name in [NSWorkspace.didWakeNotification, NSWorkspace.screensDidWakeNotification, NSWorkspace.sessionDidBecomeActiveNotification] {
+            updateObservers.append(center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                Task { @MainActor in self?.checkForUpdatesSoon() }
+            })
+        }
+        updateObservers.append(DistributedNotificationCenter.default().addObserver(
+            forName: NSNotification.Name("com.apple.screenIsUnlocked"), object: nil, queue: .main) { [weak self] _ in
+            Task { @MainActor in self?.checkForUpdatesSoon() }
+        })
         URLHandler.shared.model = self
         NSAppleEventManager.shared().setEventHandler(URLHandler.shared, andSelector: #selector(URLHandler.handle(_:reply:)),
                                                      forEventClass: AEEventClass(kInternetEventClass), andEventID: AEEventID(kAEGetURL))
@@ -622,6 +635,13 @@ final class AppModel: ObservableObject {
 
     /// Looks for a new release once a day, or now when asked. With automatic updates on, a
     /// release is installed straight away unless a MacSync window is open.
+    private var updateObservers: [NSObjectProtocol] = []
+
+    /// A few seconds after the Mac comes back, once the network is up again.
+    private func checkForUpdatesSoon() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 8) { [weak self] in self?.checkForUpdates() }
+    }
+
     func checkForUpdates(manual: Bool = false) {
         guard !isUpdating, manual || Date().timeIntervalSince(lastUpdateCheck) > Self.updateInterval else { return }
         // A build run from the project folder isn't an installed copy, so it never replaces itself.

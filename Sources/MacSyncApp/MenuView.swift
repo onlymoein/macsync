@@ -103,6 +103,8 @@ struct MenuView: View {
                 Toggle("Open at Login", isOn: Binding(get: { model.openAtLogin }, set: { model.setOpenAtLogin($0) }))
                 Toggle("Update Automatically", isOn: $model.autoUpdate)
                 Button("Check for Updates") { model.checkForUpdates(manual: true) }
+                Divider()
+                Button("Support MacSync…") { NSWorkspace.shared.open(URL(string: "https://buymeacoffee.com/onlymoein")!) }
             } label: {
                 Image(systemName: "gearshape")
             }

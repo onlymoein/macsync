@@ -945,6 +945,12 @@ public final class Engine {
         if let download = missing.download { missingDownloads[missing.app.token] = download.sanitized }
         var result = install(missing.app)
         result.displayName = missing.displayName
+        // Gone from Homebrew: nothing to install, so stop offering it on this Mac.
+        if result.outcome == .failed, result.message?.hasPrefix("Homebrew no longer has") == true {
+            var state = loadState()
+            state.deselectedApps = Array(Set(state.deselectedApps ?? []).union([missing.app.token])).sorted()
+            try? saveState(state)
+        }
         if result.outcome == .installed {
             var state = loadState()
             state.inventory = InventoryReader(runner: runner, env: env).read()
@@ -982,6 +988,10 @@ public final class Engine {
             let args = app.source == .cask ? ["install", "--cask", app.name] : ["install", app.name]
             let result = runner.run(brew, args, input: nil, environment: InventoryReader.brewEnvironment(brew))
             guard result.status != 0 else { return InstallResult(app: app, outcome: .installed, message: nil) }
+            // Installed another way (a download, npm, another formula): it's here, so it's done.
+            if result.stderr.range(of: "already an App at|already a Binary at|is already installed", options: .regularExpression) != nil {
+                return InstallResult(app: app, outcome: .installed, message: "Already on this Mac, installed another way.")
+            }
             return InstallResult(app: app, outcome: .failed, message: Self.brewProblem(result.stderr, name: app.name, status: result.status))
         }
     }

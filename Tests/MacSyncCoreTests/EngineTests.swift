@@ -603,6 +603,41 @@ final class EngineTests: XCTestCase {
         XCTAssertTrue(after.contains("com.apple.dock|magnification"))
     }
 
+    func testAppFromHomebrewAndDownloadShowsOnce() throws {
+        let catalog = Data("""
+        [{"token":"artcraft-launcher","url":"https://example.com/a.dmg","sha256":"no_check","artifacts":[{"app":["ArtCraft Launcher.app"]}]}]
+        """.utf8)
+        let world = try TestWorld()
+        let studio = try world.mac("studio", dock: ["a"])
+        studio.runner.web[CaskCatalog.address] = catalog
+        try world.installDirectApp("ArtCraft Launcher", bundleID: "ai.storyteller.artcraft-launcher", on: "studio")
+        try studio.engine.sync()
+        let pro = try world.mac("pro", dock: ["a"])
+        pro.runner.casks = ["artcraft-launcher"]
+        try pro.engine.sync()
+        let air = try world.mac("air", dock: ["a"])
+        let offered = try air.engine.sync().missingApps
+        XCTAssertEqual(offered.map(\.app.token), ["cask:artcraft-launcher"])
+        XCTAssertEqual(offered.first?.fromMachines, ["Pro", "Studio"])
+    }
+
+    func testHomebrewPackageAlreadyThereCountsAsInstalledAndGonePackageStopsBeingOffered() throws {
+        let world = try TestWorld()
+        let studio = try world.mac("studio", dock: ["a"])
+        studio.runner.casks = ["codex"]
+        studio.runner.formulae = ["tldr"]
+        try studio.engine.sync()
+        let air = try world.mac("air", dock: ["a"])
+        let offered = try air.engine.sync().missingApps
+        air.runner.stderrFor["codex"] = "Error: It seems there is already a Binary at '/opt/homebrew/bin/codex'."
+        air.runner.stderrFor["tldr"] = "Warning: No available formula with the name \"tldr\". Did you mean tldx?"
+        let codex = air.engine.getApp(try XCTUnwrap(offered.first { $0.app.name == "codex" }))
+        XCTAssertEqual(codex.outcome, .installed)
+        let tldr = air.engine.getApp(try XCTUnwrap(offered.first { $0.app.name == "tldr" }))
+        XCTAssertEqual(tldr.outcome, .failed)
+        XCTAssertTrue(try air.engine.sync().skippedApps.contains("formula:tldr"))
+    }
+
     func testOldICloudCopiesAreDeleted() throws {
         let world = try TestWorld()
         let old = world.sync.appendingPathComponent("apps/packages")

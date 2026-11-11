@@ -16,6 +16,8 @@ final class FakeRunner: CommandRunning {
     var formulae: [String] = []
     /// What the internet serves, by address. Anything else fails like a missing page.
     var web: [String: Data] = [:]
+    /// Makes `brew install <name>` fail with this message.
+    var stderrFor: [String: String] = [:]
 
     func run(_ executable: String, _ arguments: [String], input: Data?, environment: [String: String]) -> CommandResult {
         calls.append([executable] + arguments)
@@ -29,6 +31,9 @@ final class FakeRunner: CommandRunning {
         if executable == "/usr/bin/xattr" || executable == "/usr/bin/open" { return CommandResult(status: 0) }
         if arguments.first == "list" { return CommandResult(status: 0, stdout: Data(casks.joined(separator: "\n").utf8)) }
         if arguments.first == "leaves" { return CommandResult(status: 0, stdout: Data(formulae.joined(separator: "\n").utf8)) }
+        if arguments.first == "install", let name = arguments.last, let message = stderrFor[name] {
+            return CommandResult(status: 1, stderr: message)
+        }
         if let name = arguments.last, failing.contains(name) {
             return CommandResult(status: 1, stderr: "Error: \(name) needs a password")
         }

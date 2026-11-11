@@ -75,9 +75,9 @@ public struct SelfUpdater {
     /// Installs the release in place of the running app. The caller relaunches afterwards.
     public func install(_ release: Release) -> Result<Void, EngineError> {
         if let brew = brewPath, installedWithBrew {
-            // Homebrew must refresh its cask list to see the new version.
-            var env = InventoryReader.brewEnvironment(brew)
-            env["HOMEBREW_NO_AUTO_UPDATE"] = nil
+            // Refresh Homebrew's lists first, or it won't know the new version exists yet.
+            let env = InventoryReader.brewEnvironment(brew)
+            _ = runner.run(brew, ["update", "--quiet"], input: nil, environment: env)
             let result = runner.run(brew, ["upgrade", "--cask", "macsync"], input: nil, environment: env)
             return result.status == 0 ? .success(())
                 : .failure(.refused("Homebrew couldn't update MacSync: \(result.stderr.split(whereSeparator: \.isNewline).last ?? "")"))
