@@ -25,6 +25,12 @@ declare namespace Preferences {
   export type Status = ExtensionPreferences & {}
   /** Preferences accessible in the `history` command */
   export type History = ExtensionPreferences & {}
+  /** Preferences accessible in the `homebrew-updates` command */
+  export type HomebrewUpdates = ExtensionPreferences & {}
+  /** Preferences accessible in the `homebrew-upgrade` command */
+  export type HomebrewUpgrade = ExtensionPreferences & {}
+  /** Preferences accessible in the `share` command */
+  export type Share = ExtensionPreferences & {}
 }
 
 declare namespace Arguments {
@@ -40,5 +46,11 @@ declare namespace Arguments {
   export type Status = {}
   /** Arguments passed to the `history` command */
   export type History = {}
+  /** Arguments passed to the `homebrew-updates` command */
+  export type HomebrewUpdates = {}
+  /** Arguments passed to the `homebrew-upgrade` command */
+  export type HomebrewUpgrade = {}
+  /** Arguments passed to the `share` command */
+  export type Share = {}
 }
 

@@ -715,8 +715,11 @@ private struct ArtCraftPanel: View {
                 } else {
                     HStack(spacing: 6) {
                         ProgressView().controlSize(.small)
-                        Text(model.work["craftRemove"] != nil ? "Removing" : app.isInstalled ? "Updating" : "Downloading and installing")
-                            .font(.caption).foregroundStyle(.secondary)
+                        Text(model.work["craftRemove"] != nil ? "Removing"
+                             : (model.work["craft"]?.status?.range(of: "\\d+%", options: .regularExpression)).flatMap { r in
+                                 model.work["craft"]?.status.map { "Downloading " + $0[r] } }
+                             ?? (model.work["craft"]?.status?.hasPrefix("Checking") == true ? "Installing" : app.isInstalled ? "Updating" : "Starting"))
+                            .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
                     }
                 }
             } else if app.needsUpdate {

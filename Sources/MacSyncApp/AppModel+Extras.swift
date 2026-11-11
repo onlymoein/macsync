@@ -221,6 +221,8 @@ struct WorkProgress: Equatable {
     var done = 0
     var failed = 0
     var current: String?
+    /// What's happening to the current item ("Downloading AniCraft… 40%").
+    var status: String?
     var total: Int { names.count }
     var next: String? {
         guard let current, let i = names.firstIndex(of: current), i + 1 < names.count else { return nil }
@@ -229,7 +231,8 @@ struct WorkProgress: Equatable {
     var line: String {
         let step = min(done + 1, max(total, 1))
         var text = total > 1 ? "\(verb): \(step) of \(total)" : verb
-        if let current { text += " · \(current)" }
+        if let status { text += " · " + status.replacingOccurrences(of: "…", with: "") }
+        else if let current { text += " · \(current)" }
         if let next { text += " · next: \(next)" }
         if failed > 0 { text += " · \(failed) failed" }
         return text
@@ -246,6 +249,7 @@ extension AppModel {
             w.current = name
             workCurrent[job] = ids[name]
         }
+        w.status = message
         work[job] = w
         progress = message
     }

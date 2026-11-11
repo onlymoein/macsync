@@ -469,11 +469,19 @@ final class AppModel: ObservableObject {
         Task {
             let url = await Task.detached { engine.craftIconFile(app) }.value
             if let url, let image = NSImage(contentsOf: url) { craftIcons[app.id] = image }
+            else {
+                // Offline or slow: try again in a little while instead of leaving a blank tile for good.
+                try? await Task.sleep(nanoseconds: 30_000_000_000)
+                craftIconsAsked.remove(app.id)
+                craftIconRetry += 1
+            }
         }
         return nil
     }
 
     @Published private var craftIcons: [String: NSImage] = [:]
+    /// Bumped to redraw rows so a failed icon is asked for again.
+    @Published private var craftIconRetry = 0
     private var craftIconsAsked: Set<String> = []
 
     func loadCraft(refresh: Bool = false) {
@@ -908,6 +916,9 @@ final class URLHandler: NSObject {
             ReviewWindow.shared.show(model: model)
         case "sync":
             model.syncNow()
+        case "share":
+            ReviewWindow.shared.show(model: model)
+            model.requestShare = true
         default:
             ReviewWindow.shared.show(model: model)
         }

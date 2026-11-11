@@ -15,6 +15,7 @@ macsync \(MacSyncEnvironment.appVersion): keep your Macs set up the same way.
       --all-apps             Also install everything your other Macs have
   macsync undo [--yes]       Undo the last apply
   macsync app-prefs [add|remove <domain>]   Choose apps whose preferences sync (Pro)
+  macsync upgrade            Update every Homebrew app and tool, npm package and uv tool (open apps wait)
   macsync outdated           List Homebrew apps and tools, npm packages and uv tools with newer versions
   macsync files              List the config files, AI setup and app data this Mac shares, and what it keeps back
   macsync restore-points     List saved restore points
@@ -145,6 +146,13 @@ do {
         if json { try printJSON(now) } else {
             print(now.isEmpty ? "No apps chosen yet. Try: macsync app-prefs add com.raycast.macos" : "Syncing preferences of: " + now.joined(separator: ", "))
             if words.isEmpty { print("Available on this Mac: \(engine.availableAppPrefDomains().count). Passwords, tokens and keys are never synced.") }
+        }
+    case "upgrade":
+        let report = engine.upgrader.upgradeAll { message in print(message) }
+        if json { try printJSON(report) } else {
+            print(report.summary)
+            for item in report.waiting { print("Waiting until you quit it: \(item.name)") }
+            for failure in report.failures { print("Didn't update: \(failure)") }
         }
     case "outdated":
         let report = engine.upgrader.check()

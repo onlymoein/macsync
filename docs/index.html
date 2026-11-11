@@ -694,9 +694,9 @@ brew install --cask macsync</pre>
         <p class="eyebrow">Keyboard</p>
         <h2>Raycast and Terminal too</h2>
         <ul class="ticks">
-          <li>Raycast: Open Sync Window, Sync Now, Apply Dock Layout, Undo, Show Status, Show History</li>
+          <li>Raycast: Open Sync Window, Sync Now, Apply Dock Layout, Undo, Show Status, Show History, Check Homebrew Updates, Update Homebrew Apps, Share My Setup</li>
           <li>The <code>macsync</code> command comes with the app</li>
-          <li><code>macsync://</code> links open the window or History</li>
+          <li><code>macsync://</code> links open the window, History or Share</li>
         </ul>
       </div>
       <pre class="term"><span class="c"># each Mac and whether it's in sync</span>
@@ -707,7 +707,12 @@ macsync preview
 macsync apply
 <span class="c"># go back</span>
 macsync undo
-macsync restore-points</pre>
+macsync restore-points
+<span class="c"># Homebrew: what's out of date, then update it all</span>
+macsync outdated
+macsync upgrade
+<span class="c"># what this Mac shares, and what it keeps back</span>
+macsync files</pre>
     </div>
   </section>
 

@@ -238,7 +238,7 @@ public struct ArtCraft {
         var results: [(CraftApp, Result<String, EngineError>)] = []
         for app in apps {
             progress("\(app.isInstalled ? "Updating" : "Installing") \(app.name)…")
-            results.append((app, installOne(app, into: folder)))
+            results.append((app, withoutActuallyEscaping(progress) { report in installOne(app, into: folder, progress: report) }))
         }
         let done = results.compactMap { pair -> (CraftApp, String)? in
             if case .success(let path) = pair.1 { return (pair.0, path) }
@@ -248,14 +248,36 @@ public struct ArtCraft {
         return results
     }
 
-    private func installOne(_ app: CraftApp, into folder: URL) -> Result<String, EngineError> {
+    /// Downloads with curl while watching the file grow, so the window can show how far it is.
+    static func watchedDownload(runner: CommandRunning, url: String, to file: URL, expected: Int64?,
+                                progress: @escaping (Int) -> Void) -> CommandResult {
+        var result = CommandResult(status: -1)
+        let done = DispatchSemaphore(value: 0)
+        DispatchQueue.global(qos: .userInitiated).async {
+            result = runner.run("/usr/bin/curl", ["-fsSL", "--proto", "=https", "--proto-redir", "=https", "--max-time", "1800",
+                                                  "-o", file.path, url], input: nil, environment: [:])
+            done.signal()
+        }
+        var last = -1
+        while done.wait(timeout: .now() + 0.5) == .timedOut {
+            guard let expected, expected > 0,
+                  let size = (try? FileManager.default.attributesOfItem(atPath: file.path)[.size]) as? NSNumber else { continue }
+            let percent = min(99, Int(size.int64Value * 100 / expected))
+            if percent != last { last = percent; progress(percent) }
+        }
+        return result
+    }
+
+    private func installOne(_ app: CraftApp, into folder: URL, progress: @escaping (String) -> Void = { _ in }) -> Result<String, EngineError> {
         let fm = FileManager.default
         let work = fm.temporaryDirectory.appendingPathComponent("macsync-craft-\(UUID().uuidString.prefix(8))")
         defer { try? fm.removeItem(at: work) }
         try? fm.createDirectory(at: work, withIntermediateDirectories: true)
         let dmg = work.appendingPathComponent(app.id + ".dmg")
-        let get = runner.run("/usr/bin/curl", ["-fsSL", "--proto", "=https", "--proto-redir", "=https", "--max-time", "1800",
-                                               "-o", dmg.path, app.dmgURL], input: nil, environment: [:])
+        let get = Self.watchedDownload(runner: runner, url: app.dmgURL, to: dmg, expected: app.sizeBytes) { percent in
+            progress("Downloading \(app.name)… \(percent)%")
+        }
+        progress("Checking and installing \(app.name)…")
         guard get.status == 0, fm.fileExists(atPath: dmg.path) else { return .failure(.refused("\(app.name) didn't download.")) }
         if let expected = app.sha256, AppDownloader.sha256(of: dmg) != expected {
             return .failure(.refused("The download of \(app.name) didn't match ArtCraft's published checksum, so it wasn't installed."))
