@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.8.0
+- **Share My Setup:** the Share button in the sync window (or the settings menu) makes a .macsync file for a friend. Switch on the sections to give: apps, App Store apps, command-line tools and taps, extensions and plugins, settings, config files, AI setup, login items. Save it, or send it with AirDrop, Messages or Mail.
+- Your friend double-clicks the file (or uses Open a Shared Setup…): everything in it shows up as "Your name's setup", with the usual preview and a switch on each item. Apps download from where they're published. A Shared with you section lists it, with Remove.
+- Never in a shared setup: passwords, keys, tokens or any file with one, your fonts, app data, your Dock, your history, or apps' own preferences.
+
 ## 0.7.6
 - The menu shows Homebrew at a glance: how many updates are waiting and which, with Update All, or what was just updated. Click it to open the window.
 - The settings menu is grouped: Sync, Homebrew and MacSync, each with its own switches and Check for Updates Now.

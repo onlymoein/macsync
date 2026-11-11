@@ -160,3 +160,57 @@ extension AppModel {
         return NSWorkspace.shared.icon(forFile: url.path)
     }
 }
+
+// MARK: Sharing a setup
+
+extension AppModel {
+    /// Writes a .macsync file with the chosen sections, then saves it or hands it to the share menu.
+    func makeSetupFile(name: String, sections: Set<ShareSection>) async -> Result<URL, Error> {
+        let engine = engine
+        return await Task.detached {
+            Result {
+                let data = try engine.exportSetup(name: name, sections: sections)
+                let folder = FileManager.default.temporaryDirectory.appendingPathComponent("MacSync Share", isDirectory: true)
+                try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+                let safe = name.replacingOccurrences(of: "/", with: "-").trimmingCharacters(in: .whitespaces)
+                let url = folder.appendingPathComponent("\(safe.isEmpty ? "My" : safe + "'s") MacSync setup.macsync")
+                try data.write(to: url, options: .atomic)
+                return url
+            }
+        }.value
+    }
+
+    func openSharedSetup(_ url: URL) {
+        let engine = engine
+        Task {
+            let result = await Task.detached { Result { try engine.importSetup(try Data(contentsOf: url)) } }.value
+            switch result {
+            case .success(let info):
+                importedSetups = engine.importedSetups()
+                actionError = nil
+                undoMessage = "\(info.name) is ready. Pick what you want from it, then press Apply."
+            case .failure(let error):
+                actionError = error.localizedDescription
+            }
+            runSync(refreshInventory: false)
+            ReviewWindow.shared.show(model: self)
+        }
+    }
+
+    func chooseSharedSetup() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.init(filenameExtension: "macsync") ?? .data]
+        panel.message = "Choose a MacSync setup someone shared with you"
+        NSApp.activate(ignoringOtherApps: true)
+        if panel.runModal() == .OK, let url = panel.url { openSharedSetup(url) }
+    }
+
+    func removeImportedSetup(_ setup: ImportedSetup) {
+        let engine = engine
+        Task {
+            _ = await Task.detached { try? engine.removeImportedSetup(setup.id) }.value
+            importedSetups = engine.importedSetups()
+            runSync(refreshInventory: false)
+        }
+    }
+}

@@ -54,6 +54,7 @@ private struct Backdrop: View {
 
 struct ReviewView: View {
     @ObservedObject var model: AppModel
+    @State private var sharing = false
 
     var body: some View {
         ZStack(alignment: .bottom) {
@@ -67,6 +68,7 @@ struct ReviewView: View {
                         Label(message, systemImage: "arrow.uturn.backward.circle.fill")
                             .foregroundStyle(.green).padding(14).frame(maxWidth: .infinity, alignment: .leading).glassPanel()
                     }
+                    SharedSetupsPanel(model: model)
                     UpdatesPanel(model: model)
                     ToRemovePanel(model: model)
                     ExtrasRemovedPanel(model: model)
@@ -114,11 +116,25 @@ struct ReviewView: View {
             footer
         }
         .frame(minWidth: 560, minHeight: 460)
+        .sheet(isPresented: $sharing) { ShareSheet(model: model) }
+        .onChange(of: model.requestShare) { wanted in if wanted { sharing = true; model.requestShare = false } }
     }
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("Sync your Macs").font(.system(size: 26, weight: .bold, design: .rounded))
+            HStack(alignment: .firstTextBaseline) {
+                Text("Sync your Macs").font(.system(size: 26, weight: .bold, design: .rounded))
+                Spacer()
+                Menu {
+                    Button { sharing = true } label: { Label("Share My Setup…", systemImage: "square.and.arrow.up") }
+                    Button { model.chooseSharedSetup() } label: { Label("Open a Shared Setup…", systemImage: "tray.and.arrow.down") }
+                } label: {
+                    Label("Share", systemImage: "square.and.arrow.up")
+                } primaryAction: { sharing = true }
+                .menuStyle(.button)
+                .fixedSize()
+                .help("Share your setup with a friend, or open one they shared")
+            }
             if !chips.isEmpty {
                 HStack(spacing: 8) {
                     ForEach(chips, id: \.self) { chip in
@@ -1449,7 +1465,7 @@ private struct SettingsPanel: View {
 /// Test builds only: one section of the sync window on its own, for the website's pictures.
 extension ReviewView {
     static let probeSections = ["dock", "notInstalled", "artcraft", "apps", "appStore", "tools", "toRemove", "settings", "history",
-                                "config", "ai", "signin", "updates"]
+                                "config", "ai", "signin", "updates", "share"]
 
     @MainActor static func probeSection(_ key: String, model: AppModel) -> AnyView? {
         let o = model.overview
@@ -1469,6 +1485,7 @@ extension ReviewView {
         case "settings":
             panel = o?.settingsPlan.map { AnyView(SettingsPanel(plan: $0, model: model)) } ?? AnyView(SettingsMatchPanel(model: model))
         case "history": panel = AnyView(HistoryPanel(model: model))
+        case "share": panel = AnyView(ShareSheet(model: model, demoName: "Alex").background(Color(nsColor: .windowBackgroundColor)))
         case "updates":
             model.upgradeReport = UpgradeReport(ranAt: Date().addingTimeInterval(-180), upgraded: [], waiting: [], failures: [], outdated: [
                 OutdatedItem(token: "cask:visual-studio-code", name: "Visual Studio Code", from: "1.106.0", to: "1.106.2", bundleID: "com.microsoft.VSCode"),

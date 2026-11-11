@@ -769,8 +769,10 @@ public final class Engine {
 
     private func overview(snapshot: MachineSnapshot, state: LocalState, issues: [String]) -> SyncOverview {
         let loaded = store.load()
-        let others = loaded.machines.filter { $0.machineID != env.machineID }
-        let everyone = others + [snapshot]
+        let ownMacs = loaded.machines.filter { $0.machineID != env.machineID }
+        // Setups friends shared are offered like other Macs, but never join the Dock or the Mac list.
+        let others = ownMacs + importedSnapshots()
+        let everyone = ownMacs + [snapshot]
         let winner = Planner.winner(among: everyone)
         var plan: DockPlan?
         var mergedTarget: DockSection?
@@ -782,7 +784,7 @@ public final class Engine {
                                     locator: locator)
         }
         var settingsPlan: SettingsPlan?
-        if let sw = settingsWinner(everyone), sw.machineID != env.machineID, let target = sw.settings {
+        if let sw = settingsWinner(everyone + importedSnapshots()), sw.machineID != env.machineID, let target = sw.settings {
             settingsPlan = SettingsPlanner.plan(target: target, source: sw.machineName, sourceID: sw.machineID,
                                                 prefs: prefs, home: env.homeDirectory)
             let excluded = Set(state.excludedSettings ?? [])
@@ -931,7 +933,7 @@ public final class Engine {
         try writeRestoreInfo(point)
         var extrasReport: ExtrasReport?
         if wantsExtras {
-            let marketplaces = store.load().machines.reduce(into: [String: String]()) { all, machine in
+            let marketplaces = (store.load().machines + importedSnapshots()).reduce(into: [String: String]()) { all, machine in
                 for (name, source) in machine.extras?.marketplaces ?? [:] where all[name] == nil { all[name] = source }
             }
             extrasReport = extras.apply(files: files, loginItems: loginItems, packages: packages, marketplaces: marketplaces,

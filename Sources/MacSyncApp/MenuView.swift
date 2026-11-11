@@ -98,6 +98,10 @@ struct MenuView: View {
                     model.showHistory = true
                     ReviewWindow.shared.show(model: model)
                 } label: { Label("History…", systemImage: "clock.arrow.circlepath") }
+                Button { ReviewWindow.shared.show(model: model); model.requestShare = true } label: {
+                    Label("Share My Setup…", systemImage: "square.and.arrow.up")
+                }
+                Button { model.chooseSharedSetup() } label: { Label("Open a Shared Setup…", systemImage: "tray.and.arrow.down") }
                 Section("Sync") {
                     Toggle("Sync Automatically", isOn: $model.autoSync)
                     Toggle("Apply Dock Changes When I Open the Lid", isOn: $model.autoApplyDock)

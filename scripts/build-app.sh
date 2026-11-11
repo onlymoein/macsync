@@ -46,6 +46,18 @@ cat > "$APP/Contents/Info.plist" <<PLIST
     <key>CFBundleURLName</key><string>com.onlymehdi.macsync</string>
     <key>CFBundleURLSchemes</key><array><string>macsync</string></array>
   </dict></array>
+  <key>CFBundleDocumentTypes</key><array><dict>
+    <key>CFBundleTypeName</key><string>MacSync Setup</string>
+    <key>CFBundleTypeRole</key><string>Viewer</string>
+    <key>LSHandlerRank</key><string>Owner</string>
+    <key>LSItemContentTypes</key><array><string>com.onlymehdi.macsync.setup</string></array>
+  </dict></array>
+  <key>UTExportedTypeDeclarations</key><array><dict>
+    <key>UTTypeIdentifier</key><string>com.onlymehdi.macsync.setup</string>
+    <key>UTTypeDescription</key><string>MacSync Setup</string>
+    <key>UTTypeConformsTo</key><array><string>public.json</string><string>public.data</string></array>
+    <key>UTTypeTagSpecification</key><dict><key>public.filename-extension</key><array><string>macsync</string></array></dict>
+  </dict></array>
   <key>NSHumanReadableCopyright</key><string>MIT License</string>
 </dict></plist>
 PLIST

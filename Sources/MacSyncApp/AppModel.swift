@@ -56,6 +56,10 @@ final class AppModel: ObservableObject {
         didSet { UserDefaults.standard.set(autoUpgrade, forKey: "autoUpgrade"); if autoUpgrade { upgradeIfDue() } }
     }
     @Published var upgrading = false
+    /// Set from the menu to open the share sheet in the window.
+    @Published var requestShare = false
+    /// Setups friends shared with this Mac.
+    @Published var importedSetups: [ImportedSetup] = []
     @Published var upgradeReport: UpgradeReport?
     @Published var upgradeBusy: Set<String> = []
 
@@ -144,6 +148,10 @@ final class AppModel: ObservableObject {
         URLHandler.shared.model = self
         NSAppleEventManager.shared().setEventHandler(URLHandler.shared, andSelector: #selector(URLHandler.handle(_:reply:)),
                                                      forEventClass: AEEventClass(kInternetEventClass), andEventID: AEEventID(kAEGetURL))
+        // Opening a .macsync file someone shared.
+        NSAppleEventManager.shared().setEventHandler(URLHandler.shared, andSelector: #selector(URLHandler.openFiles(_:reply:)),
+                                                     forEventClass: AEEventClass(kCoreEventClass), andEventID: AEEventID(kAEOpenDocuments))
+        importedSetups = engine.importedSetups()
         syncNow()
         checkForUpdates()
         if CommandLine.arguments.contains("--review") {
@@ -850,6 +858,17 @@ final class AppModel: ObservableObject {
 final class URLHandler: NSObject {
     static let shared = URLHandler()
     weak var model: AppModel?
+
+    @objc func openFiles(_ event: NSAppleEventDescriptor, reply: NSAppleEventDescriptor) {
+        guard let list = event.paramDescriptor(forKeyword: AEKeyword(keyDirectObject)) else { return }
+        let count = list.numberOfItems
+        let descriptors = count == 0 ? [list] : (1...count).compactMap { list.atIndex($0) }
+        for descriptor in descriptors {
+            guard let url = descriptor.coerce(toDescriptorType: typeFileURL)?.stringValue.flatMap(URL.init(string:)),
+                  url.pathExtension == "macsync" else { continue }
+            model?.openSharedSetup(url)
+        }
+    }
 
     @objc func handle(_ event: NSAppleEventDescriptor, reply: NSAppleEventDescriptor) {
         guard let text = event.paramDescriptor(forKeyword: AEKeyword(keyDirectObject))?.stringValue,
