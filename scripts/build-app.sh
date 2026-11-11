@@ -49,7 +49,10 @@ IDENTITY="${SIGN_IDENTITY:--}"
 # Notarization requires a secure timestamp, which only a real identity can request.
 TS="--timestamp=none"
 if [ "$IDENTITY" != "-" ]; then TS="--timestamp"; fi
-codesign --force --options runtime $TS --sign "$IDENTITY" "$APP/Contents/Helpers/macsync"
-codesign --force --options runtime $TS --sign "$IDENTITY" "$APP"
+# SIGN_KEYCHAIN: a keychain used only for signing, so codesign never asks for the login password.
+KC=()
+if [ -n "${SIGN_KEYCHAIN:-}" ]; then KC=(--keychain "$SIGN_KEYCHAIN"); fi
+codesign --force --options runtime $TS "${KC[@]}" --sign "$IDENTITY" "$APP/Contents/Helpers/macsync"
+codesign --force --options runtime $TS "${KC[@]}" --sign "$IDENTITY" "$APP"
 codesign --verify --strict "$APP"
 echo "Built $APP ($VERSION), signed with: $IDENTITY"

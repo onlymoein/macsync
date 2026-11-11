@@ -17,7 +17,7 @@ case "$SIGN_IDENTITY" in
   "Developer ID Application:"*) ;;
   *) echo "SIGN_IDENTITY must be a Developer ID Application certificate. Apple Development and Apple Distribution certificates cannot be notarized for outside distribution." >&2; exit 1 ;;
 esac
-security find-identity -v -p codesigning | grep -qF "$SIGN_IDENTITY" \
+security find-identity -v -p codesigning ${SIGN_KEYCHAIN:+"$SIGN_KEYCHAIN"} | grep -qF "$SIGN_IDENTITY" \
   || { echo "No signing identity matching '$SIGN_IDENTITY' in your keychain." >&2; exit 1; }
 xcrun notarytool history --keychain-profile "$NOTARY_PROFILE" >/dev/null 2>&1 \
   || { echo "Notary profile '$NOTARY_PROFILE' not found or not working. Run: xcrun notarytool store-credentials $NOTARY_PROFILE" >&2; exit 1; }
@@ -31,7 +31,12 @@ echo "==> Tests"
 swift test 2>&1 | tail -3
 
 echo "==> Build and sign $VERSION"
-SIGN_IDENTITY="$SIGN_IDENTITY" scripts/build-app.sh
+# Optional: SIGN_KEYCHAIN, a signing-only keychain (unlocked with SIGN_KEYCHAIN_PASSWORD_FILE),
+# so codesign doesn't ask for the login password.
+if [ -n "${SIGN_KEYCHAIN:-}" ] && [ -n "${SIGN_KEYCHAIN_PASSWORD_FILE:-}" ]; then
+  security unlock-keychain -p "$(cat "$SIGN_KEYCHAIN_PASSWORD_FILE")" "$SIGN_KEYCHAIN"
+fi
+SIGN_IDENTITY="$SIGN_IDENTITY" SIGN_KEYCHAIN="${SIGN_KEYCHAIN:-}" scripts/build-app.sh
 codesign --verify --strict --deep --verbose=2 build/MacSync.app
 
 echo "==> Notarize (this waits for Apple, usually a few minutes)"
