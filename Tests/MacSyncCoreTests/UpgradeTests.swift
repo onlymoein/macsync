@@ -70,3 +70,22 @@ final class StreamTests: XCTestCase {
         XCTAssertEqual(Engine.brewStatus("==> Pouring btop--1.4.tar.gz", name: "btop"), "Installing btop…")
     }
 }
+
+final class SelfUpdatingAppTests: XCTestCase {
+    func testAnAppThatUpdatesItselfIsOfferedOnlyWhenHomebrewIsAhead() throws {
+        let world = try TestWorld()
+        let data = world.root.appendingPathComponent("data")
+        try FileManager.default.createDirectory(at: data, withIntermediateDirectories: true)
+        let casks = #"[{"token": "claude", "url": "https://x/c.zip", "version": "5.1232.0,abcdef", "artifacts": [{"app": ["Claude.app"]}]}, {"token": "chatgpt", "url": "https://x/g.zip", "version": "26.1103.60933", "artifacts": [{"app": ["ChatGPT.app"]}]}]"#
+        try Data(casks.utf8).write(to: data.appendingPathComponent("cask-catalog.json"))
+        let env = MacSyncEnvironment(syncDirectory: world.sync, dataDirectory: data, machineID: "s", machineName: "S", dockFile: nil,
+                                     brewPath: "/fake/brew", applicationsDirectory: world.root.appendingPathComponent("Applications"),
+                                     homeDirectory: "/nowhere")
+        var upgrader = Upgrader(env: env, runner: FakeRunner())
+        upgrader.directApps = [DirectApp(bundleID: "com.anthropic.claudefordesktop", name: "Claude", version: "5.1231.2", feed: nil),
+                               DirectApp(bundleID: "com.openai.codex", name: "ChatGPT", version: "26.1103.60933", feed: nil)]
+        let found = upgrader.directOutdated()
+        XCTAssertEqual(found.map(\.token), ["adopt:claude"], "ChatGPT is already as new as Homebrew's")
+        XCTAssertEqual(found.first?.to, "5.1232.0")
+    }
+}

@@ -1,6 +1,8 @@
 # Changelog
 
 ## 0.8.10
+- **Apps that update themselves** (ChatGPT, Claude, Grok, Dropbox, TablePlus…) and weren't installed with Homebrew are now in the updates list when Homebrew publishes a newer version than the one on the Mac. Updating hands the app to Homebrew, which keeps it current from then on. App Store apps are listed too when `mas` is installed. The section is now App and Homebrew updates.
+- Versions compare by their numbers only, so a nightly build (8.12.48-19.NIGHTLY) isn't mistaken for an older one.
 - An ArtCraft install starts straight away even while MacSync is syncing; taking back a "removed on another Mac" mark now happens after the install. Rows say Preparing… until the first step.
 - A sync can't hang: login items (which can wait on a macOS permission prompt), Homebrew taps, editor extensions, npm and uv are each read with a time limit.
 - If MacSync is stopped while it has ArtCraft Launcher closed, it reopens the launcher, hidden, the next time it starts.

@@ -66,6 +66,8 @@ struct CaskCatalog {
     struct Entry {
         var token: String; var url: String; var sha256: String?; var intelURL: String?; var intelSHA256: String?
         var name: String? = nil; var desc: String? = nil; var homepage: String? = nil
+        /// The version Homebrew publishes ("5.1231.0,4948659b…" is read as 5.1231.0).
+        var version: String? = nil
     }
 
     let byApp: [String: [String]]
@@ -133,7 +135,8 @@ struct CaskCatalog {
             entries[token] = Entry(token: token, url: url, sha256: cask["sha256"] as? String,
                                    intelURL: intel?["url"] as? String, intelSHA256: intel?["sha256"] as? String,
                                    name: (cask["name"] as? [String])?.first, desc: cask["desc"] as? String,
-                                   homepage: cask["homepage"] as? String)
+                                   homepage: cask["homepage"] as? String,
+                                   version: (cask["version"] as? String).map { String($0.split(separator: ",").first ?? "") })
         }
         return CaskCatalog(byApp: byApp, entries: entries, byBundleID: byBundleID)
     }

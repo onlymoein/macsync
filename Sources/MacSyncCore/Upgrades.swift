@@ -46,6 +46,9 @@ public struct Upgrader {
     /// Bundle IDs of apps that are open. Tests pass their own.
     var isRunning: (String) -> Bool = { id in !NSRunningApplication.runningApplications(withBundleIdentifier: id).isEmpty }
 
+    /// Apps on this Mac from neither Homebrew nor the App Store, with their versions.
+    var directApps: [DirectApp] = []
+
     public init(env: MacSyncEnvironment, runner: CommandRunning) { self.env = env; self.runner = runner }
 
     public static let interval: TimeInterval = 6 * 3600
@@ -63,7 +66,36 @@ public struct Upgrader {
 
     /// What has a newer version: Homebrew apps and tools, npm packages and uv tools.
     public func outdated() -> [OutdatedItem] {
-        brewOutdated() + npmOutdated() + uvOutdated()
+        brewOutdated() + directOutdated() + appStoreOutdated() + npmOutdated() + uvOutdated()
+    }
+
+    /// Apps that update themselves (ChatGPT, Claude, Grok) and weren't installed with Homebrew,
+    /// when Homebrew publishes a newer version than the one here. Updating hands them to Homebrew.
+    func directOutdated() -> [OutdatedItem] {
+        guard env.brewPath != nil, !directApps.isEmpty,
+              let catalog = CaskCatalog.load(env: env, runner: runner, now: Date()) else { return [] }
+        return directApps.compactMap { app in
+            guard let token = app.cask ?? catalog.cask(forApp: app.name + ".app") ?? catalog.cask(forBundleID: app.bundleID),
+                  !Self.leftToTheirLauncher.contains(token), token != "macsync", DirectApp.isSafeCask(token),
+                  let latest = catalog.entries[token]?.version, let mine = app.version,
+                  SelfUpdater.isNewer(latest, than: mine) else { return nil }
+            return OutdatedItem(token: "adopt:" + token, name: app.name, from: mine, to: latest, bundleID: app.bundleID)
+        }
+    }
+
+    /// App Store apps with updates, through mas when it's installed.
+    func appStoreOutdated() -> [OutdatedItem] {
+        guard let mas = ["/opt/homebrew/bin/mas", "/usr/local/bin/mas"].first(where: FileManager.default.isExecutableFile) else { return [] }
+        let result = runner.stream(mas, ["outdated"], input: nil, environment: Packages.toolEnv, idleTimeout: 60) { _ in }
+        guard result.status == 0, let regex = try? NSRegularExpression(pattern: "^(\\d+)\\s+(.+?)\\s+\\((\\S+)\\s+->\\s+(\\S+)\\)") else { return [] }
+        return InventoryReader.lines(result.output).compactMap { line in
+            guard let m = regex.firstMatch(in: line, range: NSRange(line.startIndex..., in: line)),
+                  let id = Range(m.range(at: 1), in: line), let name = Range(m.range(at: 2), in: line),
+                  let from = Range(m.range(at: 3), in: line), let to = Range(m.range(at: 4), in: line) else { return nil }
+            let path = env.applicationsDirectory.appendingPathComponent(line[name] + ".app").path
+            return OutdatedItem(token: "mas:" + line[id], name: String(line[name]), from: String(line[from]), to: String(line[to]),
+                                bundleID: InventoryReader.bundleID(at: path))
+        }
     }
 
     func npmOutdated() -> [OutdatedItem] {
@@ -174,6 +206,21 @@ public struct Upgrader {
     private func upgradeOne(_ item: OutdatedItem) -> String? {
         let name = String(item.token.drop { $0 != ":" }.dropFirst())
         switch Packages.kind(item.token) {
+        case "adopt":
+            // Homebrew installs its copy over this one and keeps it updated from then on.
+            guard let brew = env.brewPath, DirectApp.isSafeCask(name) else { return "Homebrew isn't on this Mac" }
+            let result = runner.stream(brew, ["install", "--cask", "--force", name], input: nil,
+                                       environment: InventoryReader.brewEnvironment(brew), idleTimeout: 600) { _ in }
+            if result.status == 0 { return nil }
+            if result.stderr.contains("Operation not permitted") {
+                return "allow MacSync in System Settings → Privacy & Security → App Management, then try again"
+            }
+            return Engine.brewProblem(result.stderr, name: name, status: result.status)
+        case "mas":
+            guard let mas = ["/opt/homebrew/bin/mas", "/usr/local/bin/mas"].first(where: FileManager.default.isExecutableFile),
+                  name.allSatisfy(\.isNumber) else { return "mas isn't on this Mac" }
+            let result = runner.stream(mas, ["upgrade", name], input: nil, environment: Packages.toolEnv, idleTimeout: 600) { _ in }
+            return result.status == 0 ? nil : Self.lastLine(result.stderr)
         case "npm":
             guard let npm = Packages.npm.first(where: FileManager.default.isExecutableFile) else { return "npm isn't on this Mac" }
             let result = runner.run(npm, ["install", "-g", name + "@latest"], input: nil, environment: Packages.toolEnv)

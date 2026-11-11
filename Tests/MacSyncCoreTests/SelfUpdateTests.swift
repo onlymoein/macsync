@@ -59,3 +59,12 @@ final class FeedTests: XCTestCase {
         XCTAssertEqual(updater.check()?.version, "0.8.1")
     }
 }
+
+final class VersionTests: XCTestCase {
+    func testOddVersionsCompareByTheirNumbers() {
+        XCTAssertFalse(SelfUpdater.isNewer("8.12.44", than: "8.12.48-19.NIGHTLY"))
+        XCTAssertTrue(SelfUpdater.isNewer("8.12.49", than: "8.12.48-19.NIGHTLY"))
+        XCTAssertTrue(SelfUpdater.isNewer("5.1232.0,abc", than: "5.1231.2"))
+        XCTAssertTrue(SelfUpdater.isNewer("0.8.10", than: "0.8.9"))
+    }
+}

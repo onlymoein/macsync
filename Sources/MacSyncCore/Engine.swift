@@ -1258,7 +1258,11 @@ public final class Engine {
     func currentRemovals() -> [AppRemoval] { Array((loadState().removals ?? [:]).values) }
 
     /// Keeps Homebrew apps and tools, npm and uv up to date.
-    public var upgrader: Upgrader { Upgrader(env: env, runner: runner) }
+    public var upgrader: Upgrader {
+        var upgrader = Upgrader(env: env, runner: runner)
+        upgrader.directApps = loadState().inventory?.directApps ?? []
+        return upgrader
+    }
 
     /// Which files this Mac would share, and which it keeps because of a secret. Reads only.
     public func scanFiles() -> (shared: [SharedFileInfo], kept: [KeptFile]) { extras.scan() }

@@ -70,7 +70,13 @@ public struct SelfUpdater {
     }
 
     static func isNewer(_ a: String, than b: String) -> Bool {
-        let x = a.split(separator: ".").map { Int($0) ?? 0 }, y = b.split(separator: ".").map { Int($0) ?? 0 }
+        // Only the leading digits of each part count: "8.12.48-19.NIGHTLY" is 8.12.48, "5.1231.0,4948…" is 5.1231.0.
+        func parts(_ v: String) -> [Int] {
+            v.split(whereSeparator: { $0 == "," || $0 == " " }).first.map(String.init).map { head in
+                head.split(separator: ".").map { Int($0.prefix { $0.isNumber }) ?? 0 }
+            } ?? []
+        }
+        let x = parts(a), y = parts(b)
         for i in 0..<max(x.count, y.count) {
             let l = i < x.count ? x[i] : 0, r = i < y.count ? y[i] : 0
             if l != r { return l > r }

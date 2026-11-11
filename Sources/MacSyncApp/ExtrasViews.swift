@@ -525,6 +525,8 @@ struct UpdatesPanel: View {
     static func kind(_ token: String) -> String {
         switch Packages.kind(token) {
         case "cask": return "Homebrew app"
+        case "adopt": return "updates itself; Homebrew takes it over"
+        case "mas": return "App Store"
         case "formula": return "Homebrew tool"
         case "npm": return "npm"
         case "uv": return "uv"
@@ -536,10 +538,10 @@ struct UpdatesPanel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             let report = model.upgradeReport
-            PanelHeader(symbol: "mug.fill", title: "Homebrew updates",
+            PanelHeader(symbol: "mug.fill", title: "App and Homebrew updates",
                         subtitle: model.upgrading ? (model.work["brew"]?.line ?? "Checking Homebrew for newer versions…")
                             : report.map { "\($0.summary) · checked \($0.ranAt.formatted(.relative(presentation: .named)))" }
-                            ?? "Checks Homebrew for newer apps and tools, plus npm and uv",
+                            ?? "Homebrew apps and tools, apps that update themselves (ChatGPT, Claude, Grok), App Store apps, npm and uv",
                         isExpanded: $open) {
                 Toggle("Install automatically", isOn: $model.autoUpgrade).toggleStyle(.switch).controlSize(.small)
                     .help("Checks on open and every six hours, and installs what's new. Off: lists them for you to update.")
