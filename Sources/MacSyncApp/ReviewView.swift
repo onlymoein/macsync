@@ -61,19 +61,19 @@ struct ReviewView: View {
                         DockPanel(plan: plan, model: model, matches: model.overview?.dockPlan == nil)
                         if !plan.missing.isEmpty { NotInstalledPanel(items: plan.missing, model: model) }
                     }
-                    if let plan = model.overview?.settingsPlan {
-                        SettingsPanel(plan: plan, model: model)
-                    }
-                    if model.proEnabled { AppSettingsPanel(model: model) }
                     AppsPanel(kind: .apps, model: model)
                     AppsPanel(kind: .appStore, model: model)
                     AppsPanel(kind: .tools, model: model)
                     ThisMacPanel(kind: .apps, model: model)
                     ThisMacPanel(kind: .tools, model: model)
-                    if model.overview?.settingsPlan == nil, model.proEnabled {
+                    // Settings sit lower down: Dock and apps first, then settings, then history.
+                    if let plan = model.overview?.settingsPlan {
+                        SettingsPanel(plan: plan, model: model)
+                    } else if model.proEnabled {
                         // Always there, like the Dock, so it's clear what's in sync.
                         SettingsMatchPanel(model: model)
                     }
+                    if model.proEnabled { AppSettingsPanel(model: model) }
                     HistoryPanel(model: model).id("history")
                     if let overview = model.overview, !overview.hasPendingChanges, !model.canApply, model.lastReport == nil {
                         VStack(spacing: 8) {
