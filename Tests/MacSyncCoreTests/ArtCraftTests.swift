@@ -81,3 +81,13 @@ final class ArtCraftTests: XCTestCase {
         XCTAssertEqual(Set(craft.records().keys), ["vectorcraft"])
     }
 }
+
+final class SigningTests: XCTestCase {
+    func testReadsTheTeamOfARealApp() throws {
+        let craft = URL(fileURLWithPath: "/Applications/Artcraft/CADCraft.app")
+        try XCTSkipUnless(FileManager.default.fileExists(atPath: craft.path), "needs CADCraft installed")
+        guard case .team(let team) = ArtCraft.signingTeam(of: craft, within: 10) else { return XCTFail("no team") }
+        XCTAssertEqual(team.count, 10)
+        guard case .unsigned = ArtCraft.signingTeam(of: URL(fileURLWithPath: "/tmp"), within: 10) else { return XCTFail("tmp isn't signed") }
+    }
+}

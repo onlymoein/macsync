@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import Security
 
 /// One app from ArtCraft's own catalog, with what this Mac has of it.
 public struct CraftApp: Codable, Equatable, Identifiable {
@@ -253,6 +254,26 @@ public struct ArtCraft {
         return results
     }
 
+    enum SigningCheck { case team(String), unsigned, timedOut }
+
+    /// The team that signed an app, read by macOS's Security framework on this Mac: no other
+    /// program and no network, and it gives up after `seconds`.
+    static func signingTeam(of app: URL, within seconds: TimeInterval) -> SigningCheck {
+        var answer: SigningCheck = .unsigned
+        let done = DispatchSemaphore(value: 0)
+        DispatchQueue.global(qos: .userInitiated).async {
+            var code: SecStaticCode?
+            var info: CFDictionary?
+            if SecStaticCodeCreateWithPath(app as CFURL, [], &code) == errSecSuccess, let code,
+               SecCodeCopySigningInformation(code, SecCSFlags(rawValue: kSecCSSigningInformation), &info) == errSecSuccess,
+               let team = (info as? [String: Any])?[kSecCodeInfoTeamIdentifier as String] as? String {
+                answer = .team(team)
+            }
+            done.signal()
+        }
+        return done.wait(timeout: .now() + seconds) == .timedOut ? .timedOut : answer
+    }
+
     /// Downloads with curl while watching the file grow, so the window can show how far it is.
     static func watchedDownload(runner: CommandRunning, url: String, to file: URL, expected: Int64?,
                                 progress: @escaping (Int?, Int64) -> Void) -> CommandResult {
@@ -313,8 +334,12 @@ public struct ArtCraft {
         }
         if let team = app.team {
             progress("Checking \(app.name)'s signature…")
-            let sig = runner.run("/usr/bin/codesign", ["-dv", "--verbose=2", source.path], input: nil, environment: [:])
-            guard (sig.stderr + sig.output).contains("TeamIdentifier=\(team)") else {
+            switch Self.signingTeam(of: source, within: 60) {
+            case .timedOut:
+                return .failure(.refused("Checking \(app.name)'s signature didn't finish within a minute. Try again."))
+            case .team(let found) where found == team:
+                break
+            default:
                 return .failure(.refused("\(app.name) isn't signed by its developer as ArtCraft's catalog says, so it wasn't installed."))
             }
         }

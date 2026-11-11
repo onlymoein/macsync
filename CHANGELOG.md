@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.8.5
+- Checking a Craft app's signature no longer runs Apple's codesign tool, which could sit on "Checking the signature" indefinitely. MacSync reads the signing team itself through macOS's Security framework, on the Mac with no network, and gives up after a minute with an error so you can try again.
+
 ## 0.8.4
 - ArtCraft installs say which step they're on: Downloading, Verifying, Opening the disk image, Checking the signature, Copying into the folder.
 - No step can wait forever: opening a disk image stops after 3 quiet minutes and copying after 10, with an error and the Install button to try again. A disk image with a license agreement is answered automatically.
