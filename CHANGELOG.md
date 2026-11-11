@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.8.9
+- Downloads can't sit silently: the row says "Connecting to ArtCraft's downloads" before the first byte, a connection that doesn't answer in 30 seconds or a download that stalls for a minute is retried twice and then stops with a plain reason (stopped making progress, couldn't be reached, too many requests), and the Install button tries again. App downloads from developers get the same limits.
+- ArtCraft Launcher is made to quit if it declines, before MacSync writes its list, so it can't write its old list back over the new one.
+
 ## 0.8.8
 - An ArtCraft Install pressed while a batch is running waits its turn ("After CADCraft") and runs right after, instead of starting a second batch alongside that overwrote the first one's progress and could leave the app showing Install with no error.
 - A refresh of the ArtCraft list asked for while one is already running now runs again after it, so a finished install always shows as Installed.

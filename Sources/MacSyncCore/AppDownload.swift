@@ -217,7 +217,7 @@ struct AppDownloader {
         let fm = FileManager.default
         try? fm.createDirectory(at: downloadsDirectory, withIntermediateDirectories: true)
         let partial = downloadsDirectory.appendingPathComponent(".\(app.name)-\(UUID().uuidString.prefix(8)).download")
-        let result = runner.run("/usr/bin/curl", ["-fsSL", "--proto", "=https", "--proto-redir", "=https", "--max-time", "3600",
+        let result = runner.run("/usr/bin/curl", ["-fsSL", "--proto", "=https", "--proto-redir", "=https", "--max-time", "3600", "--connect-timeout", "30", "--speed-limit", "1024", "--speed-time", "60",
                                                   "-o", partial.path, download.url], input: nil, environment: [:])
         guard result.status == 0, fm.fileExists(atPath: partial.path) else {
             try? fm.removeItem(at: partial)

@@ -328,7 +328,11 @@ public struct ArtCraft {
         var result = CommandResult(status: -1)
         let done = DispatchSemaphore(value: 0)
         DispatchQueue.global(qos: .userInitiated).async {
+            // Gives up on a connection that never answers (30 s) or a download that stalls below
+            // 1 KB/s for a minute, and tries twice more, instead of waiting out half an hour.
             result = runner.run("/usr/bin/curl", ["-fsSL", "--proto", "=https", "--proto-redir", "=https", "--max-time", "1800",
+                                                  "--connect-timeout", "30", "--speed-limit", "1024", "--speed-time", "60",
+                                                  "--retry", "2", "--retry-delay", "3",
                                                   "-o", file.path, url], input: nil, environment: [:])
             done.signal()
         }
@@ -349,11 +353,21 @@ public struct ArtCraft {
         defer { try? fm.removeItem(at: work) }
         try? fm.createDirectory(at: work, withIntermediateDirectories: true)
         let dmg = work.appendingPathComponent(app.id + ".dmg")
+        progress("Connecting to ArtCraft's downloads for \(app.name)…")
         let get = Self.watchedDownload(runner: runner, url: app.dmgURL, to: dmg, expected: app.sizeBytes) { percent, bytes in
             progress(percent.map { "Downloading \(app.name)… \($0)%" }
                      ?? "Downloading \(app.name)… \(ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file))")
         }
-        guard get.status == 0, fm.fileExists(atPath: dmg.path) else { return .failure(.refused("\(app.name) didn't download.")) }
+        guard get.status == 0, fm.fileExists(atPath: dmg.path) else {
+            let why: String
+            switch get.status {
+            case 28: why = "The download of \(app.name) stopped making progress. Check the connection and try again."
+            case 6, 7: why = "ArtCraft's downloads couldn't be reached. Check the connection and try again."
+            case 22: why = "ArtCraft's download server turned the request down (\(get.stderr.contains("429") || get.stderr.contains("403") ? "too many requests for now" : "not found")). Try again in a few minutes."
+            default: why = "\(app.name) didn't download. Try again."
+            }
+            return .failure(.refused(why))
+        }
         progress("Verifying \(app.name)…")
         if let expected = app.sha256, AppDownloader.sha256(of: dmg) != expected {
             return .failure(.refused("The download of \(app.name) didn't match ArtCraft's published checksum, so it wasn't installed."))
@@ -475,6 +489,9 @@ public struct ArtCraft {
         let running = NSRunningApplication.runningApplications(withBundleIdentifier: Self.launcherBundleID)
         for app in running { app.terminate() }
         for _ in 0..<20 where running.contains(where: { !$0.isTerminated }) { Thread.sleep(forTimeInterval: 0.25) }
+        // A tray app can decline to quit; it must be gone, or it writes its old list back over ours.
+        for app in running where !app.isTerminated { app.forceTerminate() }
+        for _ in 0..<12 where running.contains(where: { !$0.isTerminated }) { Thread.sleep(forTimeInterval: 0.25) }
         return !running.isEmpty
     }
 
