@@ -6,3 +6,9 @@ build/
 node_modules/
 raycast/dist/
 .firecrawl/
+docs/assets/review-*.png
+docs/assets/applied-*.png
+docs/assets/menu-applied-*.png
+docs/assets/appsettings-*.png
+docs/assets/probe-*.png
+docs/assets/section-artcraftBusy-*.png
