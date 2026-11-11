@@ -667,6 +667,22 @@ final class EngineTests: XCTestCase {
         XCTAssertEqual(offered.filter { $0.hasPrefix("cask:") }.count, AppSuite.all[0].members.count - 1)
     }
 
+    func testCraftAppRemovedFromAllMacsShowsAsRemovedOnTheOthers() throws {
+        let world = try TestWorld()
+        let studio = try world.mac("studio", dock: ["a"])
+        try studio.engine.sync()
+        let air = try world.mac("air", dock: ["a"])
+        try air.engine.sync()
+        world.tick()
+        let photo = CraftApp(id: "photocraft", name: "PhotoCraft", version: "1", dmgURL: "https://github.com/storytold/p/p.dmg")
+        _ = studio.engine.removeCraft([photo], everywhere: true)
+        world.tick()
+        XCTAssertEqual(try air.engine.sync().removed.map(\.token), ["craft:photocraft"])
+        studio.engine.installCraftAgain([photo])
+        world.tick()
+        XCTAssertTrue(try air.engine.sync().removed.isEmpty)
+    }
+
     func testOldICloudCopiesAreDeleted() throws {
         let world = try TestWorld()
         let old = world.sync.appendingPathComponent("apps/packages")

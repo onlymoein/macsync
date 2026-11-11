@@ -288,7 +288,7 @@ public final class Engine {
     private func mergeRemovals(_ state: inout LocalState) {
         var merged = state.removals ?? [:]
         for machine in store.load().machines where machine.machineID != env.machineID {
-            for removal in machine.removals ?? [] where AppRef.isSafeToken(removal.token) {
+            for removal in machine.removals ?? [] where AppRef.isSafeToken(removal.token) || Self.isCraftToken(removal.token) {
                 if let mine = merged[removal.token], mine.at >= removal.at { continue }
                 var clean = removal
                 clean.name = String(removal.name.prefix(80))
@@ -357,6 +357,25 @@ public final class Engine {
         try? saveState(state)
         _ = try? sync(refreshInventory: false)
         return results
+    }
+
+    static func isCraftToken(_ token: String) -> Bool {
+        token.range(of: "^craft:[a-z0-9][a-z0-9-]{0,60}$", options: .regularExpression) != nil
+    }
+
+    /// Records "removed from all Macs" for items that aren't regular apps (Craft apps).
+    func recordRemovals(_ items: [(token: String, name: String)]) {
+        stateLock.lock(); defer { stateLock.unlock() }
+        guard !items.isEmpty else { return }
+        var state = loadState()
+        var removals = state.removals ?? [:]
+        for item in items {
+            removals[item.token] = AppRemoval(token: item.token, name: item.name, bundleID: nil, at: now(), active: true,
+                                              fromMachine: env.machineName)
+        }
+        state.removals = removals
+        try? saveState(state)
+        _ = try? sync(refreshInventory: false)
     }
 
     /// Takes back a removal, so the app is offered to Macs that lack it again.

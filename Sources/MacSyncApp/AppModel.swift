@@ -463,7 +463,10 @@ final class AppModel: ObservableObject {
         for app in fresh { craftBusy.insert(app.id); craftErrors[app.id] = nil }
         let engine = engine
         Task {
-            let results = await Task.detached { engine.installCraft(fresh) }.value
+            let results = await Task.detached { () -> [(CraftApp, Result<String, EngineError>)] in
+                engine.installCraftAgain(fresh)
+                return engine.installCraft(fresh)
+            }.value
             for (app, result) in results {
                 craftBusy.remove(app.id)
                 if case .failure(let error) = result { craftErrors[app.id] = error.localizedDescription }
@@ -474,13 +477,13 @@ final class AppModel: ObservableObject {
         }
     }
 
-    func removeCraft(_ apps: [CraftApp]) {
+    func removeCraft(_ apps: [CraftApp], everywhere: Bool = false) {
         let fresh = apps.filter { !craftBusy.contains($0.id) && $0.isInstalled }
         guard !fresh.isEmpty else { return }
         for app in fresh { craftBusy.insert(app.id); craftErrors[app.id] = nil }
         let engine = engine
         Task {
-            let results = await Task.detached { engine.removeCraft(fresh) }.value
+            let results = await Task.detached { engine.removeCraft(fresh, everywhere: everywhere) }.value
             for (app, result) in results {
                 craftBusy.remove(app.id)
                 if case .failure(let error) = result { craftErrors[app.id] = error.localizedDescription }

@@ -389,7 +389,19 @@ extension Engine {
         ArtCraft(env: env, runner: runner, now: now).install(apps, progress: progress)
     }
 
-    public func removeCraft(_ apps: [CraftApp], progress: (String) -> Void = { _ in }) -> [(CraftApp, Result<String, EngineError>)] {
-        ArtCraft(env: env, runner: runner, now: now).remove(apps, progress: progress)
+    public func removeCraft(_ apps: [CraftApp], everywhere: Bool = false,
+                            progress: (String) -> Void = { _ in }) -> [(CraftApp, Result<String, EngineError>)] {
+        let results = ArtCraft(env: env, runner: runner, now: now).remove(apps, progress: progress)
+        if everywhere {
+            // Like other apps: every Mac is asked to remove it, and MacSync stops offering it.
+            let gone = results.filter { if case .success = $0.1 { return true }; return false }.map(\.0)
+            recordRemovals(gone.map { ($0.skipToken, $0.name) })
+        }
+        return results
+    }
+
+    /// Installing a removed Craft app again brings it back on every Mac.
+    public func installCraftAgain(_ apps: [CraftApp]) {
+        for app in apps { try? cancelRemoval(app.skipToken) }
     }
 }

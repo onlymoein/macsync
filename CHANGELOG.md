@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.6.6
+- Removing an ArtCraft app, one or all, asks: Remove from All Macs, or from This Mac Only. Other Macs mark apps removed elsewhere, with a Remove button, and stop offering them; installing one again brings it back everywhere.
+
 ## 0.6.5
 - Remove and Remove All in the ArtCraft section: apps go to the Trash and come off ArtCraft Launcher's list.
 
