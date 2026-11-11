@@ -72,7 +72,7 @@ public enum PrefValue: Codable, Equatable {
     }
 }
 
-public enum SettingType: String, Codable { case bool, int, float, string }
+public enum SettingType: String, Codable { case bool, int, float, string, collection }
 
 public enum RestartTarget: String, Codable, Hashable { case dock, finder, systemUI }
 
@@ -138,7 +138,73 @@ public enum SettingsCatalog {
         d(capture, "location", .string, "Screenshots", "Screenshot folder", path: true),
         d(capture, "type", .string, "Screenshots", "Screenshot format"),
         d(capture, "disable-shadow", .bool, "Screenshots", "No shadow on window shots"),
+    ] + hotCorners + gestures + [
+        d("com.apple.HIToolbox", "AppleEnabledInputSources", .collection, "Keyboard", "Input sources", logout: true),
+        d("com.apple.symbolichotkeys", "AppleSymbolicHotKeys", .collection, "Keyboard", "Keyboard shortcuts", logout: true),
+        d(global, "NSUserKeyEquivalents", .collection, "Keyboard", "App shortcuts (all apps)", logout: true),
+        d(global, "AppleFnUsageType", .int, "Keyboard", "Press fn key to", logout: true),
+        d(global, "com.apple.keyboard.fnState", .bool, "Keyboard", "Use F1, F2… as standard keys", logout: true),
     ]
+
+    static let hotCorners: [SettingDefinition] = [("tl", "top left"), ("tr", "top right"), ("bl", "bottom left"), ("br", "bottom right")]
+        .flatMap { corner, name in [
+            d(dock, "wvous-\(corner)-corner", .int, "Hot corners", "Hot corner, \(name)", restart: .dock),
+            d(dock, "wvous-\(corner)-modifier", .int, "Hot corners", "Hot corner key, \(name)", restart: .dock),
+        ] }
+
+    static let gestures: [SettingDefinition] = {
+        let keys: [(String, SettingType, String)] = [
+            ("TrackpadThreeFingerHorizSwipeGesture", .int, "Swipe between pages and apps (3 fingers)"),
+            ("TrackpadThreeFingerVertSwipeGesture", .int, "Mission Control and App Exposé (3 fingers)"),
+            ("TrackpadFourFingerHorizSwipeGesture", .int, "Swipe between full-screen apps (4 fingers)"),
+            ("TrackpadFourFingerVertSwipeGesture", .int, "Mission Control and App Exposé (4 fingers)"),
+            ("TrackpadFourFingerPinchGesture", .int, "Launchpad pinch"),
+            ("TrackpadFiveFingerPinchGesture", .int, "Show Desktop spread"),
+            ("TrackpadPinch", .bool, "Zoom in or out"), ("TrackpadRotate", .bool, "Rotate"),
+            ("TrackpadTwoFingerDoubleTapGesture", .int, "Smart zoom"),
+            ("TrackpadTwoFingerFromRightEdgeSwipeGesture", .int, "Notification Center swipe"),
+            ("TrackpadMomentumScroll", .bool, "Scroll with momentum"),
+            ("FirstClickThreshold", .int, "Click pressure"), ("ActuationStrength", .int, "Silent clicking"),
+            ("ForceSuppressed", .bool, "Force Click off"),
+        ]
+        let bluetooth = "com.apple.driver.AppleBluetoothMultitouch.trackpad"
+        return keys.map { d(trackpad, $0.0, $0.1, "Trackpad gestures", $0.2, logout: true) }
+            + keys.map { d(bluetooth, $0.0, $0.1, "Trackpad gestures", $0.2 + " (Magic Trackpad)", logout: true) }
+            + [d(dock, "showAppExposeGestureEnabled", .bool, "Trackpad gestures", "App Exposé gesture", restart: .dock),
+               d(dock, "showMissionControlGestureEnabled", .bool, "Trackpad gestures", "Mission Control gesture", restart: .dock),
+               d(dock, "showLaunchpadGestureEnabled", .bool, "Trackpad gestures", "Launchpad gesture", restart: .dock),
+               d(dock, "showDesktopGestureEnabled", .bool, "Trackpad gestures", "Show Desktop gesture", restart: .dock)]
+    }()
+
+    /// A value as people know it: "Mission Control" rather than 2.
+    public static func describe(_ id: String, _ value: PrefValue?) -> String {
+        guard let value else { return "default" }
+        if id.contains("|wvous-"), id.hasSuffix("-corner"), case .int(let n) = value {
+            let names = [0: "nothing", 1: "nothing", 2: "Mission Control", 3: "App windows", 4: "Desktop", 5: "Start screen saver",
+                         6: "Disable screen saver", 10: "Put display to sleep", 11: "Launchpad", 12: "Notification Center",
+                         13: "Lock Screen", 14: "Quick Note"]
+            return names[n] ?? String(n)
+        }
+        if id.contains("|wvous-"), case .int(let n) = value {
+            let keys = [(131072, "⇧"), (262144, "⌃"), (524288, "⌥"), (1048576, "⌘")].filter { n & $0.0 != 0 }.map(\.1)
+            return keys.isEmpty ? "no key" : keys.joined()
+        }
+        if id.hasSuffix("|AppleEnabledInputSources") || id.hasSuffix("|AppleSelectedInputSources"), case .array(let items) = value {
+            let names = items.compactMap { item -> String? in
+                guard case .dict(let d) = item else { return nil }
+                if case .string(let name)? = d["KeyboardLayout Name"] { return name }
+                if case .string(let mode)? = d["Input Mode"] { return mode.components(separatedBy: ".").last }
+                if case .string(let bundle)? = d["Bundle ID"] { return bundle.components(separatedBy: ".").last }
+                return nil
+            }.filter { !["PressAndHold", "CharacterPaletteIM", "EmojiFunctionRowIM_Extension"].contains($0) }
+            return names.isEmpty ? value.display : names.joined(separator: ", ")
+        }
+        if id.hasSuffix("|AppleSymbolicHotKeys"), case .dict(let d) = value {
+            let off = d.values.filter { if case .dict(let e) = $0, case .bool(false)? = e["enabled"] { return true }; return false }.count
+            return "\(d.count) shortcuts, \(off) off"
+        }
+        return value.display
+    }
 
     public static func definition(for id: String) -> SettingDefinition? { all.first { $0.id == id } }
 }

@@ -60,7 +60,7 @@ enum UIProbe {
         write(ReviewView(model: model).frame(width: 680, height: height).background(background), dir, review)
         write(MenuView(model: model).background(background), dir, menu)
         write(AppPrefsView(model: model).frame(width: 460, height: 560).background(background), dir, "appsettings-" + menu)
-        if ProcessInfo.processInfo.environment["MACSYNC_UI_PROBE_SECTIONS"] != nil {
+        if ProcessInfo.processInfo.environment["MACSYNC_UI_PROBE_SECTIONS"] != nil, review.hasPrefix("review-") {
             let suffix = review.hasSuffix("dark") ? "dark" : "light"
             for key in ReviewView.probeSections {
                 if let view = ReviewView.probeSection(key, model: model) { write(view, dir, "section-\(key)-\(suffix)") }

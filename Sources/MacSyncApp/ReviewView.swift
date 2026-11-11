@@ -57,6 +57,7 @@ struct ReviewView: View {
                             .foregroundStyle(.green).padding(14).frame(maxWidth: .infinity, alignment: .leading).glassPanel()
                     }
                     ToRemovePanel(model: model)
+                    ExtrasRemovedPanel(model: model)
                     if let plan = model.overview?.dockPlan ?? model.overview?.dockPreview {
                         DockPanel(plan: plan, model: model, matches: model.overview?.dockPlan == nil)
                         if !plan.missing.isEmpty { NotInstalledPanel(items: plan.missing, model: model) }
@@ -67,6 +68,11 @@ struct ReviewView: View {
                     AppsPanel(kind: .tools, model: model)
                     ThisMacPanel(kind: .apps, model: model)
                     ThisMacPanel(kind: .tools, model: model)
+                    PackagesPanel(model: model)
+                    FilesPanel(area: .config, model: model)
+                    FilesPanel(area: .ai, model: model)
+                    FilesPanel(area: .appData, model: model)
+                    LoginItemsPanel(model: model)
                     // Settings sit lower down: Dock and apps first, then settings, then history.
                     if let plan = model.overview?.settingsPlan {
                         SettingsPanel(plan: plan, model: model)
@@ -75,6 +81,7 @@ struct ReviewView: View {
                         SettingsMatchPanel(model: model)
                     }
                     if model.proEnabled { AppSettingsPanel(model: model) }
+                    SignInPanel(model: model)
                     HistoryPanel(model: model).id("history")
                     if let overview = model.overview, !overview.hasPendingChanges, !model.canApply, model.lastReport == nil {
                         VStack(spacing: 8) {
@@ -172,7 +179,7 @@ struct ReviewView: View {
 
 // MARK: - Panels
 
-private struct PanelHeader<Trailing: View>: View {
+struct PanelHeader<Trailing: View>: View {
     let symbol: String
     let title: String
     let subtitle: String?
@@ -288,7 +295,7 @@ private struct DockPanel: View {
 private enum Badge { case added, removed, waiting }
 
 /// One switch for a whole section: on when every item in it is on.
-private struct AllSwitch: View {
+struct AllSwitch: View {
     let onCount: Int
     let total: Int
     let set: (Bool) -> Void
@@ -900,11 +907,12 @@ private struct ThisMacPanel: View {
             }
             .padding(18)
             .glassPanel()
-            .confirmationDialog("Remove \(confirm?.displayName ?? "this app") from all your Macs?",
+            .confirmationDialog("Remove \(confirm?.displayName ?? "this app")?",
                                 isPresented: Binding(get: { confirm != nil }, set: { if !$0 { confirm = nil } })) {
                 Button("Remove from All Macs", role: .destructive) { if let app = confirm { model.removeEverywhere(app) } }
+                Button("Remove from This Mac Only") { if let app = confirm { model.removeHereOnly(app) } }
             } message: {
-                Text("It's removed from this Mac now. Each other Mac lists it under Removed and uninstalls it when you click there. Homebrew apps are uninstalled; others go to the Trash.")
+                Text("All Macs: it's removed here now, and each other Mac lists it under Removed and uninstalls it when you click there. This Mac only: it's uninstalled here and not offered here again; your other Macs keep it. Homebrew apps are uninstalled; others go to the Trash.")
             }
         }
     }
@@ -1192,8 +1200,9 @@ private struct AppRow: View {
         .padding(.horizontal, 8)
         .padding(.vertical, 6)
         .help(help)
-        .confirmationDialog("Uninstall \(missing.displayName) from all your Macs?", isPresented: $confirmRemove) {
+        .confirmationDialog("Remove \(missing.displayName)?", isPresented: $confirmRemove) {
             Button("Uninstall from All Macs", role: .destructive) { model.removeEverywhere(missing) }
+            Button("Not Needed on This Mac") { model.setSkipped(missing, true) }
         } message: {
             Text(missing.fromMachines.isEmpty ? "Each Mac that has it lists it under Removed and uninstalls it when you click there."
                  : "It's on \(missing.fromMachines.joined(separator: ", ")). Each of those Macs lists it under Removed and uninstalls it when you click there. MacSync stops offering it here.")
@@ -1359,7 +1368,7 @@ private struct SettingsMatchPanel: View {
                                 HStack {
                                     Text(item.label)
                                     Spacer(minLength: 8)
-                                    Text(item.to?.display ?? "default").foregroundStyle(.secondary)
+                                    Text(SettingsCatalog.describe(item.id, item.to)).foregroundStyle(.secondary).lineLimit(1)
                                     Toggle("", isOn: Binding(get: { on }, set: { model.setSettingSynced([item.id], $0) }))
                                         .toggleStyle(.switch).labelsHidden().controlSize(.mini)
                                         .help(on ? "Kept the same on all your Macs" : "Only on this Mac")
@@ -1403,9 +1412,9 @@ private struct SettingsPanel: View {
                             HStack(spacing: 6) {
                                 Text(change.label)
                                 Spacer(minLength: 8)
-                                Text(change.from?.display ?? "default").foregroundStyle(.secondary)
+                                Text(SettingsCatalog.describe(change.id, change.from)).foregroundStyle(.secondary).lineLimit(1)
                                 Image(systemName: "arrow.right").font(.caption2).foregroundStyle(.tertiary)
-                                Text(change.to?.display ?? "default")
+                                Text(SettingsCatalog.describe(change.id, change.to)).lineLimit(1)
                             }
                             .font(.callout)
                         }
@@ -1423,7 +1432,8 @@ private struct SettingsPanel: View {
 #if UIPROBE
 /// Test builds only: one section of the sync window on its own, for the website's pictures.
 extension ReviewView {
-    static let probeSections = ["dock", "notInstalled", "artcraft", "apps", "appStore", "tools", "toRemove", "settings", "history"]
+    static let probeSections = ["dock", "notInstalled", "artcraft", "apps", "appStore", "tools", "toRemove", "settings", "history",
+                                "config", "ai", "signin"]
 
     @MainActor static func probeSection(_ key: String, model: AppModel) -> AnyView? {
         let o = model.overview
@@ -1443,6 +1453,13 @@ extension ReviewView {
         case "settings":
             panel = o?.settingsPlan.map { AnyView(SettingsPanel(plan: $0, model: model)) } ?? AnyView(SettingsMatchPanel(model: model))
         case "history": panel = AnyView(HistoryPanel(model: model))
+        case "config": panel = AnyView(FilesPanel(area: .config, model: model))
+        case "ai": panel = AnyView(FilesPanel(area: .ai, model: model))
+        case "signin":
+            model.signInQueue = [SignInItem(name: "1Password", bundleID: "com.1password.1password", hint: SignIn.hint(for: "1Password") ?? ""),
+                                 SignInItem(name: "Slack", bundleID: "com.tinyspeck.slackmacgap", hint: SignIn.hint(for: "Slack") ?? ""),
+                                 SignInItem(name: "WhatsApp", bundleID: "net.whatsapp.WhatsApp", hint: SignIn.hint(for: "WhatsApp") ?? "")]
+            panel = AnyView(SignInPanel(model: model))
         default: return nil
         }
         return AnyView(panel.padding(22).frame(width: 680).background(Backdrop()))

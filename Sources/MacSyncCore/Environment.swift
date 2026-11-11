@@ -20,14 +20,15 @@ public struct MacSyncEnvironment {
     public var applicationsDirectory: URL
     public var homeDirectory: String
 
-    public static let appVersion = "0.6.6"
+    public static let appVersion = "0.7.0"
 
     public var iCloudAvailable: Bool {
         FileManager.default.fileExists(atPath: syncDirectory.deletingLastPathComponent().path)
     }
 
     public static func current(_ env: [String: String] = ProcessInfo.processInfo.environment) -> MacSyncEnvironment {
-        let home = NSHomeDirectory()
+        // A pretend home folder, for demos: config files are read from and written to it only.
+        let home = env["MACSYNC_HOME"] ?? NSHomeDirectory()
         let sync = env["MACSYNC_SYNC_DIR"].map { URL(fileURLWithPath: $0) }
             ?? URL(fileURLWithPath: home).appendingPathComponent("Library/Mobile Documents/com~apple~CloudDocs/MacSync")
         let data = env["MACSYNC_DATA_DIR"].map { URL(fileURLWithPath: $0) }

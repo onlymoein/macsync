@@ -27,6 +27,7 @@ public struct RestorePointInfo: Codable, Equatable, Identifiable {
     /// Nil on restore points from before these existed, which are treated as touching the Dock.
     public var touchedDock: Bool?
     public var touchedSettings: Bool?
+    public var touchedFiles: Bool?
 }
 
 public struct SyncOverview: Codable, Equatable {
@@ -62,13 +63,21 @@ public struct SyncOverview: Codable, Equatable {
     public var dockPreview: DockPlan?
     /// Settings this Mac keeps to itself.
     public var excludedSettings: [String] = []
+    /// Config files, AI setup, app data, login items and packages.
+    public var extras: ExtrasPlan = ExtrasPlan()
 
     /// Suggested suites (ArtCraft) are offered in the window but don't count as something to do.
     public var hasPendingChanges: Bool {
         dockPlan != nil || settingsPlan != nil || wantedApps.contains { !$0.fromMachines.isEmpty } || !toRemove.isEmpty
+            || !wantedFiles.isEmpty || !wantedExtras.isEmpty || !extras.toRemove.isEmpty
     }
     /// Missing apps, minus the ones this Mac doesn't need.
     public var wantedApps: [MissingApp] { missingApps.filter { !skippedApps.contains($0.app.token) } }
+    public var wantedFiles: [FileChange] { extras.files.filter { !$0.waiting && !skippedApps.contains($0.token) } }
+    /// Login items and packages, by token.
+    public var wantedExtras: [String] {
+        (extras.loginItems.map(\.token) + extras.packages.map(\.token)).filter { !skippedApps.contains($0) }
+    }
 }
 
 public struct InstallResult: Codable, Equatable, Identifiable {
@@ -91,7 +100,14 @@ public struct ApplyRequest {
     public var removeFromDock: [String]
     /// A new order for the Dock's apps (by key), arranged in MacSync. Every Mac follows it.
     public var dockOrder: [String]?
-    public init(applyDock: Bool, apps: [AppRef], applySettings: Bool = true, removeFromDock: [String] = [], dockOrder: [String]? = nil) {
+    /// Config files, AI setup and app data to take, by path.
+    public var files: [String] = []
+    /// Login items and packages to add, by token.
+    public var extras: [String] = []
+    public init(applyDock: Bool, apps: [AppRef], applySettings: Bool = true, removeFromDock: [String] = [], dockOrder: [String]? = nil,
+                files: [String] = [], extras: [String] = []) {
+        self.files = files
+        self.extras = extras
         self.applyDock = applyDock
         self.apps = apps
         self.applySettings = applySettings
@@ -108,7 +124,8 @@ public struct ApplyReport: Codable, Equatable {
     public var settingsChanged = false
     public var settingsSkipped: [String] = []
     public var settingsError: String?
-    public var hasFailures: Bool { results.contains { $0.outcome == .failed } || settingsError != nil }
+    public var extras: ExtrasReport?
+    public var hasFailures: Bool { results.contains { $0.outcome == .failed } || settingsError != nil || !(extras?.failures.isEmpty ?? true) }
 
     public init(restorePoint: RestorePointInfo?, dockChanged: Bool, skippedDockItems: [DockItem], results: [InstallResult],
                 settingsChanged: Bool = false, settingsSkipped: [String] = [], settingsError: String? = nil) {
@@ -199,6 +216,8 @@ public final class Engine {
 
     /// Suites always offered (ArtCraft). Tests pass none.
     let suites: [AppSuite]
+    let extras: Extras
+    private var lastExtras: ExtrasSection?
 
     public init(env: MacSyncEnvironment, dock: DockStoring, locator: AppLocating, runner: CommandRunning,
                 prefs: PreferencesStoring = InMemoryPreferences(), proUnlocked: Bool = ProLicense.isUnlocked,
@@ -212,6 +231,7 @@ public final class Engine {
         self.runner = runner
         self.store = SyncStore(env: env)
         self.now = now
+        self.extras = Extras(env: env, runner: runner, locator: locator, now: now)
     }
 
     public static func live(env: MacSyncEnvironment = .current()) -> Engine {
@@ -236,6 +256,7 @@ public final class Engine {
             state.inventoryAt = now()
         }
         let settings = capturePrefs(&state)
+        lastExtras = extras.capture(refresh: refreshInventory)
         mergeRemovals(&state)
         let snapshot = makeSnapshot(state: state, dock: local, settings: settings)
         var issues: [String] = []
@@ -667,9 +688,16 @@ public final class Engine {
 
     private static let epoch = Date(timeIntervalSince1970: 0)
 
+    /// The apps whose own settings travel: the ones picked, and app data (iStat Menus) when it's here.
+    private func prefDomains(_ state: LocalState) -> [String] {
+        var domains = Set(state.appPrefDomains ?? [])
+        for app in ExtrasCatalog.appDataDomains where locator.path(forBundleID: app.bundleID) != nil { domains.formUnion(app.domains) }
+        return domains.sorted()
+    }
+
     private func capturePrefs(_ state: inout LocalState) -> PrefsSection? {
         guard proUnlocked else { return nil }
-        let domains = (state.appPrefDomains ?? []).sorted()
+        let domains = prefDomains(state)
         let captured = capture(state)
         var section = PrefsSection(changedAt: state.settingsChangedAt ?? Self.epoch, basedOn: state.settingsBasedOn,
                                    covered: captured.covered, values: captured.values, appDomains: domains)
@@ -689,7 +717,7 @@ public final class Engine {
 
     /// This Mac's settings as they are sent, without the ones it keeps to itself.
     private func capture(_ state: LocalState) -> (covered: [String], values: [String: PrefValue]) {
-        let domains = (state.appPrefDomains ?? []).sorted()
+        let domains = prefDomains(state)
         var captured = PrefsCapture.values(prefs: prefs, appDomains: domains, home: env.homeDirectory)
         let excluded = Set(state.excludedSettings ?? [])
         guard !excluded.isEmpty else { return captured }
@@ -708,7 +736,7 @@ public final class Engine {
     }
 
     private func currentPrefsHash(_ state: LocalState) -> String {
-        let domains = (state.appPrefDomains ?? []).sorted()
+        let domains = prefDomains(state)
         let captured = capture(state)
         return PrefsSection(changedAt: Self.epoch, covered: captured.covered, values: captured.values, appDomains: domains).contentHash
     }
@@ -724,7 +752,7 @@ public final class Engine {
                         appVersion: MacSyncEnvironment.appVersion, firstSeenAt: state.firstSeenAt,
                         savedAt: now(), dock: dock, inventory: sharedInventory(state), settings: settings,
                         removals: state.removals.map { Array($0.values).sorted { $0.token < $1.token } },
-                        dockOrder: state.dockOrder)
+                        dockOrder: state.dockOrder, extras: lastExtras)
     }
 
     private func publishIfNeeded(_ snapshot: MachineSnapshot, state: inout LocalState) throws {
@@ -810,7 +838,8 @@ public final class Engine {
             unshared: state.unshared ?? [],
             dockOrderFrom: dockOrder(state, everyone)?.machineID,
             dockPreview: plan,
-            excludedSettings: state.excludedSettings ?? [])
+            excludedSettings: state.excludedSettings ?? [],
+            extras: extras.plan(others: others, skipped: deselected))
     }
 
     /// Apps on other Macs that this one lacks, leaving out any this Mac already has under another
@@ -871,13 +900,21 @@ public final class Engine {
         let rearranged = request.applyDock ? request.dockOrder.flatMap { $0.isEmpty ? nil : $0 } : nil
         let wantsDock = request.applyDock && (before.dockPlan != nil || !removals.isEmpty || rearranged != nil)
         let wantsSettings = request.applySettings && before.settingsPlan != nil
-        guard wantsDock || wantsSettings || !apps.isEmpty else {
+        let files = before.extras.files.filter { request.files.contains($0.path) && !$0.waiting }
+        let loginItems = before.extras.loginItems.filter { request.extras.contains($0.token) }
+        let packages = before.extras.packages.filter { request.extras.contains($0.token) }
+        let wantsExtras = !files.isEmpty || !loginItems.isEmpty || !packages.isEmpty
+        guard wantsDock || wantsSettings || !apps.isEmpty || wantsExtras else {
             return ApplyReport(restorePoint: nil, dockChanged: false, skippedDockItems: before.dockMissing, results: [])
         }
 
         let source = before.dockPlan?.sourceMachine ?? before.settingsPlan?.sourceMachine ?? before.machines.first { !$0.isThisMac }?.name ?? "another Mac"
-        var point = try createRestorePoint(source: source, summary: Self.summary(dock: wantsDock ? before.dockPlan : nil,
-                                                                                     settings: wantsSettings ? before.settingsPlan : nil, apps: apps))
+        var summary = Self.summary(dock: wantsDock ? before.dockPlan : nil, settings: wantsSettings ? before.settingsPlan : nil, apps: apps)
+        let extraCount = loginItems.count + packages.count
+        let extraParts = (files.isEmpty ? [] : ["\(files.count) file\(files.count == 1 ? "" : "s")"])
+            + (extraCount == 0 ? [] : ["\(extraCount) login item\(extraCount == 1 ? "" : "s") and package\(extraCount == 1 ? "" : "s")"])
+        summary = ([summary].filter { !$0.isEmpty } + extraParts).joined(separator: ", ")
+        var point = try createRestorePoint(source: source, summary: summary)
 
         var results: [InstallResult] = []
         missingNames = Dictionary(before.missingApps.map { ($0.app.token, $0.displayName) }, uniquingKeysWith: { a, _ in a })
@@ -891,6 +928,16 @@ public final class Engine {
         }
         point.installed = results.filter { $0.outcome == .installed }.map(\.app.token)
         try writeRestoreInfo(point)
+        var extrasReport: ExtrasReport?
+        if wantsExtras {
+            let marketplaces = store.load().machines.reduce(into: [String: String]()) { all, machine in
+                for (name, source) in machine.extras?.marketplaces ?? [:] where all[name] == nil { all[name] = source }
+            }
+            extrasReport = extras.apply(files: files, loginItems: loginItems, packages: packages, marketplaces: marketplaces,
+                                        backupDir: restoreDirectory(point.id), progress: progress)
+            point.touchedFiles = !(extrasReport?.filesChanged.isEmpty ?? true)
+            try writeRestoreInfo(point)
+        }
 
         var dockChanged = false
         var settingsChanged = false
@@ -969,8 +1016,10 @@ public final class Engine {
         try saveState(state)
         pruneRestorePoints()
         _ = try? sync(refreshInventory: false)
-        return ApplyReport(restorePoint: point, dockChanged: dockChanged, skippedDockItems: skipped, results: results,
-                           settingsChanged: settingsChanged, settingsSkipped: before.settingsSkipped, settingsError: settingsError)
+        var report = ApplyReport(restorePoint: point, dockChanged: dockChanged, skippedDockItems: skipped, results: results,
+                                 settingsChanged: settingsChanged, settingsSkipped: before.settingsSkipped, settingsError: settingsError)
+        report.extras = extrasReport
+        return report
     }
 
     /// Homebrew's error in plain words: "Homebrew no longer has tldr. Did you mean tldx?"
@@ -1151,6 +1200,38 @@ public final class Engine {
         return parts.joined(separator: ", ")
     }
 
+    // MARK: Files, login items and packages
+
+    /// Removes a file, login item or package from this Mac, and with `everywhere` from every Mac.
+    public func removeExtra(_ token: String, name: String, everywhere: Bool) -> Result<Void, EngineError> {
+        stateLock.lock(); defer { stateLock.unlock() }
+        let result = extras.remove(token, name: name, everywhere: everywhere)
+        _ = try? sync(refreshInventory: false)
+        return result
+    }
+
+    /// Which files this Mac would share, and which it keeps because of a secret. Reads only.
+    public func scanFiles() -> (shared: [SharedFileInfo], kept: [KeptFile]) { extras.scan() }
+
+    public func cancelExtraRemoval(_ token: String) throws {
+        stateLock.lock(); defer { stateLock.unlock() }
+        extras.cancelRemoval(token)
+        try sync(refreshInventory: false)
+    }
+
+    public func keepExtraHere(_ token: String) throws {
+        stateLock.lock(); defer { stateLock.unlock() }
+        extras.keepHere(token)
+        try sync(refreshInventory: false)
+    }
+
+    /// Files this Mac keeps to itself: not sent to the other Macs, and not taken from them.
+    public func setFilesLocalOnly(_ paths: [String], _ localOnly: Bool) throws {
+        stateLock.lock(); defer { stateLock.unlock() }
+        extras.setLocalOnly(paths, localOnly)
+        try sync(refreshInventory: false)
+    }
+
     // MARK: Settings
 
     struct SettingsBackupEntry: Codable {
@@ -1269,6 +1350,9 @@ public final class Engine {
         // Settings come back newest first, so each one ends as it was before this Apply.
         for later in all.filter({ $0.id >= id && $0.undoneAt == nil && $0.touchedSettings == true }) {
             try restoreSettings(from: later)
+        }
+        for later in all.filter({ $0.id >= id && $0.undoneAt == nil && $0.touchedFiles == true }) {
+            extras.restore(from: restoreDirectory(later.id))
         }
         if let data = try? Data(contentsOf: restoreDirectory(point.id).appendingPathComponent("dock-history.json")),
            let history = try? JSONDecoder.iso.decode(DockHistory.self, from: data) {

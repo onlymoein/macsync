@@ -59,7 +59,7 @@ final class AppModel: ObservableObject {
     /// becomes active, so a new version arrives soon after you sit down.
     private static let updateInterval: TimeInterval = 30 * 60
 
-    private let engine = Engine.live()
+    let engine = Engine.live()
     private let locator = SystemAppLocator()
     private let iconStore = IconStore(directory: MacSyncEnvironment.current().syncDirectory.appendingPathComponent("icons"))
     private var iconCache: [String: NSImage] = [:]
@@ -203,7 +203,7 @@ final class AppModel: ObservableObject {
     private var resyncWanted = false
     private var resyncInventory = false
 
-    private func runSync(refreshInventory: Bool) {
+    func runSync(refreshInventory: Bool) {
         guard !isSyncing else {
             resyncWanted = true
             resyncInventory = resyncInventory || refreshInventory
@@ -352,8 +352,14 @@ final class AppModel: ObservableObject {
 
     var canApply: Bool {
         !isApplying && getting.isEmpty && removing.isEmpty && (pendingAppPrefs != nil || pendingExcludedSettings != nil || (applyDock && (overview?.dockPlan != nil || !dockRemovals.isEmpty || dockArrangement != nil)) || (applySettings && overview?.settingsPlan != nil)
-)
+            || !(overview?.wantedFiles.isEmpty ?? true) || !(overview?.wantedExtras.isEmpty ?? true))
     }
+
+    /// Files, login items and packages being removed, and what went wrong.
+    @Published var extraBusy: Set<String> = []
+    @Published var extraErrors: [String: String] = [:]
+    /// Apps to sign in to after they were installed here. Kept until each is done.
+    @Published var signInQueue: [SignInItem] = SignInItem.load()
 
     /// Apps being fetched one at a time from the list, and how each one went.
     @Published var getting: Set<String> = []
@@ -531,6 +537,9 @@ final class AppModel: ObservableObject {
             getQueue.removeFirst()
             getting.remove(next.app.token)
             gotten[next.app.token] = result
+            if result.outcome == .installed || result.outcome == .downloaded {
+                addToSignIn(name: next.displayName, bundleID: next.detail?.bundleID ?? (next.app.source == .direct ? next.app.name : nil))
+            }
             if result.outcome == .installed, let bundleID = openAfter.removeValue(forKey: next.app.token) {
                 // LaunchServices may need a moment to notice the new app.
                 DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in self?.openApp(bundleID: bundleID) }
@@ -555,6 +564,15 @@ final class AppModel: ObservableObject {
 
     func removeEverywhere(_ app: MissingApp) { runRemoval([app]) { engine, apps in engine.removeEverywhere(apps) } }
     func uninstallHere(_ apps: [MissingApp]) { runRemoval(apps) { engine, apps in engine.uninstallHere(apps) } }
+    /// Uninstalls it here only, and stops offering it here, so the other Macs keep it.
+    func removeHereOnly(_ app: MissingApp) {
+        let token = app.app.token
+        runRemoval([app]) { engine, apps in
+            let results = engine.uninstallHere(apps)
+            if results.allSatisfy({ $0.outcome != .failed }) { try? engine.setSkipped([token], true) }
+            return results
+        }
+    }
 
     private func runRemoval(_ apps: [MissingApp], _ work: @escaping @Sendable (Engine, [MissingApp]) -> [InstallResult]) {
         let fresh = apps.filter { !removing.contains($0.app.token) }
@@ -604,9 +622,10 @@ final class AppModel: ObservableObject {
         undoMessage = nil
         actionError = nil
         let request = ApplyRequest(applyDock: applyDock, apps: [], applySettings: applySettings,
-                                   removeFromDock: Array(dockRemovals), dockOrder: dockArrangement)
+                                   removeFromDock: Array(dockRemovals), dockOrder: dockArrangement,
+                                   files: (overview?.wantedFiles ?? []).map(\.path), extras: overview?.wantedExtras ?? [])
         let wantsMore = (applyDock && (overview?.dockPlan != nil || !dockRemovals.isEmpty || dockArrangement != nil))
-            || (applySettings && overview?.settingsPlan != nil)
+            || (applySettings && overview?.settingsPlan != nil) || !request.files.isEmpty || !request.extras.isEmpty
         let appPrefs = pendingAppPrefs.map { Array($0).sorted() }
         let excluded = pendingExcludedSettings.map { Array($0).sorted() }
         let engine = engine

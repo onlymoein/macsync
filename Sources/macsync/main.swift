@@ -15,6 +15,7 @@ macsync \(MacSyncEnvironment.appVersion): keep your Macs set up the same way.
       --all-apps             Also install everything your other Macs have
   macsync undo [--yes]       Undo the last apply
   macsync app-prefs [add|remove <domain>]   Choose apps whose preferences sync (Pro)
+  macsync files              List the config files, AI setup and app data this Mac shares, and what it keeps back
   macsync restore-points     List saved restore points
   macsync restore <id>       Go back to just before that restore point
 
@@ -143,6 +144,19 @@ do {
         if json { try printJSON(now) } else {
             print(now.isEmpty ? "No apps chosen yet. Try: macsync app-prefs add com.raycast.macos" : "Syncing preferences of: " + now.joined(separator: ", "))
             if words.isEmpty { print("Available on this Mac: \(engine.availableAppPrefDomains().count). Passwords, tokens and keys are never synced.") }
+        }
+    case "files":
+        let scan = engine.scanFiles()
+        if json { try printJSON(["shared": scan.shared.map(\.path), "kept": scan.kept.map { "\($0.path): \($0.reason)" }]) } else {
+            for (group, files) in Dictionary(grouping: scan.shared, by: \.group).sorted(by: { $0.key < $1.key }) {
+                print("\(group) (\(files.count))")
+                for file in files.prefix(12) { print("  \(file.path)\(file.localOnly ? "  [kept to this Mac]" : "")") }
+                if files.count > 12 { print("  … and \(files.count - 12) more") }
+            }
+            if !scan.kept.isEmpty {
+                print("\nKept on this Mac:")
+                for file in scan.kept { print("  \(file.path): \(file.reason)") }
+            }
         }
     case "restore-points":
         let points = engine.restorePoints()

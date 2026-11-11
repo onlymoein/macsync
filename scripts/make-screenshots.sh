@@ -51,7 +51,26 @@ snap = {
                   "at": iso(now - datetime.timedelta(hours=2)), "active": True, "fromMachine": "Mac Studio"}],
     "settings": {"changedAt": iso(now + datetime.timedelta(minutes=1)), "covered": list(values), "values": values, "appDomains": []},
 }
+import hashlib, os
+os.makedirs(work + "/icloud/MacSync/files", exist_ok=True)
+os.makedirs(work + "/airhome", exist_ok=True)
+def blob(text):
+    data = text.encode()
+    sha = hashlib.sha256(data).hexdigest()
+    open(work + "/icloud/MacSync/files/" + sha, "wb").write(data)
+    return {"sha": sha, "size": len(data), "changedAt": iso(now)}
+files = {
+    "~/.zshrc": blob("export EDITOR=nvim\nalias ll='ls -la'\nalias gs='git status'\neval \"$(starship init zsh)\"\n"),
+    "~/.gitconfig": blob("[user]\n  name = Demo\n[pull]\n  rebase = true\n[init]\n  defaultBranch = main\n"),
+    "~/.config/ghostty/config": blob("theme = catppuccin-mocha\nfont-size = 14\n"),
+    "~/.claude/CLAUDE.md": blob("# How I like to work\n\n- Small, focused changes\n- Run the tests before saying it's done\n"),
+    "~/.claude/skills/release-notes/SKILL.md": blob("---\nname: release-notes\n---\nWrite release notes from the git log.\n"),
+    "~/.codex/AGENTS.md": blob("Prefer clear names over comments.\n"),
+}
+snap["extras"] = {"files": files, "loginItems": [], "packages": []}
 json.dump(snap, open(work + "/icloud/MacSync/machines/demo-studio.json", "w"))
+open(work + "/airhome/.gitconfig", "w").write("[user]\n  name = Demo\n[pull]\n  rebase = false\n")
+os.utime(work + "/airhome/.gitconfig", (0, 86400 * 365 * 30))
 def tile(b, label, path):
     return {"GUID": abs(hash(b)) % 100000, "tile-type": "file-tile", "tile-data": {
         "file-label": label, "bundle-identifier": b, "file-type": 41,
@@ -70,18 +89,18 @@ run() { # extra env for this run; each run starts from a fresh copy of the demo 
   rm -rf "$WORK/air/data"; cp "$WORK/air/dock.plist" "$WORK/air/dock.start"
   env MACSYNC_UI_PROBE="$OUT" MACSYNC_UI_PROBE_SECTIONS=1 MACSYNC_UI_PROBE_SELECT=all MACSYNC_UI_PROBE_HEIGHT="${HEIGHT:-1180}" \
     MACSYNC_SYNC_DIR="$WORK/icloud/MacSync" MACSYNC_DATA_DIR="$WORK/air/data" MACSYNC_DOCK_FILE="$WORK/air/dock.plist" \
-    MACSYNC_MACHINE_ID=demo-air MACSYNC_MACHINE_NAME="MacBook Air" MACSYNC_BREW="$WORK/brew" "$@" \
+    MACSYNC_HOME="$WORK/airhome" MACSYNC_MACHINE_ID=demo-air MACSYNC_MACHINE_NAME="MacBook Air" MACSYNC_BREW="$WORK/brew" "$@" \
     build/MacSync.app/Contents/MacOS/MacSync
 }
 UIPROBE=1 scripts/build-app.sh >/dev/null
-for k in dock notInstalled artcraft apps appStore tools toRemove settings history; do
+for k in dock notInstalled artcraft apps appStore tools toRemove settings history files.config files.ai signIn; do
   defaults write com.onlymehdi.macsync "review.$k.open" -bool true
 done
 rm -f "$OUT"/section-*.png "$OUT"/review-*.png "$OUT"/menu-*.png "$OUT"/applied-*.png "$OUT"/menu-applied-*.png
 run MACSYNC_UI_PROBE_DUMMY=1
 cp "$WORK/air/dock.start" "$WORK/air/dock.plist"
 run MACSYNC_UI_PROBE_DARK=1
-for k in dock notInstalled artcraft apps appStore tools toRemove settings history; do
+for k in dock notInstalled artcraft apps appStore tools toRemove settings history files.config files.ai signIn; do
   defaults delete com.onlymehdi.macsync "review.$k.open" 2>/dev/null || true
 done
 scripts/build-app.sh >/dev/null   # leave a normal build behind, without the probe

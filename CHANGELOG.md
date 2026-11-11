@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.7.0
+- **Config files:** shell (zsh, fish, bash, Starship), Git, editors (VS Code, Cursor, Zed, Neovim), terminals (Ghostty, kitty, Alacritty, WezTerm, tmux), Raycast's config folder and your fonts. The newest copy wins; a newer edit on this Mac is never replaced; each change shows its lines before you apply it. Files a dotfiles folder manages through links are left alone.
+- **AI setup:** skills (`~/.agents`, Claude, Codex, Cursor), CLAUDE.md and AGENTS.md, agents, commands, rules, Claude Code settings, Claude Code and Claude app MCP servers, Codex config, Cursor rules and MCP servers. JSON files travel with secret-looking values taken out, and each Mac keeps its own keys when it's updated.
+- **Secrets stay home:** any file with a key, token or password in it is kept on its Mac, and the window says which line. SSH and GPG keys, `~/.aws`, the 1Password and GitHub CLI config, shell history and `.env` files are never read. Every cleaned file is scanned again before it leaves the Mac.
+- **More settings:** hot corners, input sources, keyboard shortcuts, app menu shortcuts, the fn key, and every trackpad gesture (built-in and Magic Trackpad).
+- **Login items:** apps that open at login on your other Macs are added here when you apply.
+- **Extensions and packages:** Homebrew taps, VS Code and Cursor extensions, npm global packages, uv tools, Claude Code plugins (with their marketplaces) and Steam games (downloaded by Steam).
+- **App data:** Photoshop and Camera Raw presets; iStat Menus settings, without its license.
+- **Better app matching:** apps installed from a .pkg (Office, Zoom) are matched to their Homebrew cask by bundle ID and uninstall paths, so other Macs install them with Homebrew.
+- **Sign in to your apps:** after apps install, the ones that need an account are listed with a hint each, password manager first. MacSync opens each app; it never types a password.
+- **Remove from this Mac or all Macs, everywhere:** every Remove now asks which, for apps, command-line tools, files, login items and packages.
+- Undo and History put changed files back too.
+- `macsync files` lists what this Mac shares and what it keeps back.
+
 ## 0.6.6
 - Removing an ArtCraft app, one or all, asks: Remove from All Macs, or from This Mac Only. Other Macs mark apps removed elsewhere, with a Remove button, and stop offering them; installing one again brings it back everywhere.
 

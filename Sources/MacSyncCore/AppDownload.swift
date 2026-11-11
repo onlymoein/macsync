@@ -70,6 +70,8 @@ struct CaskCatalog {
 
     let byApp: [String: [String]]
     let entries: [String: Entry]
+    /// Casks by the bundle IDs they quit on uninstall, which catches .pkg apps (Office, Zoom) that have no app artifact.
+    var byBundleID: [String: [String]] = [:]
 
     static func load(env: MacSyncEnvironment, runner: CommandRunning, now: Date) -> CaskCatalog? {
         let cache = env.dataDirectory.appendingPathComponent("cask-catalog.json")
@@ -112,12 +114,17 @@ struct CaskCatalog {
     static func parse(_ data: Data) -> CaskCatalog? {
         guard let casks = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else { return nil }
         var byApp: [String: [String]] = [:]
+        var byBundleID: [String: [String]] = [:]
         var entries: [String: Entry] = [:]
         for cask in casks {
             guard let token = cask["token"] as? String, DirectApp.isSafeCask(token), let url = cask["url"] as? String else { continue }
             for artifact in cask["artifacts"] as? [[String: Any]] ?? [] {
                 for app in artifact["app"] as? [Any] ?? [] {
                     if let path = app as? String { byApp[(path as NSString).lastPathComponent, default: []].append(token) }
+                }
+                for (id, apps) in Self.uninstallHints(artifact) {
+                    if let id { byBundleID[id, default: []].append(token) }
+                    for app in apps where !(byApp[app]?.contains(token) ?? false) { byApp[app, default: []].append(token) }
                 }
             }
             // Intel builds are listed as variations named like "x86_64_sonoma".
@@ -128,7 +135,29 @@ struct CaskCatalog {
                                    name: (cask["name"] as? [String])?.first, desc: cask["desc"] as? String,
                                    homepage: cask["homepage"] as? String)
         }
-        return CaskCatalog(byApp: byApp, entries: entries)
+        return CaskCatalog(byApp: byApp, entries: entries, byBundleID: byBundleID)
+    }
+
+    /// Bundle IDs a cask quits, and app bundles it deletes, on uninstall.
+    static func uninstallHints(_ artifact: [String: Any]) -> [(String?, [String])] {
+        var out: [(String?, [String])] = []
+        for key in ["uninstall"] {
+            for step in artifact[key] as? [[String: Any]] ?? [] {
+                let quits = (step["quit"] as? [String]) ?? (step["quit"] as? String).map { [$0] } ?? []
+                let deletes = (step["delete"] as? [String]) ?? (step["delete"] as? String).map { [$0] } ?? []
+                let apps = deletes.filter { $0.hasPrefix("/Applications/") && $0.hasSuffix(".app") && !$0.contains("*") }
+                    .map { ($0 as NSString).lastPathComponent }
+                for id in quits where DirectApp.isSafeBundleID(id) { out.append((id, [])) }
+                if !apps.isEmpty { out.append((nil, apps)) }
+            }
+        }
+        return out
+    }
+
+    /// The cask for an app, by bundle ID, when its file name doesn't match.
+    func cask(forBundleID id: String) -> String? {
+        let tokens = byBundleID[id] ?? []
+        return tokens.first { !$0.contains("@") } ?? tokens.first
     }
 
     /// The cask for an app bundle such as "Google Chrome.app". Prefers the main release over

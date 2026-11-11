@@ -116,9 +116,13 @@ public struct InventoryReader {
         let wantedCasks = Set(inventory.casks), wantedFormulae = Set(inventory.formulae)
         for cask in root["casks"] as? [[String: Any]] ?? [] {
             guard let token = cask["token"] as? String else { continue }
-            let appNames = (cask["artifacts"] as? [[String: Any]] ?? [])
-                .compactMap { ($0["app"] as? [Any])?.first as? String }
+            let artifacts = cask["artifacts"] as? [[String: Any]] ?? []
+            let appNames = artifacts.compactMap { ($0["app"] as? [Any])?.first as? String }
             bundles.formUnion(appNames.map { ($0 as NSString).lastPathComponent })
+            // Apps a .pkg cask installed (no app artifact) are Homebrew's too, not hand-installed.
+            if wantedCasks.contains(token) {
+                bundles.formUnion(artifacts.flatMap { CaskCatalog.uninstallHints($0).flatMap(\.1) })
+            }
             guard wantedCasks.contains(token) else { continue }
             let ref = AppRef(source: .cask, name: token)
             let path = appNames.first.map { env.applicationsDirectory.appendingPathComponent($0).path }
@@ -158,7 +162,7 @@ public struct InventoryReader {
         guard !apps.isEmpty, let catalog = CaskCatalog.load(env: env, runner: runner, now: Date()) else { return apps }
         return apps.map { app in
             var app = app
-            app.cask = catalog.cask(forApp: app.name + ".app")
+            app.cask = catalog.cask(forApp: app.name + ".app") ?? catalog.cask(forBundleID: app.bundleID)
             return app
         }
     }

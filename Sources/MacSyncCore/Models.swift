@@ -190,10 +190,13 @@ public struct MachineSnapshot: Codable, Equatable {
     public var removals: [AppRemoval]?
     /// Which Mac's Dock order every Mac follows, as last chosen on any Mac.
     public var dockOrder: DockOrderChoice?
+    /// Config files, AI setup, app data, login items and extra packages. Optional and additive.
+    public var extras: ExtrasSection?
 
     public init(machineID: String, machineName: String, osVersion: String, appVersion: String,
                 firstSeenAt: Date, savedAt: Date, dock: DockSection?, inventory: Inventory?, settings: PrefsSection? = nil,
-                removals: [AppRemoval]? = nil, dockOrder: DockOrderChoice? = nil) {
+                removals: [AppRemoval]? = nil, dockOrder: DockOrderChoice? = nil, extras: ExtrasSection? = nil) {
+        self.extras = extras
         self.removals = removals
         self.dockOrder = dockOrder
         self.schemaVersion = SnapshotCodec.currentVersion

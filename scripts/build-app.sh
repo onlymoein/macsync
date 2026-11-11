@@ -41,6 +41,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>CFBundleVersion</key><string>$VERSION</string>
   <key>LSMinimumSystemVersion</key><string>13.0</string>
   <key>LSUIElement</key><true/>
+  <key>NSAppleEventsUsageDescription</key><string>MacSync reads your login items, and adds the ones your other Macs open at login, through System Events.</string>
   <key>CFBundleURLTypes</key><array><dict>
     <key>CFBundleURLName</key><string>com.onlymehdi.macsync</string>
     <key>CFBundleURLSchemes</key><array><string>macsync</string></array>
@@ -57,7 +58,7 @@ if [ "$IDENTITY" != "-" ]; then TS="--timestamp"; fi
 KC=()
 if [ -n "${SIGN_KEYCHAIN:-}" ]; then KC=(--keychain "$SIGN_KEYCHAIN"); fi
 codesign --force --options runtime $TS ${KC[@]+"${KC[@]}"} --sign "$IDENTITY" "$APP/Contents/Helpers/macsync"
-codesign --force --options runtime $TS ${KC[@]+"${KC[@]}"} --sign "$IDENTITY" "$APP"
+codesign --force --options runtime $TS ${KC[@]+"${KC[@]}"} --entitlements packaging/MacSync.entitlements --sign "$IDENTITY" "$APP"
 codesign --verify --strict "$APP"
 # Keep macOS from opening this build copy (for macsync:// links or after an update) instead of
 # the installed one in Applications.

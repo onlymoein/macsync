@@ -17,6 +17,11 @@ builds here are not signed or notarized yet. See [docs/RELEASING.md](docs/RELEAS
 - **Settings (Pro):** about 34 macOS settings (trackpad, keyboard, Finder, Dock behavior,
   appearance, screenshots), plus the preferences of apps you pick under the gear menu,
   App Preferences. A setting left at its default stays at its default.
+- **Config files and AI setup:** shell, Git, editor and terminal config, fonts, AI skills, rules,
+  CLAUDE.md, MCP servers and settings. Anything with a key or token in it stays on its Mac.
+- **Login items, extensions and packages:** login items, VS Code and Cursor extensions, npm and uv
+  tools, Homebrew taps, Claude Code plugins and Steam games.
+- **Sign-in list:** apps that need an account after they install, password manager first.
 - **Safety:** a preview before every apply, a restore point before every apply, and one-click undo.
 
 Pro is behind a single switch, `ProLicense.enforced` in `Sources/MacSyncCore/Pro.swift`. It is
