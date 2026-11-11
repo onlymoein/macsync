@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.8.2
+- New MacSync releases show up sooner: opening the menu checks when it's been a couple of minutes, and MacSync looks every 10 minutes instead of every 30. `macsync://update` checks now.
+
 ## 0.8.1
 - ArtCraft Launcher always installs first, and comes along when you install any Craft app on a Mac that doesn't have it.
 - The ArtCraft section shows where apps go ("Installs into /Applications/Artcraft"), with Change…, and Install All asks first: Install, or Choose Another Folder…. A new Mac gets the launcher's own folder, /Applications/Artcraft, not Applications itself.

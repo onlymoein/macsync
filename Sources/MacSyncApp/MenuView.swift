@@ -33,6 +33,7 @@ struct MenuView: View {
             footer
         }
         .frame(width: 340)
+        .onAppear { model.menuOpened() }
     }
 
     private var header: some View {

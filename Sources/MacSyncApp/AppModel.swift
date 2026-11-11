@@ -73,7 +73,7 @@ final class AppModel: ObservableObject {
     private var lastUpdateCheck = Date.distantPast
     /// At most this often; checks also happen whenever the Mac wakes, unlocks or a login session
     /// becomes active, so a new version arrives soon after you sit down.
-    private static let updateInterval: TimeInterval = 30 * 60
+    private static let updateInterval: TimeInterval = 10 * 60
 
     let engine = Engine.live()
     private let locator = SystemAppLocator()
@@ -854,8 +854,13 @@ final class AppModel: ObservableObject {
         if let update = availableUpdate, autoUpdate, !isUpdating, !isApplying { installUpdate(update) }
     }
 
-    func checkForUpdates(manual: Bool = false) {
-        guard !isUpdating, manual || Date().timeIntervalSince(lastUpdateCheck) > Self.updateInterval else { return }
+    /// Opening the menu looks again when it's been a couple of minutes, so a new release shows up there.
+    func menuOpened() {
+        if Date().timeIntervalSince(lastUpdateCheck) > 120 { checkForUpdates(manual: false, force: true) }
+    }
+
+    func checkForUpdates(manual: Bool = false, force: Bool = false) {
+        guard !isUpdating, manual || force || Date().timeIntervalSince(lastUpdateCheck) > Self.updateInterval else { return }
         // A build run from the project folder isn't an installed copy, so it never replaces itself.
         guard Bundle.main.bundleURL.pathExtension == "app" else { return }
         lastUpdateCheck = Date()
@@ -931,6 +936,8 @@ final class URLHandler: NSObject {
         case "share":
             ReviewWindow.shared.show(model: model)
             model.requestShare = true
+        case "update":
+            model.checkForUpdates(manual: true)
         default:
             ReviewWindow.shared.show(model: model)
         }
