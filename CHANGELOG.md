@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.6.2
+- Apps from one developer show as one row: the ArtCraft suite is a single "ArtCraft · 11 apps" row with one Get All and one switch, and opens to show each app.
+
 ## 0.6.1
 - An app installed with Homebrew on one Mac and downloaded on another shows once, as the Homebrew one.
 - A Homebrew package that is already on the Mac another way counts as installed; one Homebrew no longer has stops being offered.

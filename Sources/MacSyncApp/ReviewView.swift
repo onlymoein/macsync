@@ -541,6 +541,104 @@ private struct DockIcon: View {
 
 // MARK: - Apps
 
+/// Several apps from one developer (the ArtCraft suite) shown as one row.
+struct AppFamily: Identifiable {
+    let id: String
+    let name: String
+    let apps: [MissingApp]
+
+    enum Entry: Identifiable {
+        case single(MissingApp)
+        case family(AppFamily)
+        var id: String {
+            switch self { case .single(let app): return app.id; case .family(let family): return "family:" + family.id }
+        }
+    }
+
+    /// Apps sharing a developer's bundle ID prefix (ai.storyteller.photocraft, ai.storyteller.vectorcraft)
+    /// form one family when there are three or more. The family is named after its launcher
+    /// app when there is one ("ArtCraft Launcher" → "ArtCraft"), otherwise after the developer.
+    static func group(_ apps: [MissingApp]) -> [Entry] {
+        func key(_ app: MissingApp) -> String? {
+            guard let id = app.detail?.bundleID ?? (app.app.source == .direct ? app.app.name : nil) else { return nil }
+            let parts = id.split(separator: ".")
+            guard parts.count >= 3 else { return nil }
+            let prefix = parts.prefix(2).joined(separator: ".").lowercased()
+            // Big developers ship unrelated apps under one prefix; only group small suites.
+            return ["com.apple", "com.google", "com.microsoft", "com.adobe"].contains(prefix) ? nil : prefix
+        }
+        let byKey = Dictionary(grouping: apps.filter { key($0) != nil }, by: { key($0)! }).filter { $0.value.count >= 3 }
+        var seen = Set<String>()
+        var entries: [Entry] = []
+        for app in apps {
+            if let k = key(app), let members = byKey[k] {
+                guard seen.insert(k).inserted else { continue }
+                let launcher = members.first { $0.displayName.hasSuffix(" Launcher") }
+                let name = launcher.map { String($0.displayName.dropLast(" Launcher".count)) }
+                    ?? k.split(separator: ".").reversed().joined(separator: ".")
+                let sorted = members.sorted { a, b in
+                    (a.displayName.hasSuffix(" Launcher") ? 0 : 1, a.displayName) < (b.displayName.hasSuffix(" Launcher") ? 0 : 1, b.displayName)
+                }
+                entries.append(.family(AppFamily(id: k, name: name, apps: sorted)))
+            } else {
+                entries.append(.single(app))
+            }
+        }
+        return entries
+    }
+}
+
+private struct FamilyRow: View {
+    let family: AppFamily
+    @ObservedObject var model: AppModel
+    @State private var expanded = false
+
+    private var skipped: Set<String> { Set(model.overview?.skippedApps ?? []) }
+    private var wanted: [MissingApp] { family.apps.filter { !skipped.contains($0.app.token) } }
+    private var left: [MissingApp] {
+        wanted.filter { $0.canInstall && model.gotten[$0.app.token] == nil && !model.getting.contains($0.app.token) }
+    }
+    private var busy: Bool { family.apps.contains { model.getting.contains($0.app.token) } }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 12) {
+                AppIcon(missing: family.apps[0], image: model.icon(for: family.apps[0]))
+                Button { withAnimation(.easeInOut(duration: 0.2)) { expanded.toggle() } } label: {
+                    VStack(alignment: .leading, spacing: 1) {
+                        HStack(spacing: 6) {
+                            Text(family.name).font(.body.weight(.medium))
+                            Image(systemName: "chevron.right").font(.caption.weight(.bold)).foregroundStyle(.secondary)
+                                .rotationEffect(.degrees(expanded ? 90 : 0))
+                        }
+                        Text("\(family.apps.count) apps · \(family.apps.map(\.displayName).prefix(4).joined(separator: ", "))\(family.apps.count > 4 ? "…" : "")")
+                            .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                Spacer(minLength: 8)
+                if busy {
+                    ProgressView().controlSize(.small)
+                } else if left.isEmpty {
+                    Text(wanted.isEmpty ? "Not needed" : "Done").font(.callout).foregroundStyle(.secondary)
+                } else {
+                    Button("Get All \(left.count)") { model.get(left) }.primaryGlassButton().controlSize(.small)
+                }
+                Toggle("", isOn: Binding(get: { !wanted.isEmpty }, set: { on in model.setSkipped(tokens: family.apps.map(\.app.token), !on) }))
+                    .toggleStyle(.switch).labelsHidden().controlSize(.small)
+                    .help(wanted.isEmpty ? "Not needed on this Mac. Switch on to get them." : "Switch off if this Mac doesn't need any of them.")
+            }
+            .padding(.horizontal, 8).padding(.vertical, 6)
+            .opacity(wanted.isEmpty ? 0.5 : 1)
+            if expanded {
+                VStack(spacing: 2) { ForEach(family.apps) { AppRow(missing: $0, model: model) } }
+                    .padding(.leading, 28)
+            }
+        }
+    }
+}
+
 /// Apps, or command-line tools, from the other Macs: each in its own section.
 /// Apps removed on another Mac that are still here: uninstall them in one click, or keep them.
 private struct ToRemovePanel: View {
@@ -869,7 +967,14 @@ private struct AppsPanel: View {
                     }
                 }
                 if open {
-                    VStack(spacing: 2) { ForEach(list) { AppRow(missing: $0, model: model) } }
+                    VStack(spacing: 2) {
+                        ForEach(AppFamily.group(list)) { entry in
+                            switch entry {
+                            case .single(let app): AppRow(missing: app, model: model)
+                            case .family(let family): FamilyRow(family: family, model: model)
+                            }
+                        }
+                    }
                     if model.overview?.brewAvailable == false, list.contains(where: { $0.app.source == .cask || $0.app.source == .formula }) {
                         Label("Homebrew isn't on this Mac yet, so Homebrew apps can't be installed. Get it at brew.sh.", systemImage: "info.circle")
                             .font(.callout).foregroundStyle(.secondary)
