@@ -144,8 +144,15 @@ final class AppModel: ObservableObject {
     /// The app's own icon, shared through iCloud by the Mac that has it.
     /// The app on another Mac that a Dock item stands for, matched by bundle ID.
     func missingApp(for item: DockItem) -> MissingApp? {
-        guard let id = item.bundleID else { return nil }
-        return overview?.missingApps.first { $0.detail?.bundleID == id || ($0.app.source == .direct && $0.app.name == id) }
+        let apps = overview?.missingApps ?? []
+        if let id = item.bundleID,
+           let match = apps.first(where: { $0.detail?.bundleID == id || ($0.app.source == .direct && $0.app.name == id) }) {
+            return match
+        }
+        // A Mac on an older MacSync sends no bundle IDs: match by name, so Xcode in the Dock is
+        // the Xcode in the App Store list.
+        let label = item.label.lowercased()
+        return apps.first { $0.displayName.lowercased() == label || ($0.app.source == .appStore && $0.app.name.lowercased() == label) }
     }
 
     func name(for item: DockItem) -> String {

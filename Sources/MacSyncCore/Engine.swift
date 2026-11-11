@@ -418,7 +418,7 @@ public final class Engine {
     /// A logo for an app this Mac doesn't have, from the App Store or the developer's site, for
     /// when the Mac that has it hasn't shared one yet. Saved on this Mac only. Uses the network.
     public func webIcon(bundleID: String?, name: String, missing: MissingApp?) -> URL? {
-        let key = String(Hashing.sha256(Data("web:\(bundleID ?? name)".utf8)).prefix(24))
+        let key = String(Hashing.sha256(Data("web:\(bundleID ?? missing?.app.token ?? name)".utf8)).prefix(24))
         let folder = env.dataDirectory.appendingPathComponent("web-icons", isDirectory: true)
         let file = folder.appendingPathComponent(key + ".png")
         let fm = FileManager.default
@@ -432,8 +432,14 @@ public final class Engine {
             return r.status == 0 && !r.stdout.isEmpty ? r.stdout : nil
         }
         var candidates: [String] = []
-        if let bundleID, DirectApp.isSafeBundleID(bundleID),
-           let data = fetch("https://itunes.apple.com/lookup?entity=macSoftware&bundleId=\(bundleID)"),
+        let lookup: String? = {
+            if let id = missing?.app.appStoreID, missing?.app.source == .appStore, missing?.app.isSafe == true {
+                return "https://itunes.apple.com/lookup?entity=macSoftware&id=\(id)"
+            }
+            if let bundleID, DirectApp.isSafeBundleID(bundleID) { return "https://itunes.apple.com/lookup?entity=macSoftware&bundleId=\(bundleID)" }
+            return nil
+        }()
+        if let lookup, let data = fetch(lookup),
            let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
            let art = (root["results"] as? [[String: Any]])?.first?["artworkUrl512"] as? String {
             candidates.append(art)
