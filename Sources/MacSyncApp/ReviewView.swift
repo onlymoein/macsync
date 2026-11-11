@@ -298,8 +298,8 @@ struct NotInstalledPanel: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            PanelHeader(symbol: "arrow.down.app.fill", title: "Not installed here",
-                        subtitle: "\(needed) of \(items.count) needed · in the Dock on your other Mac", isExpanded: $open) {
+            PanelHeader(symbol: "arrow.down.app.fill", title: "Dock apps to install",
+                        subtitle: "\(needed) of \(items.count) needed · in your other Mac's Dock, missing on this one", isExpanded: $open) {
                 AllSwitch(onCount: needed, total: items.count) { on in
                     model.setSkipped(tokens: items.map { model.skipToken(for: $0) }, !on)
                 }
