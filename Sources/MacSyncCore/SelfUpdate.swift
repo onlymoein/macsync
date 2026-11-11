@@ -97,12 +97,23 @@ public struct SelfUpdater {
         // bundle, but stops Homebrew (run from MacSync) from doing it, and a half-finished Homebrew
         // upgrade leaves no app behind. The cask is marked auto_updates, so Homebrew doesn't mind.
         let direct = installDirectly(release)
-        guard case .failure = direct, let brew = brewPath, installedWithBrew,
-              FileManager.default.fileExists(atPath: appURL.path) else { return direct }
+        if case .success = direct { return verified(release) }
+        guard let brew = brewPath, installedWithBrew, FileManager.default.fileExists(atPath: appURL.path) else { return direct }
         let env = InventoryReader.brewEnvironment(brew)
         _ = runner.run(brew, ["update", "--quiet"], input: nil, environment: env)
         let result = runner.run(brew, ["upgrade", "--cask", "macsync"], input: nil, environment: env)
-        return result.status == 0 ? .success(()) : direct
+        return result.status == 0 ? verified(release) : direct
+    }
+
+    /// An update only counts when the new version is the one on disk. Homebrew with an old list
+    /// says "already installed" and succeeds, and MacSync would otherwise reopen, find the same
+    /// update and go round again.
+    func verified(_ release: Release) -> Result<Void, EngineError> {
+        let onDisk = NSDictionary(contentsOf: appURL.appendingPathComponent("Contents/Info.plist"))?["CFBundleShortVersionString"] as? String
+        guard onDisk == release.version else {
+            return .failure(.refused("MacSync \(release.version) didn't go in (this copy is still \(onDisk ?? "unknown")). In Terminal: brew update, then brew reinstall --cask macsync."))
+        }
+        return .success(())
     }
 
     private func installDirectly(_ release: Release) -> Result<Void, EngineError> {

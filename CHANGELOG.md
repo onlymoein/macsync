@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.8.13
+- An update only counts when the new version is really on disk. A Mac whose Homebrew list is out of date said "already installed", MacSync took that as done, reopened on the old version, found the same update and went round in a loop. Now it stops and says what to do (brew update, then brew reinstall --cask macsync), and tries a failed version only once per run.
+
 ## 0.8.12
 - **AI apps:** a section of its own with the well-known AI apps (ChatGPT, Claude, Gemini, Grok, Grok Bot, Muse from Meta, Microsoft 365 Copilot, GitHub Copilot, Perplexity, Comet, Codex, Cursor, Dia, Poe, Ollama, LM Studio and more), whether or not you have them. Install one or Install All, on all your Macs or this Mac only. See your version and Update or Update All. Homebrew apps install by themselves; App Store apps open their page.
 - **MacSync no longer stalls when many things load at once.** Slow work (downloads, Homebrew, icons) used to run on Swift's shared threads; twenty icons loading together could take every one, and then syncs and installs couldn't start ("Starting…", "Preparing…"). It now runs on threads of its own.

@@ -916,8 +916,11 @@ final class AppModel: ObservableObject {
         }
     }
 
+    /// Versions that already failed to go in this run: tried once, not again and again.
+    private static var failedUpdates: Set<String> = []
+
     func installUpdate(_ release: SelfUpdater.Release) {
-        guard !isUpdating else { return }
+        guard !isUpdating, !Self.failedUpdates.contains(release.version) else { return }
         isUpdating = true
         updateMessage = "Updating to MacSync \(release.version)…"
         let updater = updater
@@ -927,7 +930,9 @@ final class AppModel: ObservableObject {
                 self.isUpdating = false
                 switch result {
                 case .success: Self.relaunch()
-                case .failure(let error): self.updateMessage = error.localizedDescription
+                case .failure(let error):
+                    Self.failedUpdates.insert(release.version)
+                    self.updateMessage = error.localizedDescription
                 }
             }
         }

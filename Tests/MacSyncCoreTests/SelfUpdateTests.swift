@@ -31,12 +31,19 @@ final class SelfUpdateTests: XCTestCase {
         XCTAssertFalse(SelfUpdater.isNewer("0.3.0", than: "0.3"))
     }
 
-    func testHomebrewCopyUpdatesThroughBrew() {
+    func testHomebrewThatChangesNothingIsNotCountedAsAnUpdate() throws {
+        // A stale Homebrew says "already installed" and succeeds: that must not count, or MacSync loops.
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("macsync-brew-\(UUID().uuidString.prefix(6))")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let app = root.appendingPathComponent("MacSync.app/Contents")
+        try FileManager.default.createDirectory(at: app, withIntermediateDirectories: true)
+        try PropertyListSerialization.data(fromPropertyList: ["CFBundleShortVersionString": "0.3.1"], format: .xml, options: 0)
+            .write(to: app.appendingPathComponent("Info.plist"))
         let runner = FakeRunner()
         runner.casks = ["macsync"]
-        let updater = SelfUpdater(runner: runner, brewPath: "/fake/brew", appURL: URL(fileURLWithPath: "/Applications/MacSync.app"), currentVersion: "0.3.1")
+        let updater = SelfUpdater(runner: runner, brewPath: "/fake/brew", appURL: root.appendingPathComponent("MacSync.app"), currentVersion: "0.3.1")
         let release = SelfUpdater.Release(version: "0.4.0", zipURL: "https://github.com/x.zip", checksumURL: nil)
-        XCTAssertNoThrow(try updater.install(release).get())
+        XCTAssertThrowsError(try updater.install(release).get())
         XCTAssertTrue(runner.calls.contains(["/fake/brew", "upgrade", "--cask", "macsync"]))
     }
 
@@ -66,5 +73,23 @@ final class VersionTests: XCTestCase {
         XCTAssertTrue(SelfUpdater.isNewer("8.12.49", than: "8.12.48-19.NIGHTLY"))
         XCTAssertTrue(SelfUpdater.isNewer("5.1232.0,abc", than: "5.1231.2"))
         XCTAssertTrue(SelfUpdater.isNewer("0.8.10", than: "0.8.9"))
+    }
+}
+
+final class LiveSelfUpdateTests: XCTestCase {
+    func testUpdatesACopyOfTheInstalledApp() throws {
+        try XCTSkipUnless(ProcessInfo.processInfo.environment["MACSYNC_LIVE_UPDATE"] == "1", "live test")
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("macsync-up-\(UUID().uuidString.prefix(6))")
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let app = root.appendingPathComponent("MacSync.app")
+        XCTAssertEqual(SystemCommandRunner().run("/usr/bin/ditto", ["/Applications/MacSync.app", app.path], input: nil, environment: [:]).status, 0)
+        let current = NSDictionary(contentsOf: app.appendingPathComponent("Contents/Info.plist"))?["CFBundleShortVersionString"] as? String ?? "?"
+        let updater = SelfUpdater(runner: SystemCommandRunner(), brewPath: nil, appURL: app, currentVersion: current)
+        let release = try XCTUnwrap(updater.check(), "no newer release than \(current)")
+        let result = updater.install(release)
+        if case .failure(let error) = result { XCTFail("install failed: \(error.localizedDescription)") }
+        let onDisk = NSDictionary(contentsOf: app.appendingPathComponent("Contents/Info.plist"))?["CFBundleShortVersionString"] as? String
+        XCTAssertEqual(onDisk, release.version)
     }
 }
