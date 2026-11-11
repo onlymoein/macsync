@@ -184,6 +184,8 @@ public final class Engine {
         var settingsChangedAt: Date?
         var settingsBasedOn: String?
         var appPrefDomains: [String]?
+        /// Offered apps Homebrew said were already here, installed another way.
+        var installedOtherwise: [String]?
     }
 
     public static let maxRestorePoints = 20
@@ -878,6 +880,13 @@ public final class Engine {
             copy.detail = detail
             return copy
         }.filter { missing in
+            // A tool that's already here another way (vercel from npm, a hand-installed binary) has
+            // its command in Homebrew's bin folder: it isn't missing, whoever put it there.
+            if missing.app.source == .formula, let brew = env.brewPath, env.dockFile == nil {
+                let bin = (brew as NSString).deletingLastPathComponent
+                if FileManager.default.isExecutableFile(atPath: bin + "/" + missing.app.name) { return false }
+            }
+            if (state.installedOtherwise ?? []).contains(missing.app.token) { return false }
             // A simulated Mac (its Dock lives in a file) has only its own Applications folder, not this Mac's apps.
             guard env.dockFile == nil,
                   let bundle = missing.detail?.bundleID ?? (missing.app.source == .direct ? missing.app.name : nil) else { return true }
@@ -1100,6 +1109,11 @@ public final class Engine {
         installProgress = nil
         installFolder = nil
         result.displayName = missing.displayName
+        if result.message == "Already on this Mac, installed another way." {
+            var state = loadState()
+            state.installedOtherwise = Array(Set((state.installedOtherwise ?? []) + [missing.app.token])).sorted()
+            try? saveState(state)
+        }
         // Gone from Homebrew: nothing to install, so stop offering it on this Mac.
         if result.outcome == .failed, result.message?.hasPrefix("Homebrew no longer has") == true {
             var state = loadState()

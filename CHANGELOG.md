@@ -1,6 +1,8 @@
 # Changelog
 
 ## 0.8.13
+- A command-line tool that's already on the Mac another way (vercel from npm, a binary you put there) is no longer offered again and again: its command in Homebrew's bin folder counts, and so does Homebrew saying it's already installed another way.
+- In AI apps, the ones not on this Mac fold away under "Not on this Mac yet", closed until you open it.
 - An update only counts when the new version is really on disk. A Mac whose Homebrew list is out of date said "already installed", MacSync took that as done, reopened on the old version, found the same update and went round in a loop. Now it stops and says what to do (brew update, then brew reinstall --cask macsync), and tries a failed version only once per run.
 
 ## 0.8.12

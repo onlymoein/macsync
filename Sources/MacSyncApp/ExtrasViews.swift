@@ -632,7 +632,7 @@ struct UpdatesPanel: View {
 struct AIAppsPanel: View {
     @ObservedObject var model: AppModel
     @AppStorage("review.ai.open") private var open = true
-    @State private var showInstalled = true
+    @AppStorage("review.ai.missing.open") private var showMissing = false
 
     private var missing: [AIAppStatus] { model.aiApps.filter { !$0.isInstalled } }
     private var installed: [AIAppStatus] { model.aiApps.filter(\.isInstalled) }
@@ -664,8 +664,16 @@ struct AIAppsPanel: View {
                     ForEach(installed) { row($0) }
                 }
                 if !missing.isEmpty {
-                    Text("Not on this Mac yet").font(.caption.weight(.semibold)).foregroundStyle(.secondary).textCase(.uppercase).padding(.top, 4)
-                    ForEach(missing) { row($0) }
+                    Button { withAnimation { showMissing.toggle() } } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "chevron.right").font(.caption.weight(.bold))
+                                .rotationEffect(.degrees(showMissing ? 90 : 0))
+                            Text("Not on this Mac yet (\(missing.count))").font(.caption.weight(.semibold)).textCase(.uppercase)
+                        }
+                        .foregroundStyle(.secondary).contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain).padding(.top, 4)
+                    if showMissing { ForEach(missing) { row($0) } }
                 }
             }
         }
