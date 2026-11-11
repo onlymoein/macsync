@@ -42,7 +42,7 @@ struct MenuView: View {
     }
 
     @ViewBuilder private var notices: some View {
-        let messages = [model.errorMessage, model.undoMessage, model.updateMessage].compactMap { $0 } + (model.overview?.issues ?? [])
+        let messages = [model.actionError, model.errorMessage, model.undoMessage, model.updateMessage].compactMap { $0 } + (model.overview?.issues ?? [])
         if let update = model.availableUpdate, !model.isUpdating {
             Button { model.installUpdate(update) } label: {
                 Label("Update to MacSync \(update.version)", systemImage: "arrow.down.circle.fill").frame(maxWidth: .infinity)

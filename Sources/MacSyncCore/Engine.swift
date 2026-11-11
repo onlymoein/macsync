@@ -162,6 +162,10 @@ public final class Engine {
     let prefs: PreferencesStoring
     let proUnlocked: Bool
     private var missingNames: [String: String] = [:]
+    /// One change to this Mac's saved state at a time: a sync reads the state, works, then writes
+    /// it back, so a switch flipped in between would otherwise be lost. Recursive because one
+    /// action can run others (Apply ends with a sync).
+    private let stateLock = NSRecursiveLock()
     private var missingDownloads: [String: DirectApp] = [:]
 
     public init(env: MacSyncEnvironment, dock: DockStoring, locator: AppLocating, runner: CommandRunning,
@@ -190,6 +194,7 @@ public final class Engine {
     /// Saves this Mac's setup and works out what the other Macs would change. Never changes this Mac.
     @discardableResult
     public func sync(refreshInventory: Bool = true) throws -> SyncOverview {
+        stateLock.lock(); defer { stateLock.unlock() }
         var state = loadState()
         let local = try captureDock(&state)
         if env.iCloudAvailable { storeDockIcons(local) }
@@ -239,6 +244,7 @@ public final class Engine {
 
     /// Makes every Mac's Dock follow one Mac's order, or nil for whichever Dock changed last.
     public func setDockOrder(machineID: String?) throws {
+        stateLock.lock(); defer { stateLock.unlock() }
         var state = loadState()
         state.dockOrder = DockOrderChoice(machineID: machineID, at: now())
         try saveState(state)
@@ -291,6 +297,7 @@ public final class Engine {
 
     /// Stops offering an app to the other Macs, or starts again.
     public func setShared(_ tokens: [String], _ shared: Bool) throws {
+        stateLock.lock(); defer { stateLock.unlock() }
         var state = loadState()
         var set = Set(state.unshared ?? [])
         if shared { set.subtract(tokens) } else { set.formUnion(tokens) }
@@ -301,6 +308,7 @@ public final class Engine {
 
     /// Removes apps from this Mac now, and asks every other Mac to remove them too.
     public func removeEverywhere(_ apps: [MissingApp], progress: (String) -> Void = { _ in }) -> [InstallResult] {
+        stateLock.lock(); defer { stateLock.unlock() }
         let installed = Set(localApps(loadState()).map(\.app.token))
         // Uninstall here first. Only an app that is really gone from this Mac (or was never on it)
         // is recorded as removed, so a failed uninstall doesn't hide the app or ask the others.
@@ -320,6 +328,7 @@ public final class Engine {
 
     /// Takes back a removal, so the app is offered to Macs that lack it again.
     public func cancelRemoval(_ token: String) throws {
+        stateLock.lock(); defer { stateLock.unlock() }
         var state = loadState()
         guard var removal = state.removals?[token] else { return }
         removal.active = false
@@ -333,6 +342,7 @@ public final class Engine {
 
     /// Leaves an app removed elsewhere on this Mac, and stops asking.
     public func keepHere(_ token: String) throws {
+        stateLock.lock(); defer { stateLock.unlock() }
         var state = loadState()
         state.keptHere = Array(Set(state.keptHere ?? []).union([token])).sorted()
         try saveState(state)
@@ -341,6 +351,7 @@ public final class Engine {
     /// Uninstalls apps from this Mac: Homebrew uninstalls its own, anything else goes to the Trash,
     /// where it can be put back. The app also leaves this Mac's Dock.
     public func uninstallHere(_ apps: [MissingApp], progress: (String) -> Void = { _ in }) -> [InstallResult] {
+        stateLock.lock(); defer { stateLock.unlock() }
         var results: [InstallResult] = []
         for app in apps where app.app.isSafe {
             progress("Removing \(app.displayName)…")
@@ -541,6 +552,7 @@ public final class Engine {
     public func setSkipped(_ token: String, _ skipped: Bool) throws { try setSkipped([token], skipped) }
 
     public func setSkipped(_ tokens: [String], _ skipped: Bool) throws {
+        stateLock.lock(); defer { stateLock.unlock() }
         var state = loadState()
         var set = Set(state.deselectedApps ?? [])
         if skipped { set.formUnion(tokens) } else { set.subtract(tokens) }
@@ -550,6 +562,7 @@ public final class Engine {
 
     /// Records the choice as what was unticked, so apps that turn up later start ticked.
     public func setSelectedApps(_ tokens: Set<String>) throws {
+        stateLock.lock(); defer { stateLock.unlock() }
         var state = loadState()
         let shown = Set(state.lastMissing ?? [])
         let kept = Set(state.deselectedApps ?? []).subtracting(shown)
@@ -755,6 +768,7 @@ public final class Engine {
 
     /// Backs up first, then installs, then changes the Dock. Each install reports its own result.
     public func apply(_ request: ApplyRequest, progress: (String) -> Void = { _ in }) throws -> ApplyReport {
+        stateLock.lock(); defer { stateLock.unlock() }
         let lock = try acquireLock()
         defer { close(lock) }
         let before = try sync(refreshInventory: false)
@@ -803,6 +817,12 @@ public final class Engine {
                 settingsChanged = true
                 state.settingsChangedAt = plan.sourceChangedAt
                 state.settingsBasedOn = plan.sourceMachineID
+                // Take on that Mac's choice of apps whose settings sync, so both Macs show it.
+                if let theirs = store.load().machines.first(where: { $0.machineID == plan.sourceMachineID })?.settings?.appDomains {
+                    let mine = Set(state.appPrefDomains ?? [])
+                    state.appPrefDomains = mine.union(theirs.filter { $0.range(of: "^[A-Za-z0-9][A-Za-z0-9._-]*$", options: .regularExpression) != nil
+                        && !$0.hasPrefix("com.apple.") }).sorted()
+                }
                 state.settingsHash = currentPrefsHash(state)
             } catch {
                 settingsError = error.localizedDescription
@@ -866,6 +886,7 @@ public final class Engine {
     /// Gets one app straight away, outside Apply: installs it with Homebrew, opens its App Store
     /// page, or downloads its installer from the developer. Nothing else on the Mac changes.
     public func getApp(_ missing: MissingApp) -> InstallResult {
+        stateLock.lock(); defer { stateLock.unlock() }
         guard missing.app.isSafe else { return InstallResult(app: missing.app, outcome: .failed, message: "That app's name isn't valid.") }
         missingNames[missing.app.token] = missing.displayName
         if let download = missing.download { missingDownloads[missing.app.token] = download.sanitized }
@@ -1072,9 +1093,10 @@ public final class Engine {
     public func appPrefDomains() -> [String] { loadState().appPrefDomains ?? [] }
 
     public func setAppPrefDomains(_ domains: [String]) throws {
+        stateLock.lock(); defer { stateLock.unlock() }
         var state = loadState()
         let valid = domains.filter { $0.range(of: "^[A-Za-z0-9][A-Za-z0-9._-]*$", options: .regularExpression) != nil
-            && !$0.hasPrefix("com.apple.") && $0 != "NSGlobalDomain" }
+            && !$0.hasPrefix("com.apple.") && $0 != "NSGlobalDomain" && $0 != SelfUpdater.bundleID }
         state.appPrefDomains = Array(Set(valid)).sorted()
         try saveState(state)
     }
@@ -1084,13 +1106,14 @@ public final class Engine {
         let folder = URL(fileURLWithPath: env.homeDirectory).appendingPathComponent("Library/Preferences")
         let names = (try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? []
         return names.filter { $0.hasSuffix(".plist") }.map { String($0.dropLast(6)) }
-            .filter { !$0.hasPrefix("com.apple.") && !$0.hasPrefix(".") && $0.contains(".") }.sorted()
+            .filter { !$0.hasPrefix("com.apple.") && !$0.hasPrefix(".") && $0.contains(".") && $0 != SelfUpdater.bundleID }.sorted()
     }
 
     // MARK: Undo
 
     /// Puts the Dock back exactly as it was. Installed apps stay installed, and the result says so.
     public func undoLast() throws -> RestorePointInfo {
+        stateLock.lock(); defer { stateLock.unlock() }
         let lock = try acquireLock()
         defer { close(lock) }
         guard var point = restorePoints().first(where: { $0.undoneAt == nil }) else { throw EngineError.nothingToUndo }

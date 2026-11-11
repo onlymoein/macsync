@@ -31,7 +31,8 @@ final class ReviewWindow {
             window.styleMask = [.titled, .closable, .resizable, .miniaturizable, .fullSizeContentView]
             window.titlebarAppearsTransparent = true
             window.titleVisibility = .hidden
-            window.isMovableByWindowBackground = true
+            // Off: dragging Dock icons in the window must not move the window.
+            window.isMovableByWindowBackground = false
             window.setContentSize(NSSize(width: 680, height: 720))
             window.contentMinSize = NSSize(width: 560, height: 460)
             window.isReleasedWhenClosed = false

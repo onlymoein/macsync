@@ -60,14 +60,24 @@ struct ReviewView: View {
                         DockPanel(plan: plan, model: model, matches: model.overview?.dockPlan == nil)
                         if !plan.missing.isEmpty { NotInstalledPanel(items: plan.missing, model: model) }
                     }
-                    if let plan = model.overview?.settingsPlan { SettingsPanel(plan: plan, model: model) }
+                    if let plan = model.overview?.settingsPlan {
+                        SettingsPanel(plan: plan, model: model)
+                    } else if model.proEnabled {
+                        // Always there, like the Dock, so it's clear settings are in sync.
+                        HStack {
+                            PanelHeader(symbol: "gearshape.fill", title: "Settings",
+                                        subtitle: "Match your other Macs · trackpad, keyboard, Finder, Dock and screenshots") { EmptyView() }
+                        }
+                        .padding(18)
+                        .glassPanel()
+                    }
                     if model.proEnabled { AppSettingsPanel(model: model) }
                     AppsPanel(kind: .apps, model: model)
                     AppsPanel(kind: .appStore, model: model)
                     AppsPanel(kind: .tools, model: model)
                     ThisMacPanel(kind: .apps, model: model)
                     ThisMacPanel(kind: .tools, model: model)
-                    if model.overview?.hasPendingChanges != true, model.lastReport == nil {
+                    if let overview = model.overview, !overview.hasPendingChanges, !model.canApply, model.lastReport == nil {
                         VStack(spacing: 8) {
                             Image(systemName: "checkmark.seal.fill").font(.system(size: 34)).foregroundStyle(.green)
                             Text("Your Macs match").font(.title3.weight(.semibold))
@@ -120,16 +130,19 @@ struct ReviewView: View {
                 if model.isApplying {
                     ProgressView().controlSize(.small)
                     Text(model.progress ?? "Applying…").lineLimit(1)
-                } else if let error = model.errorMessage {
+                } else if let error = model.actionError ?? model.errorMessage {
                     Label(error, systemImage: "exclamationmark.triangle.fill").foregroundStyle(.orange).lineLimit(2)
-                } else {
+                } else if model.canApply {
                     Label("A restore point is saved first", systemImage: "clock.arrow.circlepath").lineLimit(1)
+                } else {
+                    Label("Nothing to apply on this Mac. Your switches are saved and sent to your other Macs.", systemImage: "checkmark.circle")
+                        .lineLimit(2)
                 }
             }
             .font(.callout)
             .foregroundStyle(.secondary)
             Spacer(minLength: 8)
-            if model.lastReport != nil, model.overview?.lastRestorePoint != nil {
+            if model.lastReport?.restorePoint != nil, model.overview?.lastRestorePoint != nil {
                 Button("Undo") { model.undo() }.glassButton().disabled(model.isApplying)
             }
             Button("Close") { ReviewWindow.shared.close() }.glassButton().keyboardShortcut(.cancelAction)
@@ -315,6 +328,9 @@ private struct DockStrip: View {
         .padding(10)
         .background(.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .animation(.easeInOut(duration: 0.15), value: model.dockArrangement)
+        // A drag let go anywhere in the strip, or abandoned: no icon stays dimmed.
+        .onDrop(of: [.text], isTargeted: nil) { _ in dragging = nil; return true }
+        .onHover { inside in if inside, NSEvent.pressedMouseButtons == 0 { dragging = nil } }
     }
 
     private func icon(_ item: DockItem) -> some View {
@@ -687,7 +703,7 @@ private struct AppSettingsPanel: View {
                 }
             }
             if open {
-                Text("Turn on the apps whose settings should match on all your Macs. Passwords, tokens, license keys and window positions are never copied.")
+                Text("Turn on the apps whose settings should match on all your Macs. Your choice is saved straight away and sent from this Mac; your other Macs show these settings to apply. Passwords, tokens, license keys and window positions are never copied.")
                     .font(.caption).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                 TextField("Search apps", text: $search).textFieldStyle(.roundedBorder)
@@ -696,7 +712,17 @@ private struct AppSettingsPanel: View {
         }
         .padding(18)
         .glassPanel()
-        .onAppear { if !loaded { load(); loaded = true } }
+        .onAppear { load(); loaded = true }
+        .onChange(of: model.overview?.appPrefDomains ?? []) { domains in
+            // Settings applied from another Mac can bring more apps: show them, don't overwrite them.
+            let fresh = Set(domains)
+            guard fresh != chosen else { return }
+            chosen = fresh
+            for domain in fresh where !apps.contains(where: { $0.domain == domain }) && domain != "com.onlymehdi.macsync" {
+                if let app = PrefApp.find(domain) { apps.append(app) }
+            }
+            apps.sort { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+        }
     }
 
     private func row(_ app: PrefApp) -> some View {
@@ -717,7 +743,6 @@ private struct AppSettingsPanel: View {
             Toggle("", isOn: isOn).toggleStyle(.switch).labelsHidden().controlSize(.small)
         }
         .padding(.horizontal, 8).padding(.vertical, 4)
-        .help(app.domain)
     }
 
     private func load() {
@@ -726,6 +751,7 @@ private struct AppSettingsPanel: View {
         var found: [PrefApp] = []
         var names = Set<String>()
         for domain in domains.sorted() {
+            if domain == "com.onlymehdi.macsync" { continue }
             if let app = PrefApp.find(domain) {
                 guard names.insert(app.name.lowercased()).inserted || chosen.contains(domain) else { continue }
                 found.append(app)

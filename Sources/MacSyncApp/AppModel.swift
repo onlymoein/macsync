@@ -24,9 +24,10 @@ final class AppModel: ObservableObject {
     func moveDockItem(_ key: String, before target: String, in current: [DockItem]) {
         var keys = dockArrangement ?? current.map(\.key)
         guard key != target, let from = keys.firstIndex(of: key) else { return }
+        guard let targetIndex = keys.firstIndex(of: target) else { return }
         keys.remove(at: from)
-        let to = keys.firstIndex(of: target) ?? keys.count
-        keys.insert(key, at: to)
+        // Moving right lands after the icon it's over; moving left lands before it, as in the Dock.
+        keys.insert(key, at: min(targetIndex, keys.count))
         dockArrangement = keys == current.map(\.key) ? nil : keys
     }
     @Published var autoSync: Bool {
@@ -119,8 +120,17 @@ final class AppModel: ObservableObject {
         runSync(refreshInventory: Date().timeIntervalSince(lastInventoryRefresh) > Self.inventoryInterval)
     }
 
+    /// A sync asked for while one was running; it runs as soon as that one ends, so the result
+    /// shows what the person just changed.
+    private var resyncWanted = false
+    private var resyncInventory = false
+
     private func runSync(refreshInventory: Bool) {
-        guard !isSyncing else { return }
+        guard !isSyncing else {
+            resyncWanted = true
+            resyncInventory = resyncInventory || refreshInventory
+            return
+        }
         isSyncing = true
         let engine = engine
         Task {
@@ -132,15 +142,38 @@ final class AppModel: ObservableObject {
                 self.selectedApps = Set(overview.selectedApps)
                 self.errorMessage = nil
                 if refreshInventory { lastInventoryRefresh = Date() }
+                trimDockEdits(overview)
             case .failure(let error):
                 self.errorMessage = error.localizedDescription
+            }
+            if resyncWanted {
+                let inventory = resyncInventory
+                resyncWanted = false
+                resyncInventory = false
+                runSync(refreshInventory: inventory)
             }
         }
     }
 
+    /// Drops marks for Dock items that are no longer in the combined Dock.
+    private func trimDockEdits(_ overview: SyncOverview) {
+        let plan = overview.dockPlan ?? overview.dockPreview
+        let keys = Set(((plan?.targetApps ?? []) + (plan?.targetOthers ?? [])).map(\.key))
+        dockRemovals = dockRemovals.intersection(keys)
+        if let order = dockArrangement {
+            let apps = (plan?.targetApps ?? []).map(\.key)
+            let kept = order.filter { apps.contains($0) }
+            dockArrangement = kept.isEmpty || kept == apps ? nil : kept
+        }
+    }
+
+    /// A failed Apply, Undo or setting. Kept until the next action, so a sync doesn't wipe it.
+    @Published var actionError: String?
+
     func setSelected(_ token: String, _ selected: Bool) {
         if selected { selectedApps.insert(token) } else { selectedApps.remove(token) }
-        try? engine.setSelectedApps(selectedApps)
+        let engine = engine, chosen = selectedApps
+        Task.detached { try? engine.setSelectedApps(chosen) }
     }
 
     func toggleDockRemoval(_ key: String) {
@@ -150,7 +183,8 @@ final class AppModel: ObservableObject {
     /// Ticks or unticks several apps at once (a whole group).
     func setSelected(_ tokens: [String], _ selected: Bool) {
         if selected { selectedApps.formUnion(tokens) } else { selectedApps.subtract(tokens) }
-        try? engine.setSelectedApps(selectedApps)
+        let engine = engine, chosen = selectedApps
+        Task.detached { try? engine.setSelectedApps(chosen) }
     }
 
     /// The app's own icon, shared through iCloud by the Mac that has it.
@@ -212,7 +246,7 @@ final class AppModel: ObservableObject {
     }
 
     var canApply: Bool {
-        !isApplying && ((applyDock && (overview?.dockPlan != nil || !dockRemovals.isEmpty || dockArrangement != nil)) || (applySettings && overview?.settingsPlan != nil)
+        !isApplying && getting.isEmpty && removing.isEmpty && ((applyDock && (overview?.dockPlan != nil || !dockRemovals.isEmpty || dockArrangement != nil)) || (applySettings && overview?.settingsPlan != nil)
 )
     }
 
@@ -227,7 +261,8 @@ final class AppModel: ObservableObject {
     func setSkipped(token: String, _ skipped: Bool) { setSkipped(tokens: [token], skipped) }
 
     func setSkipped(tokens: [String], _ skipped: Bool) {
-        try? engine.setSkipped(tokens, skipped)
+        let engine = engine
+        Task { _ = await Task.detached { try? engine.setSkipped(tokens, skipped) }.value; runSync(refreshInventory: false) }
         skippedDock = skipped ? skippedDock.union(tokens) : skippedDock.subtracting(tokens)
         guard var current = overview else { return }
         current.skippedApps.removeAll { tokens.contains($0) }
@@ -311,8 +346,9 @@ final class AppModel: ObservableObject {
     }
 
     func keepHere(_ app: MissingApp) {
-        try? engine.keepHere(app.app.token)
-        syncNow()
+        let engine = engine, token = app.app.token
+        if var current = overview { current.toRemove.removeAll { $0.app.token == token }; overview = current }
+        Task { _ = await Task.detached { try? engine.keepHere(token) }.value; runSync(refreshInventory: false) }
     }
 
     func cancelRemoval(_ token: String) {
@@ -327,7 +363,7 @@ final class AppModel: ObservableObject {
             overview = current
         }
         let engine = engine
-        Task { _ = await Task.detached { try? engine.setShared(tokens, shared) }.value }
+        Task { _ = await Task.detached { try? engine.setShared(tokens, shared) }.value; runSync(refreshInventory: false) }
     }
 
     /// Opens a downloaded installer again, or shows it in Finder if it's gone from where it was.
@@ -342,7 +378,7 @@ final class AppModel: ObservableObject {
         isApplying = true
         lastReport = nil
         undoMessage = nil
-        errorMessage = nil
+        actionError = nil
         let request = ApplyRequest(applyDock: applyDock, apps: [], applySettings: applySettings,
                                    removeFromDock: Array(dockRemovals), dockOrder: dockArrangement)
         let engine = engine
@@ -358,7 +394,7 @@ final class AppModel: ObservableObject {
             progress = nil
             switch result {
             case .success(let report): lastReport = report; dockRemovals = []; dockArrangement = nil
-            case .failure(let error): errorMessage = error.localizedDescription
+            case .failure(let error): actionError = error.localizedDescription
             }
             syncNow()
         }
@@ -366,6 +402,7 @@ final class AppModel: ObservableObject {
 
     func undo() {
         let engine = engine
+        actionError = nil
         isApplying = true
         progress = "Undoing…"
         Task {
@@ -381,7 +418,7 @@ final class AppModel: ObservableObject {
                     ? restored
                     : "\(restored) Installed apps stay installed: \(point.installed.joined(separator: ", "))."
             case .failure(let error):
-                errorMessage = error.localizedDescription
+                actionError = error.localizedDescription
             }
             syncNow()
         }
@@ -390,8 +427,9 @@ final class AppModel: ObservableObject {
     func appPrefDomains() -> [String] { engine.appPrefDomains() }
     func availableAppPrefDomains() -> [String] { engine.availableAppPrefDomains() }
     func setAppPrefDomains(_ domains: [String]) {
-        try? engine.setAppPrefDomains(domains)
-        syncNow()
+        if var current = overview { current.appPrefDomains = domains.sorted(); overview = current }
+        let engine = engine
+        Task { _ = await Task.detached { try? engine.setAppPrefDomains(domains) }.value; runSync(refreshInventory: false) }
     }
     var proEnabled: Bool { overview?.proEnabled ?? ProLicense.isUnlocked }
 
@@ -399,7 +437,7 @@ final class AppModel: ObservableObject {
         do {
             if enabled { try SMAppService.mainApp.register() } else { try SMAppService.mainApp.unregister() }
         } catch {
-            errorMessage = "Couldn't change Open at Login: \(error.localizedDescription)"
+            actionError = "Couldn't change Open at Login: \(error.localizedDescription)"
         }
         openAtLogin = SMAppService.mainApp.status == .enabled
     }
