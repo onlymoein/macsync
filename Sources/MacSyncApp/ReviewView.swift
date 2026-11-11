@@ -364,7 +364,8 @@ private struct WaitingItem: View {
                     .frame(width: 34, height: 34)
                     VStack(alignment: .leading, spacing: 1) {
                         Text(model.name(for: item)).font(.body.weight(.medium)).lineLimit(1)
-                        Text(skipped ? "Not needed on this Mac" : "Open download page")
+                        Text(skipped ? "Not needed on this Mac"
+                             : model.missingApp(for: item)?.app.source == .appStore ? "Open in App Store" : "Open download page")
                             .font(.caption).foregroundStyle(skipped ? Color.secondary : Color.accentColor)
                     }
                     Spacer(minLength: 8)
@@ -788,7 +789,7 @@ private struct AppRow: View {
     private var buttonTitle: String {
         switch missing.app.source {
         case .cask, .formula: return "Install"
-        case .appStore: return "Get"
+        case .appStore: return "Open in App Store"
         case .direct: return "Download"
         }
     }
