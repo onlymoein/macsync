@@ -82,11 +82,14 @@ public struct ApplyRequest {
     public var applySettings: Bool
     /// Dock items (by key) to take out of every Mac's Dock.
     public var removeFromDock: [String]
-    public init(applyDock: Bool, apps: [AppRef], applySettings: Bool = true, removeFromDock: [String] = []) {
+    /// A new order for the Dock's apps (by key), arranged in MacSync. Every Mac follows it.
+    public var dockOrder: [String]?
+    public init(applyDock: Bool, apps: [AppRef], applySettings: Bool = true, removeFromDock: [String] = [], dockOrder: [String]? = nil) {
         self.applyDock = applyDock
         self.apps = apps
         self.applySettings = applySettings
         self.removeFromDock = removeFromDock
+        self.dockOrder = dockOrder
     }
 }
 
@@ -218,6 +221,16 @@ public final class Engine {
     }
 
     // MARK: Removing from all Macs, and what this Mac shares
+
+    /// Puts items in the order given by their keys. Items the order doesn't name keep their place
+    /// after the ones it does.
+    static func arrange(_ items: [DockItem], by order: [String]) -> [DockItem] {
+        let rank = Dictionary(order.enumerated().map { ($1, $0) }, uniquingKeysWith: { a, _ in a })
+        return items.enumerated().sorted { a, b in
+            let ra = rank[a.element.key] ?? order.count + a.offset, rb = rank[b.element.key] ?? order.count + b.offset
+            return ra < rb
+        }.map(\.element)
+    }
 
     /// The latest "follow this Mac's Dock order" choice made on any Mac.
     private func dockOrder(_ state: LocalState, _ everyone: [MachineSnapshot]) -> DockOrderChoice? {
@@ -738,7 +751,8 @@ public final class Engine {
         let apps = request.apps.filter { allowed.contains($0) && $0.isSafe }
         let removals = request.applyDock ? Set(request.removeFromDock).intersection(
             ((before.dockPlan?.targetApps ?? []) + (before.dockPlan?.targetOthers ?? [])).map(\.key)) : []
-        let wantsDock = request.applyDock && (before.dockPlan != nil || !removals.isEmpty)
+        let rearranged = request.applyDock ? request.dockOrder.flatMap { $0.isEmpty ? nil : $0 } : nil
+        let wantsDock = request.applyDock && (before.dockPlan != nil || !removals.isEmpty || rearranged != nil)
         let wantsSettings = request.applySettings && before.settingsPlan != nil
         guard wantsDock || wantsSettings || !apps.isEmpty else {
             return ApplyReport(restorePoint: nil, dockChanged: false, skippedDockItems: before.dockMissing, results: [])
@@ -797,15 +811,24 @@ public final class Engine {
             let everyone = store.load().machines.filter { $0.machineID != env.machineID }
                 + [makeSnapshot(state: state, dock: snapshotDock)]
             let localKeys = Set((snapshotDock.apps + snapshotDock.others).map(\.key))
+            if rearranged != nil, let pinned = dockOrder(state, everyone)?.machineID, pinned != env.machineID {
+                // Arranged here on purpose: this Mac's order becomes the one every Mac follows.
+                state.dockOrder = DockOrderChoice(machineID: env.machineID, at: now())
+            }
             if let merged = Planner.mergedDock(among: everyone, preferring: localKeys, orderFrom: dockOrder(state, everyone)?.machineID) {
-                let target = merged.target
+                var target = merged.target
+                if let rearranged { target.apps = Self.arrange(target.apps, by: rearranged) }
                 let plan = Planner.dockPlan(current: snapshotDock, target: target, source: Self.sourceLabel(merged, everyone: everyone),
                                             locator: locator)
                 skipped = plan.missing
                 if plan.hasChanges {
                     try write(plan: plan, target: target, backup: point)
                     dockChanged = true
-                    if merged.orderSourceID != env.machineID {
+                    if rearranged != nil {
+                        // A change made on this Mac: it is now the newest Dock.
+                        state.dockChangedAt = now()
+                        state.dockBasedOn = nil
+                    } else if merged.orderSourceID != env.machineID {
                         state.dockChangedAt = target.changedAt
                         state.dockBasedOn = merged.orderSourceID
                     }

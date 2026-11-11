@@ -17,6 +17,18 @@ final class AppModel: ObservableObject {
     @Published var selectedApps: Set<String> = []
     /// Dock items marked in the review window to be removed from every Mac.
     @Published var dockRemovals: Set<String> = []
+    /// A new order for the Dock's apps, dragged into place in the review window.
+    @Published var dockArrangement: [String]?
+
+    /// Moves a Dock app to sit before another one, in the review window's preview.
+    func moveDockItem(_ key: String, before target: String, in current: [DockItem]) {
+        var keys = dockArrangement ?? current.map(\.key)
+        guard key != target, let from = keys.firstIndex(of: key) else { return }
+        keys.remove(at: from)
+        let to = keys.firstIndex(of: target) ?? keys.count
+        keys.insert(key, at: to)
+        dockArrangement = keys == current.map(\.key) ? nil : keys
+    }
     @Published var autoSync: Bool {
         didSet {
             UserDefaults.standard.set(autoSync, forKey: "autoSync")
@@ -200,7 +212,7 @@ final class AppModel: ObservableObject {
     }
 
     var canApply: Bool {
-        !isApplying && ((applyDock && (overview?.dockPlan != nil || !dockRemovals.isEmpty)) || (applySettings && overview?.settingsPlan != nil)
+        !isApplying && ((applyDock && (overview?.dockPlan != nil || !dockRemovals.isEmpty || dockArrangement != nil)) || (applySettings && overview?.settingsPlan != nil)
 )
     }
 
@@ -332,7 +344,7 @@ final class AppModel: ObservableObject {
         undoMessage = nil
         errorMessage = nil
         let request = ApplyRequest(applyDock: applyDock, apps: [], applySettings: applySettings,
-                                   removeFromDock: Array(dockRemovals))
+                                   removeFromDock: Array(dockRemovals), dockOrder: dockArrangement)
         let engine = engine
         Task {
             let result: Result<ApplyReport, Error> = await Task.detached {
@@ -345,7 +357,7 @@ final class AppModel: ObservableObject {
             isApplying = false
             progress = nil
             switch result {
-            case .success(let report): lastReport = report; dockRemovals = []
+            case .success(let report): lastReport = report; dockRemovals = []; dockArrangement = nil
             case .failure(let error): errorMessage = error.localizedDescription
             }
             syncNow()

@@ -239,11 +239,15 @@ private struct DockPanel: View {
                 .help("Every Mac's Dock keeps this order. Apps the other Macs add go next to their neighbours.")
                 Spacer()
             }
-            DockStrip(items: plan.targetApps + plan.targetOthers, model: model, added: Set(plan.added.map(\.key)))
-            Text(model.dockRemovals.isEmpty
-                 ? "Click an icon to remove it from the Dock on every Mac."
-                 : "\(model.dockRemovals.count) marked to remove from every Mac. Click again to keep.")
+            DockStrip(items: plan.targetApps + plan.targetOthers, model: model, added: Set(plan.added.map(\.key)), apps: plan.targetApps)
+            Text((model.dockArrangement != nil ? "New order: press Apply to use it on every Mac. " : "Drag icons to rearrange. ")
+                 + (model.dockRemovals.isEmpty
+                    ? "Click an icon to remove it from the Dock on every Mac."
+                    : "\(model.dockRemovals.count) marked to remove from every Mac. Click again to keep."))
                 .font(.caption).foregroundStyle(.secondary)
+            if model.dockArrangement != nil {
+                Button("Reset Order") { model.dockArrangement = nil }.glassButton().controlSize(.small)
+            }
             if !plan.removed.isEmpty {
                 IconRow(title: "Removed on another Mac", items: plan.removed, model: model, badge: .removed)
             }
@@ -282,21 +286,63 @@ private struct DockStrip: View {
     let items: [DockItem]
     @ObservedObject var model: AppModel
     let added: Set<String>
+    /// The apps part of the Dock, which can be dragged into a new order.
+    let apps: [DockItem]
+    @State private var dragging: String?
 
     private let columns = [GridItem(.adaptive(minimum: 40, maximum: 40), spacing: 6)]
 
+    private var arrangedApps: [DockItem] {
+        guard let order = model.dockArrangement else { return apps }
+        let byKey = Dictionary(apps.map { ($0.key, $0) }, uniquingKeysWith: { a, _ in a })
+        return order.compactMap { byKey[$0] } + apps.filter { !order.contains($0.key) }
+    }
+
     var body: some View {
+        let others = items.filter { item in !apps.contains { $0.key == item.key } }
         LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
-            ForEach(Array(items.enumerated()), id: \.offset) { _, item in
-                let removing = model.dockRemovals.contains(item.key)
-                DockIcon(item: item, image: model.icon(for: item),
-                         badge: removing ? .removed : (added.contains(item.key) ? .added : nil))
-                    .contentShape(Rectangle())
-                    .onTapGesture { if item.kind != .spacer { model.toggleDockRemoval(item.key) } }
+            ForEach(Array(arrangedApps.enumerated()), id: \.offset) { _, item in
+                icon(item)
+                    .opacity(dragging == item.key ? 0.3 : 1)
+                    .onDrag {
+                        dragging = item.key
+                        return NSItemProvider(object: item.key as NSString)
+                    }
+                    .onDrop(of: [.text], delegate: DockDrop(target: item.key, apps: apps, model: model, dragging: $dragging))
             }
+            ForEach(Array(others.enumerated()), id: \.offset) { _, item in icon(item) }
         }
         .padding(10)
         .background(.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .animation(.easeInOut(duration: 0.15), value: model.dockArrangement)
+    }
+
+    private func icon(_ item: DockItem) -> some View {
+        let removing = model.dockRemovals.contains(item.key)
+        return DockIcon(item: item, image: model.icon(for: item),
+                        badge: removing ? .removed : (added.contains(item.key) ? .added : nil))
+            .contentShape(Rectangle())
+            .onTapGesture { if item.kind != .spacer { model.toggleDockRemoval(item.key) } }
+    }
+}
+
+/// Moves the dragged icon in front of the one it's over, as the Dock itself does.
+private struct DockDrop: DropDelegate {
+    let target: String
+    let apps: [DockItem]
+    let model: AppModel
+    @Binding var dragging: String?
+
+    func dropEntered(info: DropInfo) {
+        guard let dragging, dragging != target else { return }
+        model.moveDockItem(dragging, before: target, in: apps)
+    }
+
+    func dropUpdated(info: DropInfo) -> DropProposal? { DropProposal(operation: .move) }
+
+    func performDrop(info: DropInfo) -> Bool {
+        dragging = nil
+        return true
     }
 }
 

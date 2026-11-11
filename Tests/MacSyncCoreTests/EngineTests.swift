@@ -524,6 +524,23 @@ final class EngineTests: XCTestCase {
         XCTAssertEqual(try studio.engine.sync().dockOrderFrom, "studio")
     }
 
+    func testDockArrangedInMacSyncIsWrittenAndFollowedByOtherMacs() throws {
+        let world = try TestWorld()
+        let studio = try world.mac("studio", dock: ["a", "b", "c"])
+        try studio.engine.sync()
+        world.tick()
+        let air = try world.mac("air", dock: ["a", "b", "c"])
+        try air.engine.sync()
+        world.tick()
+        let keys = try XCTUnwrap(try air.engine.sync().dockPreview).targetApps.map(\.key)
+        let report = try air.engine.apply(ApplyRequest(applyDock: true, apps: [], dockOrder: [keys[2], keys[0], keys[1]]))
+        XCTAssertTrue(report.dockChanged)
+        XCTAssertEqual(try dockBundleIDs(air), ["c", "a", "b"])
+        world.tick()
+        let plan = try XCTUnwrap(try studio.engine.sync().dockPlan)
+        XCTAssertEqual(plan.targetApps.compactMap(\.bundleID), ["c", "a", "b"])
+    }
+
     func testOldICloudCopiesAreDeleted() throws {
         let world = try TestWorld()
         let old = world.sync.appendingPathComponent("apps/packages")
