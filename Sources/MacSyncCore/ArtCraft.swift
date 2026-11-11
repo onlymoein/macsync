@@ -243,18 +243,18 @@ public struct ArtCraft {
         let folder = installFolder()
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         var results: [(CraftApp, Result<String, EngineError>)] = []
+        // The launcher keeps its list in memory and writes it back, so it stays closed while the
+        // apps go in; each one is added to its list the moment it's done, and it reopens at the end.
+        let wasOpen = quitLauncher()
+        defer { if wasOpen { reopenLauncher() } }
         for app in apps {
             progress("\(app.isInstalled ? "Updating" : "Installing") \(app.name)…")
             let result = withoutActuallyEscaping(progress) { report in installOne(app, into: folder, progress: report) }
             results.append((app, result))
+            if case .success(let path) = result { writeRecords { apps in apps[app.id] = Self.record(app, path: path, now: now()) } }
             // Each app's outcome shows as soon as it's known, not when the whole batch ends.
             finished(app, result)
         }
-        let done = results.compactMap { pair -> (CraftApp, String)? in
-            if case .success(let path) = pair.1 { return (pair.0, path) }
-            return nil
-        }
-        if !done.isEmpty { record(done) }
         return results
     }
 
@@ -276,6 +276,23 @@ public struct ArtCraft {
             done.signal()
         }
         return done.wait(timeout: .now() + seconds) == .timedOut ? .timedOut : answer
+    }
+
+    /// Opens a disk image read-only and out of sight. macOS 26 and later prefer diskutil; older
+    /// systems use hdiutil. Either answers a license agreement and gives up after 3 quiet minutes.
+    static func attach(_ dmg: URL, at mount: URL, runner: CommandRunning) -> CommandResult {
+        if #available(macOS 26.0, *), FileManager.default.isExecutableFile(atPath: "/usr/sbin/diskutil") {
+            let result = runner.stream("/usr/sbin/diskutil", ["image", "attach", "--readOnly", "--nobrowse", "--mountPoint", mount.path, dmg.path],
+                                       input: Data("Y\n".utf8), environment: [:], idleTimeout: 180) { _ in }
+            if result.status == 0 { return result }
+        }
+        return runner.stream("/usr/bin/hdiutil", ["attach", "-nobrowse", "-readonly", "-noautoopen", "-noverify", "-mountpoint", mount.path, dmg.path],
+                             input: Data("Y\n".utf8), environment: ["PAGER": "/bin/cat"], idleTimeout: 180) { _ in }
+    }
+
+    /// Closes it again, giving it 30 seconds.
+    static func detach(_ mount: URL, runner: CommandRunning) {
+        _ = runner.stream("/usr/bin/hdiutil", ["detach", mount.path, "-force"], input: nil, environment: [:], idleTimeout: 30) { _ in }
     }
 
     /// Downloads with curl while watching the file grow, so the window can show how far it is.
@@ -317,33 +334,52 @@ public struct ArtCraft {
         let mount = work.appendingPathComponent("mount")
         try? fm.createDirectory(at: mount, withIntermediateDirectories: true)
         progress("Opening \(app.name)'s disk image…")
-        // A disk image with a license agreement asks on stdin: it gets its "Y", and the pager is
-        // cat, so nothing waits on a person. And nothing waits forever: three quiet minutes ends it.
-        let attach = runner.stream("/usr/bin/hdiutil", ["attach", "-nobrowse", "-readonly", "-noautoopen", "-noverify",
-                                                         "-mountpoint", mount.path, dmg.path],
-                                   input: Data("Y\n".utf8), environment: ["PAGER": "/bin/cat"], idleTimeout: 180) { _ in }
+        let attach = Self.attach(dmg, at: mount, runner: runner)
         guard attach.status == 0 else {
-            _ = runner.run("/usr/bin/hdiutil", ["detach", mount.path, "-quiet", "-force"], input: nil, environment: [:])
+            Self.detach(mount, runner: runner)
             return .failure(.refused(attach.status == -2 ? "\(app.name)'s disk image didn't open within 3 minutes. Try again."
                                                          : "\(app.name)'s disk image couldn't be opened."))
         }
-        // Closing the disk image can hang when something is still reading it: it gets 30 seconds.
-        defer { _ = runner.stream("/usr/bin/hdiutil", ["detach", mount.path, "-force"], input: nil, environment: [:], idleTimeout: 30) { _ in } }
         let found = ((try? fm.contentsOfDirectory(atPath: mount.path)) ?? []).first { $0.hasSuffix(".app") }
         guard let found, DirectApp.isSafeName(String(found.dropLast(4))) else {
+            Self.detach(mount, runner: runner)
             return .failure(.refused("\(app.name)'s disk image has no app in it."))
         }
-        let source = mount.appendingPathComponent(found)
+        // Copied straight off the disk image, which is then closed: every check below reads the
+        // copy on this Mac's own disk, never the mounted image.
+        progress("Copying \(app.name) out of its disk image…")
+        let local = work.appendingPathComponent(found)
+        let copy = runner.stream("/usr/bin/ditto", [mount.appendingPathComponent(found).path, local.path], input: nil,
+                                 environment: [:], idleTimeout: 180) { _ in }
+        Self.detach(mount, runner: runner)
+        guard copy.status == 0, fm.fileExists(atPath: local.path) else {
+            return .failure(.refused(copy.status == -2 ? "Copying \(app.name) off its disk image stopped making progress. Try again."
+                                                       : "\(app.name) couldn't be copied off its disk image."))
+        }
+        let source = local
         guard Bundle(url: source)?.bundleIdentifier != nil else {
             return .failure(.refused("\(app.name)'s disk image doesn't hold a proper app."))
         }
         if let team = app.team {
             progress("Checking \(app.name)'s signature…")
-            switch Self.signingTeam(of: source, within: 60) {
-            case .timedOut:
-                return .failure(.refused("Checking \(app.name)'s signature didn't finish within a minute. Try again."))
+            var check = Self.signingTeam(of: source, within: 60)
+            if case .timedOut = check {
+                // A second opinion from Apple's codesign, on the same local copy, for 30 seconds.
+                let sig = runner.stream("/usr/bin/codesign", ["-dv", "--verbose=2", source.path], input: nil, environment: [:],
+                                        idleTimeout: 30) { _ in }
+                if let line = (sig.stderr + sig.output).split(whereSeparator: \.isNewline).first(where: { $0.hasPrefix("TeamIdentifier=") }) {
+                    check = .team(String(line.dropFirst("TeamIdentifier=".count)))
+                }
+            }
+            switch check {
             case .team(let found) where found == team:
                 break
+            case .timedOut where app.sha256 != nil:
+                // macOS didn't answer, but the download matched ArtCraft's published checksum, and
+                // macOS checks the signature itself the first time the app opens.
+                progress("\(app.name): macOS didn't answer the signature check; the checksum matched, so it's installed…")
+            case .timedOut:
+                return .failure(.refused("Checking \(app.name)'s signature didn't finish. Try again."))
             default:
                 return .failure(.refused("\(app.name) isn't signed by its developer as ArtCraft's catalog says, so it wasn't installed."))
             }
@@ -351,11 +387,9 @@ public struct ArtCraft {
         let target = folder.appendingPathComponent(found)
         let staged = folder.appendingPathComponent(".macsync-\(UUID().uuidString.prefix(6))-" + found)
         progress("Copying \(app.name) into \(folder.lastPathComponent)…")
-        let copy = runner.stream("/usr/bin/ditto", [source.path, staged.path], input: nil, environment: [:], idleTimeout: 600) { _ in }
-        guard copy.status == 0 else {
+        do { try fm.moveItem(at: source, to: staged) } catch {
             try? fm.removeItem(at: staged)
-            return .failure(.refused(copy.status == -2 ? "Copying \(app.name) stopped making progress. Try again."
-                                                       : "\(app.name) couldn't be copied into \(folder.lastPathComponent)."))
+            return .failure(.refused("\(app.name) couldn't be copied into \(folder.lastPathComponent)."))
         }
         // An update: the old copy goes to the Trash, where it can be put back.
         if fm.fileExists(atPath: target.path) {
@@ -399,9 +433,39 @@ public struct ArtCraft {
 
     /// Changes ArtCraft Launcher's list with the launcher closed, then reopens it if it was open.
     private func editRecords(_ change: (inout [String: Any]) -> Void) {
+        let wasOpen = quitLauncher()
+        writeRecords(change)
+        if wasOpen { reopenLauncher() }
+    }
+
+    /// Quits ArtCraft Launcher if it's running. True when it was.
+    private func quitLauncher() -> Bool {
+        // Only the real launcher of the real home folder; tests and demos use pretend ones.
+        guard env.homeDirectory == NSHomeDirectory() else { return false }
         let running = NSRunningApplication.runningApplications(withBundleIdentifier: Self.launcherBundleID)
         for app in running { app.terminate() }
         for _ in 0..<20 where running.contains(where: { !$0.isTerminated }) { Thread.sleep(forTimeInterval: 0.25) }
+        return !running.isEmpty
+    }
+
+    /// Back in the menu bar the way it was, not as a window in front of you.
+    private func reopenLauncher() {
+        guard env.homeDirectory == NSHomeDirectory(), let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: Self.launcherBundleID) else { return }
+        let configuration = NSWorkspace.OpenConfiguration()
+        configuration.arguments = ["--hidden"]
+        configuration.activates = false
+        configuration.addsToRecentItems = false
+        NSWorkspace.shared.openApplication(at: url, configuration: configuration)
+    }
+
+    static func record(_ app: CraftApp, path: String, now: Date) -> [String: Any] {
+        let info = NSDictionary(contentsOfFile: path + "/Contents/Info.plist")
+        return ["version": (info?["CFBundleShortVersionString"] as? String) ?? app.version, "kind": "Dmg", "path": path,
+                "installed_at": Int(now.timeIntervalSince1970), "files": [String](), "needs_root": false]
+    }
+
+    /// Writes the launcher's list. Only call it with the launcher closed.
+    private func writeRecords(_ change: (inout [String: Any]) -> Void) {
         var root = ((try? Data(contentsOf: recordsURL)).flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }) ?? [:]
         var apps = root["apps"] as? [String: Any] ?? [:]
         change(&apps)
@@ -409,14 +473,6 @@ public struct ArtCraft {
         try? FileManager.default.createDirectory(at: recordsURL.deletingLastPathComponent(), withIntermediateDirectories: true)
         if let data = try? JSONSerialization.data(withJSONObject: root, options: [.prettyPrinted, .sortedKeys]) {
             try? data.write(to: recordsURL, options: .atomic)
-        }
-        if !running.isEmpty, let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: Self.launcherBundleID) {
-            // Back in the menu bar the way it was, not as a window in front of you.
-            let configuration = NSWorkspace.OpenConfiguration()
-            configuration.arguments = ["--hidden"]
-            configuration.activates = false
-            configuration.addsToRecentItems = false
-            NSWorkspace.shared.openApplication(at: url, configuration: configuration)
         }
     }
 

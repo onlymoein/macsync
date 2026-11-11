@@ -20,7 +20,7 @@ public struct MacSyncEnvironment {
     public var applicationsDirectory: URL
     public var homeDirectory: String
 
-    public static let appVersion = "0.8.5"
+    public static let appVersion = "0.8.6"
 
     public var iCloudAvailable: Bool {
         FileManager.default.fileExists(atPath: syncDirectory.deletingLastPathComponent().path)
@@ -130,9 +130,17 @@ public struct SystemCommandRunner: CommandRunning {
         while process.isRunning {
             usleep(250_000)
             lock.lock(); let quiet = Date().timeIntervalSince(lastOutput); lock.unlock()
-            if quiet > idleTimeout { timedOut = true; process.terminate(); break }
+            if quiet > idleTimeout { timedOut = true; break }
         }
-        process.waitUntilExit()
+        if timedOut {
+            // Asked to stop, then made to; a tool stuck in the system that ignores even that is left
+            // behind rather than freezing MacSync.
+            process.terminate()
+            for _ in 0..<20 where process.isRunning { usleep(250_000) }
+            if process.isRunning { kill(process.processIdentifier, SIGKILL) }
+            for _ in 0..<20 where process.isRunning { usleep(250_000) }
+        }
+        if !process.isRunning { process.waitUntilExit() }
         out.fileHandleForReading.readabilityHandler = nil
         err.fileHandleForReading.readabilityHandler = nil
         take(out.fileHandleForReading.readDataToEndOfFile(), isError: false)

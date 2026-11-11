@@ -91,3 +91,31 @@ final class SigningTests: XCTestCase {
         guard case .unsigned = ArtCraft.signingTeam(of: URL(fileURLWithPath: "/tmp"), within: 10) else { return XCTFail("tmp isn't signed") }
     }
 }
+
+/// Runs the real download, disk image, signature and copy steps. Off unless MACSYNC_LIVE_CRAFT=1.
+final class LiveCraftInstallTests: XCTestCase {
+    func testInstallsCADCraftForReal() throws {
+        try XCTSkipUnless(ProcessInfo.processInfo.environment["MACSYNC_LIVE_CRAFT"] == "1", "live test")
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("macsync-live-\(UUID().uuidString.prefix(6))")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let apps = root.appendingPathComponent("Applications"), home = root.appendingPathComponent("home")
+        try FileManager.default.createDirectory(at: apps, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: home, withIntermediateDirectories: true)
+        let env = MacSyncEnvironment(syncDirectory: root.appendingPathComponent("sync"), dataDirectory: root.appendingPathComponent("data"),
+                                     machineID: "t", machineName: "T", dockFile: nil, brewPath: nil, applicationsDirectory: apps,
+                                     homeDirectory: home.path)
+        var app = CraftApp(id: "cadcraft", name: "CADCraft", version: "0.20.0",
+                           dmgURL: "https://github.com/storytold/cadcraft/releases/download/v0.20.0/cadcraft-0.20.0-macos-universal.dmg",
+                           sha256: nil, sizeBytes: 84_679_812)
+        app.team = "DJ6XS33FX8"
+        app.bundleName = "CADCraft"
+        var steps: [String] = []
+        let started = Date()
+        let results = ArtCraft(env: env, runner: SystemCommandRunner(), now: Date.init).install([app], progress: { steps.append($0) })
+        let seconds = Date().timeIntervalSince(started)
+        print("steps:", Set(steps.map { $0.components(separatedBy: "…")[0] }).sorted(), "seconds:", Int(seconds))
+        guard case .success(let path)? = results.first?.1 else { return XCTFail("failed: \(String(describing: results.first?.1))") }
+        XCTAssertTrue(FileManager.default.fileExists(atPath: path + "/Contents/Info.plist"))
+        XCTAssertLessThan(seconds, 120)
+    }
+}

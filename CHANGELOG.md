@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.8.6
+- ArtCraft installs copy the app off its disk image first, close the image, and check the copy on this Mac's own disk. Reading the freshly opened image is what held "Checking the signature" on some Macs while macOS scanned it. If macOS still doesn't answer, Apple's codesign gets a second try; if neither answers and the download matched ArtCraft's published checksum, the app installs and the row says why.
+- macOS 26 and later open disk images with diskutil, which Apple now recommends over hdiutil.
+- A tool that ignores being stopped can no longer freeze MacSync: it's stopped, then forced, then left behind.
+- Each ArtCraft app goes into ArtCraft Launcher's list the moment it's installed, not at the end of the batch, with the launcher closed while the apps go in so it can't overwrite its list, and reopened hidden afterwards.
+- MacSync only quits and reopens ArtCraft Launcher for your real home folder, so its own tests no longer touch the launcher.
+
 ## 0.8.5
 - A Homebrew install no longer holds up everything else while it runs. An ArtCraft install started during one (CADCraft after btop) sat on Waiting until Homebrew finished; now it starts straight away.
 - Waiting says what it's after ("After btop"), and the progress line always names the item and count, even before its first step ("1 of 1 · CADCraft · starting").
