@@ -42,7 +42,7 @@ struct MenuView: View {
     }
 
     @ViewBuilder private var notices: some View {
-        let messages = [model.actionError, model.errorMessage, model.undoMessage, model.updateMessage].compactMap { $0 } + (model.overview?.issues ?? [])
+        let messages = [model.actionError, model.errorMessage, model.autoApplyMessage, model.undoMessage, model.updateMessage].compactMap { $0 } + (model.overview?.issues ?? [])
         if let update = model.availableUpdate, !model.isUpdating {
             Button { model.installUpdate(update) } label: {
                 Label("Update to MacSync \(update.version)", systemImage: "arrow.down.circle.fill").frame(maxWidth: .infinity)
@@ -95,6 +95,7 @@ struct MenuView: View {
                 Button("Open Sync Window…") { ReviewWindow.shared.show(model: model) }
                 Divider()
                 Toggle("Sync Automatically", isOn: $model.autoSync)
+                Toggle("Apply Dock Changes When I Open the Lid", isOn: $model.autoApplyDock)
                 Toggle("Open at Login", isOn: Binding(get: { model.openAtLogin }, set: { model.setOpenAtLogin($0) }))
                 Toggle("Update Automatically", isOn: $model.autoUpdate)
                 Button("Check for Updates") { model.checkForUpdates(manual: true) }

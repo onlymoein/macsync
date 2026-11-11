@@ -9,6 +9,18 @@ import SwiftUI
 enum UIProbe {
     static func runIfRequested(model: AppModel) {
         let env = ProcessInfo.processInfo.environment
+        if env["MACSYNC_UI_PROBE_WAKE"] != nil {
+            // Pretend the lid was just opened, then report what the Dock looks like a bit later.
+            Task {
+                await settle(model)
+                NSWorkspace.shared.notificationCenter.post(name: NSWorkspace.didWakeNotification, object: nil)
+                try? await Task.sleep(nanoseconds: 8_000_000_000)
+                await settle(model)
+                print("after wake: \(model.autoApplyMessage ?? "no auto apply") error=\(model.actionError ?? "-")")
+                NSApp.terminate(nil)
+            }
+            return
+        }
         guard let dir = env["MACSYNC_UI_PROBE"] else { return }
         let suffix = env["MACSYNC_UI_PROBE_DARK"] != nil ? "dark" : "light"
         let height = CGFloat(Double(env["MACSYNC_UI_PROBE_HEIGHT"] ?? "") ?? 900)

@@ -41,6 +41,16 @@ final class AppModel: ObservableObject {
     @Published var availableUpdate: SelfUpdater.Release?
     @Published var updateMessage: String?
     @Published var isUpdating = false
+    /// Off by default: when on, opening the lid applies Dock changes from the other Macs without
+    /// asking. A restore point is saved first, and Undo is in the menu.
+    @Published var autoApplyDock: Bool {
+        didSet { UserDefaults.standard.set(autoApplyDock, forKey: "autoApplyDock") }
+    }
+    /// Until this time after a wake, a sync that finds Dock changes applies them. iCloud can take
+    /// a minute to bring in what the other Macs saved, so it isn't only the first sync.
+    private var applyDockUntil: Date?
+    @Published var autoApplyMessage: String?
+
     @Published var autoUpdate: Bool {
         didSet { UserDefaults.standard.set(autoUpdate, forKey: "autoUpdate") }
     }
@@ -66,10 +76,19 @@ final class AppModel: ObservableObject {
     init() {
         autoSync = UserDefaults.standard.object(forKey: "autoSync") as? Bool ?? true
         autoUpdate = UserDefaults.standard.object(forKey: "autoUpdate") as? Bool ?? true
+        autoApplyDock = UserDefaults.standard.bool(forKey: "autoApplyDock")
         scheduleTimer()
         wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
-            Task { @MainActor in self?.backgroundSync() }
+            Task { @MainActor in
+                guard let self else { return }
+                if self.autoApplyDock { self.applyDockUntil = Date().addingTimeInterval(180) }
+                self.backgroundSync()
+                // iCloud may still be bringing in the other Macs' saves: look again shortly.
+                for delay in [20.0, 60.0, 150.0] {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in self?.backgroundSync() }
+                }
+            }
         }
         let env = MacSyncEnvironment.current()
         let dockFile = env.dockFile ?? URL(fileURLWithPath: env.homeDirectory)
@@ -168,6 +187,7 @@ final class AppModel: ObservableObject {
                 self.errorMessage = nil
                 if refreshInventory { lastInventoryRefresh = Date() }
                 trimDockEdits(overview)
+                applyDockAfterWakeIfWanted(overview)
             case .failure(let error):
                 self.errorMessage = error.localizedDescription
             }
@@ -177,6 +197,30 @@ final class AppModel: ObservableObject {
                 resyncInventory = false
                 runSync(refreshInventory: inventory)
             }
+        }
+    }
+
+    /// After a wake, with the setting on: applies Dock changes from the other Macs by itself.
+    /// Only the Dock. Settings and apps still wait for the person, and so does anything they
+    /// were arranging in the sync window.
+    private func applyDockAfterWakeIfWanted(_ overview: SyncOverview) {
+        guard autoApplyDock, let until = applyDockUntil, Date() < until, let plan = overview.dockPlan,
+              !isApplying, dockArrangement == nil, dockRemovals.isEmpty, getting.isEmpty, removing.isEmpty else { return }
+        applyDockUntil = nil
+        isApplying = true
+        let engine = engine
+        Task {
+            let result = await Task.detached {
+                Result { try engine.apply(ApplyRequest(applyDock: true, apps: [], applySettings: false)) }
+            }.value
+            isApplying = false
+            switch result {
+            case .success(let report) where report.dockChanged:
+                autoApplyMessage = "Dock updated from \(plan.sourceMachine) when you opened the lid. Undo Last Apply puts it back."
+            case .success: break
+            case .failure(let error): actionError = error.localizedDescription
+            }
+            runSync(refreshInventory: false)
         }
     }
 
@@ -437,6 +481,7 @@ final class AppModel: ObservableObject {
     func undo() {
         let engine = engine
         actionError = nil
+        autoApplyMessage = nil
         isApplying = true
         progress = "Undoing…"
         Task {
