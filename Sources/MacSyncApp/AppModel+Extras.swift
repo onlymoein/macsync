@@ -260,6 +260,13 @@ extension AppModel {
         return nil
     }
 
+    /// The current ArtCraft download's percentage, while it's downloading.
+    var craftPercent: Int? {
+        guard let status = work["craft"]?.status, status.hasPrefix("Downloading"),
+              let range = status.range(of: "\\d+(?=%)", options: .regularExpression) else { return nil }
+        return Int(status[range])
+    }
+
     /// Whether this row's item is queued but not started yet.
     func isWaiting(_ job: String, _ id: String) -> Bool { work[job] != nil && workCurrent[job] != id }
 }

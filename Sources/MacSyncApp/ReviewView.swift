@@ -710,8 +710,13 @@ private struct ArtCraftPanel: View {
             }
             Spacer(minLength: 8)
             if model.craftBusy.contains(app.id) {
-                if model.isWaiting("craft", app.id) && model.isWaiting("craftRemove", app.id) {
+                if model.isWaiting("craft", app.id) || model.isWaiting("craftRemove", app.id) {
                     Label("Waiting", systemImage: "clock").font(.caption).foregroundStyle(.secondary)
+                } else if let percent = model.craftPercent, model.work["craftRemove"] == nil {
+                    VStack(alignment: .trailing, spacing: 3) {
+                        ProgressView(value: Double(percent), total: 100).progressViewStyle(.linear).frame(width: 120)
+                        Text("Downloading \(percent)%").font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+                    }
                 } else {
                     HStack(spacing: 6) {
                         ProgressView().controlSize(.small)
@@ -1276,9 +1281,10 @@ private struct AppRow: View {
         if model.getting.contains(token) && model.isWaiting("get", token) {
             Label("Waiting", systemImage: "clock").font(.caption).foregroundStyle(.secondary)
         } else if model.getting.contains(token) {
-            HStack(spacing: 6) {
-                ProgressView().controlSize(.small)
-                Text(missing.app.source == .direct ? "Downloading" : "Installing").font(.caption).foregroundStyle(.secondary)
+            VStack(alignment: .trailing, spacing: 3) {
+                ProgressView().progressViewStyle(.linear).frame(width: 120)
+                Text(missing.app.source == .direct ? "Downloading" : missing.app.source == .appStore ? "Opening the App Store" : "Installing with Homebrew")
+                    .font(.caption).foregroundStyle(.secondary)
             }
         } else if let result {
             switch result.outcome {
@@ -1498,7 +1504,7 @@ private struct SettingsPanel: View {
 /// Test builds only: one section of the sync window on its own, for the website's pictures.
 extension ReviewView {
     static let probeSections = ["dock", "notInstalled", "artcraft", "apps", "appStore", "tools", "toRemove", "settings", "history",
-                                "config", "ai", "signin", "updates", "share"]
+                                "config", "ai", "signin", "updates", "share", "artcraftBusy"]
 
     @MainActor static func probeSection(_ key: String, model: AppModel) -> AnyView? {
         let o = model.overview
@@ -1511,6 +1517,13 @@ extension ReviewView {
             guard let plan = o?.dockPlan ?? o?.dockPreview, !plan.missing.isEmpty else { return nil }
             panel = AnyView(NotInstalledPanel(items: plan.missing, model: model))
         case "artcraft": panel = AnyView(ArtCraftPanel(model: model))
+        case "artcraftBusy":
+            let names = Array(model.craftApps.prefix(4))
+            model.craftBusy = Set(names.dropFirst().map(\.id))
+            model.work["craft"] = WorkProgress(verb: "Installing ArtCraft apps", names: names.dropFirst().map(\.name), done: 0,
+                                               current: names.dropFirst().first?.name, status: "Downloading \(names.dropFirst().first?.name ?? "")… 42%")
+            model.workCurrent["craft"] = names.dropFirst().first?.id
+            panel = AnyView(ArtCraftPanel(model: model))
         case "apps": panel = AnyView(AppsPanel(kind: .apps, model: model))
         case "appStore": panel = AnyView(AppsPanel(kind: .appStore, model: model))
         case "tools": panel = AnyView(AppsPanel(kind: .tools, model: model))
