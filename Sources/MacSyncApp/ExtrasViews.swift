@@ -529,18 +529,18 @@ struct UpdatesPanel: View {
         default: return ""
         }
     }
-    @AppStorage("review.updates.open") private var open = true
+    @AppStorage("review.homebrew.open") private var open = true
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             let report = model.upgradeReport
-            PanelHeader(symbol: "arrow.triangle.2.circlepath", title: "Updates",
-                        subtitle: model.upgrading ? (model.progress ?? "Updating…")
+            PanelHeader(symbol: "mug.fill", title: "Homebrew updates",
+                        subtitle: model.upgrading ? (model.progress ?? "Checking Homebrew…")
                             : report.map { "\($0.summary) · checked \($0.ranAt.formatted(.relative(presentation: .named)))" }
-                            ?? "Homebrew apps and tools, npm and uv, kept on their newest versions",
+                            ?? "Checks Homebrew for newer apps and tools, plus npm and uv",
                         isExpanded: $open) {
-                Toggle("Automatic", isOn: $model.autoUpgrade).toggleStyle(.switch).controlSize(.small)
-                    .help("Check and update on open and every six hours")
+                Toggle("Install automatically", isOn: $model.autoUpgrade).toggleStyle(.switch).controlSize(.small)
+                    .help("Checks on open and every six hours, and installs what's new. Off: lists them for you to update.")
                 let outdated = report?.outdated ?? []
                 if !outdated.isEmpty {
                     Button("Update All (\(outdated.count))") { model.upgrade(outdated) }
@@ -550,7 +550,14 @@ struct UpdatesPanel: View {
                     .help(model.autoUpgrade ? "Look for newer versions and install them" : "Look for newer versions")
                     .glassButton().controlSize(.small).disabled(model.upgrading)
             }
-            if open, let report {
+            if open || !(model.upgradeReport?.outdated ?? []).isEmpty {
+                Label(model.autoUpgrade
+                      ? "Checks when MacSync opens and every six hours, and installs every new version. Apps you have open wait until you quit them."
+                      : "Checks when MacSync opens and every six hours, and lists new versions here for you to update.",
+                      systemImage: model.autoUpgrade ? "checkmark.circle" : "list.bullet")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            if open || !(model.upgradeReport?.outdated ?? []).isEmpty, let report {
                 let outdated = report.outdated ?? []
                 if !outdated.isEmpty {
                     Text("Newer versions are out. Update them one at a time, or all at once.")

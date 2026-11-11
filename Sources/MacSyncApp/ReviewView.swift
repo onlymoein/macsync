@@ -67,6 +67,7 @@ struct ReviewView: View {
                         Label(message, systemImage: "arrow.uturn.backward.circle.fill")
                             .foregroundStyle(.green).padding(14).frame(maxWidth: .infinity, alignment: .leading).glassPanel()
                     }
+                    UpdatesPanel(model: model)
                     ToRemovePanel(model: model)
                     ExtrasRemovedPanel(model: model)
                     if let plan = model.overview?.dockPlan ?? model.overview?.dockPreview {
@@ -92,7 +93,6 @@ struct ReviewView: View {
                         SettingsMatchPanel(model: model)
                     }
                     if model.proEnabled { AppSettingsPanel(model: model) }
-                    UpdatesPanel(model: model)
                     SignInPanel(model: model)
                     HistoryPanel(model: model).id("history")
                     if let overview = model.overview, !overview.hasPendingChanges, !model.canApply, model.lastReport == nil {
@@ -1449,7 +1449,7 @@ private struct SettingsPanel: View {
 /// Test builds only: one section of the sync window on its own, for the website's pictures.
 extension ReviewView {
     static let probeSections = ["dock", "notInstalled", "artcraft", "apps", "appStore", "tools", "toRemove", "settings", "history",
-                                "config", "ai", "signin"]
+                                "config", "ai", "signin", "updates"]
 
     @MainActor static func probeSection(_ key: String, model: AppModel) -> AnyView? {
         let o = model.overview
@@ -1469,6 +1469,12 @@ extension ReviewView {
         case "settings":
             panel = o?.settingsPlan.map { AnyView(SettingsPanel(plan: $0, model: model)) } ?? AnyView(SettingsMatchPanel(model: model))
         case "history": panel = AnyView(HistoryPanel(model: model))
+        case "updates":
+            model.upgradeReport = UpgradeReport(ranAt: Date().addingTimeInterval(-180), upgraded: [], waiting: [], failures: [], outdated: [
+                OutdatedItem(token: "cask:visual-studio-code", name: "Visual Studio Code", from: "1.106.0", to: "1.106.2", bundleID: "com.microsoft.VSCode"),
+                OutdatedItem(token: "formula:ffmpeg", name: "ffmpeg", from: "8.0", to: "8.0.1"),
+                OutdatedItem(token: "npm:vercel", name: "vercel", from: "48.1.0", to: "48.2.3")])
+            panel = AnyView(UpdatesPanel(model: model))
         case "config": panel = AnyView(FilesPanel(area: .config, model: model))
         case "ai": panel = AnyView(FilesPanel(area: .ai, model: model))
         case "signin":

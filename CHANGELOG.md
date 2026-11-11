@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.7.5
+- **Homebrew updates** is its own section at the top of the window: what needs updating (from → to), Update and Update All, and an Install automatically switch. It opens by itself when something is waiting.
+- The menu's items say what they do: Install Homebrew Updates Automatically, and Check Homebrew for Updates (which only lists them when automatic is off).
+
 ## 0.7.4
 - **See what needs updating:** the Updates section lists every Homebrew app and tool, npm package and uv tool with a newer version, from → to, with Update on each row and Update All. With Automatic off, MacSync still checks on open and every six hours and lists them; with it on, it installs them.
 - `macsync outdated` lists the same from Terminal.

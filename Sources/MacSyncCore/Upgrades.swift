@@ -3,6 +3,9 @@ import Foundation
 
 /// An app or tool with a newer version waiting.
 public struct OutdatedItem: Codable, Equatable, Identifiable {
+    public init(token: String, name: String, from: String, to: String, bundleID: String? = nil) {
+        self.token = token; self.name = name; self.from = from; self.to = to; self.bundleID = bundleID
+    }
     public var token: String
     public var name: String
     public var from: String
@@ -19,6 +22,9 @@ public struct UpgradeReport: Codable, Equatable {
     public var failures: [String] = []
     /// Newer versions found and not installed yet.
     public var outdated: [OutdatedItem]?
+    public init(ranAt: Date, upgraded: [OutdatedItem] = [], waiting: [OutdatedItem] = [], failures: [String] = [], outdated: [OutdatedItem]? = nil) {
+        self.ranAt = ranAt; self.upgraded = upgraded; self.waiting = waiting; self.failures = failures; self.outdated = outdated
+    }
     public var summary: String {
         let pending = outdated ?? []
         if upgraded.isEmpty && waiting.isEmpty && failures.isEmpty && pending.isEmpty { return "Everything is up to date" }

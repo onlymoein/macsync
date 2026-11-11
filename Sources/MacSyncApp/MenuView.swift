@@ -102,8 +102,8 @@ struct MenuView: View {
                 Toggle("Apply Dock Changes When I Open the Lid", isOn: $model.autoApplyDock)
                 Toggle("Open at Login", isOn: Binding(get: { model.openAtLogin }, set: { model.setOpenAtLogin($0) }))
                 Toggle("Update Automatically", isOn: $model.autoUpdate)
-                Toggle("Keep Apps and Tools Up to Date", isOn: $model.autoUpgrade)
-                Button(model.upgrading ? "Updating Apps and Tools…" : "Update Apps and Tools Now") { model.upgradeAll() }
+                Toggle("Install Homebrew Updates Automatically", isOn: $model.autoUpgrade)
+                Button(model.upgrading ? "Checking Homebrew…" : "Check Homebrew for Updates") { if model.autoUpgrade { model.upgradeAll() } else { model.checkUpgrades() } }
                     .disabled(model.upgrading)
                 Button("Check for Updates") { model.checkForUpdates(manual: true) }
                 Divider()
