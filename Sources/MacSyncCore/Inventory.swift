@@ -86,7 +86,7 @@ public struct InventoryReader {
             inventory.details?[ref.token] = AppDetail(displayName: Self.displayName(at: path) ?? app.name,
                                                       iconID: icons.store(appAt: path, for: ref), bundleID: app.bundleID)
         }
-        inventory.directApps = direct
+        inventory.directApps = withDownloads(direct)
         if inventory.details?.isEmpty == true { inventory.details = nil }
         return inventory
     }
@@ -135,7 +135,18 @@ public struct InventoryReader {
                   !id.hasPrefix("com.apple."), id != "com.onlymehdi.macsync" else { return nil }
             let name = String(file.dropLast(4))
             guard DirectApp.isSafeName(name) else { return nil }
-            return DirectApp(bundleID: id, name: name, version: info["CFBundleShortVersionString"] as? String)
+            let feed = (info["SUFeedURL"] as? String).flatMap { DirectApp.isSafeFeed($0) ? $0 : nil }
+            return DirectApp(bundleID: id, name: name, version: info["CFBundleShortVersionString"] as? String, feed: feed)
+        }
+    }
+
+    /// Notes which Homebrew cask publishes each app, so other Macs can download it from its source.
+    func withDownloads(_ apps: [DirectApp]) -> [DirectApp] {
+        guard !apps.isEmpty, let catalog = CaskCatalog.load(env: env, runner: runner, now: Date()) else { return apps }
+        return apps.map { app in
+            var app = app
+            app.cask = catalog.cask(forApp: app.name + ".app")
+            return app
         }
     }
 

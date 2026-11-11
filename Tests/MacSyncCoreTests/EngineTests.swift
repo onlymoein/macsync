@@ -350,52 +350,99 @@ final class EngineTests: XCTestCase {
         XCTAssertEqual(try studio.engine.sync().dockPlan?.added.compactMap(\.bundleID), ["c"])
     }
 
-    func testDownloadedAppIsCopiedThroughICloud() throws {
+    static let catalog = Data("""
+    [{"token":"photocraft","url":"https://example.com/PhotoCraft.dmg","sha256":"SUM",
+      "artifacts":[{"app":["PhotoCraft.app"]},{"zap":{}}]},
+     {"token":"photocraft@beta","url":"https://example.com/beta.dmg","sha256":"no_check","artifacts":[{"app":["PhotoCraft.app"]}]}]
+    """.utf8)
+
+    func testDownloadedAppComesFromWhereItIsPublishedNotICloud() throws {
         let world = try TestWorld()
+        let installer = Data("installer".utf8)
+        let sum = AppDownloader.sha256Hex(installer)
+        let catalog = Data(String(decoding: Self.catalog, as: UTF8.self).replacingOccurrences(of: "SUM", with: sum).utf8)
         let studio = try world.mac("studio", dock: ["a"])
+        studio.runner.web[CaskCatalog.address] = catalog
         try world.installDirectApp("PhotoCraft", bundleID: "ai.storyteller.photocraft", on: "studio")
         try studio.engine.sync()
+
         let air = try world.mac("air", dock: ["a"])
+        air.runner.web[CaskCatalog.address] = catalog
+        air.runner.web["https://example.com/PhotoCraft.dmg"] = installer
         let offered = try air.engine.sync()
         let photo = try XCTUnwrap(offered.missingApps.first { $0.app.source == .direct })
-        XCTAssertEqual(photo.displayName, "PhotoCraft")
+        XCTAssertEqual(photo.download?.cask, "photocraft")
+        XCTAssertTrue(photo.canInstall)
         XCTAssertTrue(offered.selectedApps.contains(photo.app.token))
 
         let report = try air.engine.apply(ApplyRequest(applyDock: false, apps: [photo.app]))
-        XCTAssertEqual(report.results.first?.outcome, .copying)
-        XCTAssertEqual(try air.engine.sync().copies.first?.stage, .waitingForUpload)
-
-        try studio.engine.sync()  // Studio sees the request and uploads.
-        let after = try air.engine.sync()  // Air finds the copy and installs it.
-        XCTAssertTrue(world.hasApp("PhotoCraft", on: "air"))
-        XCTAssertEqual(after.copies.first?.stage, .installed)
-        XCTAssertFalse(after.missingApps.contains { $0.app.source == .direct })
-
-        try studio.engine.sync()  // Nobody is waiting any more, so the copy leaves iCloud.
-        let packages = world.sync.appendingPathComponent("apps/packages")
-        XCTAssertEqual(((try? FileManager.default.contentsOfDirectory(atPath: packages.path)) ?? []).filter { !$0.hasPrefix(".") }, [])
+        XCTAssertEqual(report.results.first?.outcome, .downloaded, report.results.first?.message ?? "")
+        let saved = world.root.appendingPathComponent("air/Downloads/PhotoCraft.dmg")
+        XCTAssertEqual(try Data(contentsOf: saved), installer)
+        XCTAssertTrue(air.runner.calls.contains(["/usr/bin/open", saved.path]))
+        // Nothing but sync files goes to iCloud.
+        XCTAssertFalse(FileManager.default.fileExists(atPath: world.sync.appendingPathComponent("apps").path))
+        let synced = FileManager.default.enumerator(atPath: world.sync.path)?.allObjects as? [String] ?? []
+        XCTAssertFalse(synced.contains { $0.hasSuffix(".dmg") || $0.hasSuffix(".zip") })
     }
 
-    func testCopyThatIsTheWrongAppIsRefused() throws {
+    func testDownloadThatDoesNotMatchItsChecksumIsDeleted() throws {
         let world = try TestWorld()
+        let catalog = Data(String(decoding: Self.catalog, as: UTF8.self).replacingOccurrences(of: "SUM", with: String(repeating: "0", count: 64)).utf8)
         let studio = try world.mac("studio", dock: ["a"])
-        try world.installDirectApp("Tool", bundleID: "com.example.tool", on: "studio")
+        studio.runner.web[CaskCatalog.address] = catalog
+        try world.installDirectApp("PhotoCraft", bundleID: "ai.storyteller.photocraft", on: "studio")
         try studio.engine.sync()
         let air = try world.mac("air", dock: ["a"])
-        let tool = try XCTUnwrap(try air.engine.sync().missingApps.first { $0.app.source == .direct })
-        _ = try air.engine.apply(ApplyRequest(applyDock: false, apps: [tool.app]))
+        air.runner.web[CaskCatalog.address] = catalog
+        air.runner.web["https://example.com/PhotoCraft.dmg"] = Data("tampered".utf8)
+        let photo = try XCTUnwrap(try air.engine.sync().missingApps.first { $0.app.source == .direct })
+        let report = try air.engine.apply(ApplyRequest(applyDock: false, apps: [photo.app]))
+        XCTAssertEqual(report.results.first?.outcome, .failed)
+        let downloads = (try? FileManager.default.contentsOfDirectory(atPath: world.root.appendingPathComponent("air/Downloads").path)) ?? []
+        XCTAssertEqual(downloads, [])
+        XCTAssertFalse(air.runner.calls.contains { $0.first == "/usr/bin/open" })
+    }
+
+    func testAppWithOnlyAnUpdateFeedDownloadsItsLatestRelease() throws {
+        let world = try TestWorld()
+        let studio = try world.mac("studio", dock: ["a"])
+        try world.installDirectApp("Tool", bundleID: "com.example.tool", on: "studio", feed: "https://example.com/appcast.xml")
         try studio.engine.sync()
-        // Someone swaps the package for a different app.
-        try world.installDirectApp("Tool", bundleID: "com.evil.other", on: "evil")
-        let zip = world.sync.appendingPathComponent("apps/packages/com.example.tool.zip")
-        try FileManager.default.removeItem(at: zip)
-        let p = Process()
-        p.executableURL = URL(fileURLWithPath: "/usr/bin/ditto")
-        p.arguments = ["-c", "-k", "--keepParent", world.root.appendingPathComponent("evil/Applications/Tool.app").path, zip.path]
-        try p.run(); p.waitUntilExit()
-        let after = try air.engine.sync()
-        XCTAssertFalse(world.hasApp("Tool", on: "air"))
-        XCTAssertEqual(after.copies.first?.stage, .failed)
+        let air = try world.mac("air", dock: ["a"])
+        air.runner.web["https://example.com/appcast.xml"] = Data("""
+        <rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle"><channel>
+        <item><title>2.0</title><enclosure url="https://example.com/Tool-2.0.zip" sparkle:version="2"/></item>
+        <item><title>1.0</title><enclosure url="https://example.com/Tool-1.0.zip" sparkle:version="1"/></item>
+        </channel></rss>
+        """.utf8)
+        air.runner.web["https://example.com/Tool-2.0.zip"] = Data("PK zip".utf8)
+        let tool = try XCTUnwrap(try air.engine.sync().missingApps.first { $0.app.source == .direct })
+        let report = try air.engine.apply(ApplyRequest(applyDock: false, apps: [tool.app]))
+        XCTAssertEqual(report.results.first?.outcome, .downloaded)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: world.root.appendingPathComponent("air/Downloads/Tool.zip").path))
+    }
+
+    func testAppWithNoKnownSourceIsShownButNotTicked() throws {
+        let world = try TestWorld()
+        let studio = try world.mac("studio", dock: ["a"])
+        try world.installDirectApp("Mystery", bundleID: "com.example.mystery", on: "studio")
+        try studio.engine.sync()
+        let air = try world.mac("air", dock: ["a"])
+        let overview = try air.engine.sync()
+        let app = try XCTUnwrap(overview.missingApps.first { $0.app.source == .direct })
+        XCTAssertFalse(app.canInstall)
+        XCTAssertFalse(overview.selectedApps.contains(app.app.token))
+    }
+
+    func testOldICloudCopiesAreDeleted() throws {
+        let world = try TestWorld()
+        let old = world.sync.appendingPathComponent("apps/packages")
+        try FileManager.default.createDirectory(at: old, withIntermediateDirectories: true)
+        try Data("big".utf8).write(to: old.appendingPathComponent("com.example.zip"))
+        let studio = try world.mac("studio", dock: ["a"])
+        try studio.engine.sync()
+        XCTAssertFalse(FileManager.default.fileExists(atPath: world.sync.appendingPathComponent("apps").path))
     }
 
     func testRemovingInReviewRemovesFromEveryMac() throws {

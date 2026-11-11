@@ -124,7 +124,7 @@ public struct Inventory: Codable, Equatable {
     /// Display names, one-line descriptions and shared icon IDs, keyed by `AppRef.token`.
     /// Optional and additive, so older snapshots still read and older Macs ignore it.
     public var details: [String: AppDetail]?
-    /// Apps from neither Homebrew nor the App Store. Other Macs get them as copies through iCloud.
+    /// Apps from neither Homebrew nor the App Store. Other Macs download them from where they are published.
     public var directApps: [DirectApp]?
     public init(brewAvailable: Bool = false, casks: [String] = [], formulae: [String] = [], appStore: [AppStoreApp] = [],
                 details: [String: AppDetail]? = nil, directApps: [DirectApp]? = nil) {

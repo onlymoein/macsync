@@ -205,6 +205,7 @@ public enum Planner {
     public static func missingApps(local: Inventory, others: [MachineSnapshot]) -> [MissingApp] {
         var found: [AppRef: Set<String>] = [:]
         var details: [String: AppDetail] = [:]
+        var downloads: [String: DirectApp] = [:]
         let casks = Set(local.casks)
         let formulae = Set(local.formulae)
         let store = Set(local.appStore.map(\.id))
@@ -223,12 +224,17 @@ public enum Planner {
             }
             for app in inventory.directApps ?? [] where !direct.contains(app.bundleID) {
                 found[AppRef(source: .direct, name: app.bundleID), default: []].insert(machine.machineName)
+                let known = downloads[app.bundleID]
+                if known == nil || (known?.canDownload == false && app.canDownload) { downloads[app.bundleID] = app.sanitized }
                 if details[AppRef(source: .direct, name: app.bundleID).token] == nil {
                     details[AppRef(source: .direct, name: app.bundleID).token] = AppDetail(displayName: app.name, bundleID: app.bundleID)
                 }
             }
         }
-        return found.map { MissingApp(app: $0.key, fromMachines: $0.value.sorted(), detail: details[$0.key.token]) }
+        return found.map { ref, machines in
+            MissingApp(app: ref, fromMachines: machines.sorted(), detail: details[ref.token],
+                       download: ref.source == .direct ? downloads[ref.name] : nil)
+        }
             .filter { $0.app.isSafe }
             .sorted { $0.app < $1.app }
     }
@@ -238,13 +244,19 @@ public struct MissingApp: Equatable, Identifiable, Codable {
     public var app: AppRef
     public var fromMachines: [String]
     public var detail: AppDetail?
+    /// For a downloaded app: where it is published.
+    public var download: DirectApp?
     public var id: String { app.token }
 
-    public init(app: AppRef, fromMachines: [String], detail: AppDetail? = nil) {
+    public init(app: AppRef, fromMachines: [String], detail: AppDetail? = nil, download: DirectApp? = nil) {
         self.app = app
         self.fromMachines = fromMachines
         self.detail = detail
+        self.download = download
     }
+
+    /// False for a downloaded app whose source isn't known, which MacSync can't fetch.
+    public var canInstall: Bool { app.source != .direct || download?.canDownload == true }
 
     /// The name people recognize: "Android Studio" rather than the cask token.
     public var displayName: String { detail?.displayName ?? app.name }

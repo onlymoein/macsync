@@ -55,7 +55,6 @@ struct ReviewView: View {
                         Label(message, systemImage: "arrow.uturn.backward.circle.fill")
                             .foregroundStyle(.green).padding(14).frame(maxWidth: .infinity, alignment: .leading).glassPanel()
                     }
-                    if let copies = model.overview?.copies, !copies.isEmpty { CopiesPanel(copies: copies) }
                     if let plan = model.overview?.dockPlan { DockPanel(plan: plan, model: model) }
                     if let plan = model.overview?.settingsPlan { SettingsPanel(plan: plan, model: model) }
                     AppsPanel(model: model)
@@ -329,8 +328,9 @@ private struct AppsPanel: View {
     private func selected(_ list: [MissingApp]) -> Int { list.filter { model.selectedApps.contains($0.app.token) }.count }
 
     private func selectAll(_ list: [MissingApp]) -> some View {
-        let allOn = selected(list) == list.count
-        return Button(allOn ? "Untick all" : "Tick all") { model.setSelected(list.map(\.app.token), !allOn) }
+        let installable = list.filter(\.canInstall)
+        let allOn = selected(installable) == installable.count
+        return Button(allOn ? "Untick all" : "Tick all") { model.setSelected(installable.map(\.app.token), !allOn) }
             .glassButton()
             .controlSize(.small)
     }
@@ -355,15 +355,17 @@ private struct AppRow: View {
             }
             Spacer(minLength: 8)
             Text(sourceLabel).font(.caption).foregroundStyle(.secondary)
-                .help(missing.app.source == .direct ? "Copied from \(missing.fromMachines.joined(separator: ", ")) through iCloud Drive" : "")
+                .help(help)
                 .padding(.horizontal, 8).padding(.vertical, 3)
                 .background(.quaternary.opacity(0.6), in: Capsule())
             Toggle("", isOn: isOn).toggleStyle(.switch).labelsHidden().controlSize(.small)
+                .disabled(!missing.canInstall)
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 6)
         .contentShape(Rectangle())
-        .onTapGesture { isOn.wrappedValue.toggle() }
+        .onTapGesture { if missing.canInstall { isOn.wrappedValue.toggle() } }
+        .opacity(missing.canInstall ? 1 : 0.6)
         .accessibilityElement(children: .combine)
     }
 
@@ -371,8 +373,15 @@ private struct AppRow: View {
         switch missing.app.source {
         case .cask, .formula: return "Homebrew"
         case .appStore: return "App Store"
-        case .direct: return "iCloud copy"
+        case .direct: return missing.canInstall ? "Download" : "No download link"
         }
+    }
+
+    private var help: String {
+        guard missing.app.source == .direct else { return "" }
+        return missing.canInstall
+            ? "Downloaded from the developer into Downloads, then opened so you can install it"
+            : "MacSync doesn't know where this app is published. Get it from the developer's website."
     }
 }
 
@@ -398,44 +407,7 @@ private struct AppIcon: View {
     }
 }
 
-// MARK: - Copies and results
-
-private struct CopiesPanel: View {
-    let copies: [CopyStatus]
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            PanelHeader(symbol: "icloud.and.arrow.down", title: "Copying through iCloud", subtitle: nil) { EmptyView() }
-            ForEach(copies) { copy in
-                HStack(spacing: 10) {
-                    icon(copy.stage)
-                    Text(copy.name).font(.body.weight(.medium))
-                    Spacer()
-                    Text(text(copy)).font(.callout).foregroundStyle(.secondary).lineLimit(1)
-                }
-            }
-        }
-        .padding(18)
-        .glassPanel()
-    }
-
-    @ViewBuilder private func icon(_ stage: CopyStatus.Stage) -> some View {
-        switch stage {
-        case .waitingForUpload, .downloading: ProgressView().controlSize(.small)
-        case .installed: Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
-        case .failed: Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
-        }
-    }
-
-    private func text(_ copy: CopyStatus) -> String {
-        switch copy.stage {
-        case .waitingForUpload: return "Waiting for your other Mac to send it"
-        case .downloading: return "Downloading from \(copy.fromMachine ?? "your other Mac")"
-        case .installed: return "Installed"
-        case .failed: return copy.message ?? "Didn't install"
-        }
-    }
-}
+// MARK: - Results
 
 private struct ResultPanel: View {
     let report: ApplyReport
@@ -446,7 +418,7 @@ private struct ResultPanel: View {
                 .font(.headline)
                 .foregroundStyle(report.hasFailures ? .orange : .green)
             line("Installed", .installed)
-            line("Copying through iCloud. They install by themselves when the copy arrives", .copying)
+            line("Downloaded from the developer and opened. Finish installing them from Downloads", .downloaded)
             line("Opened in the App Store. Click Get to finish", .openedInAppStore)
             ForEach(report.results.filter { $0.outcome == .failed }) { result in
                 VStack(alignment: .leading, spacing: 1) {

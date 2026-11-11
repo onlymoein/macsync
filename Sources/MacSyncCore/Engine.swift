@@ -39,24 +39,12 @@ public struct SyncOverview: Codable, Equatable {
     public var settingsPlan: SettingsPlan?
     public var settingsSkipped: [String]
     public var appPrefDomains: [String]
-    /// Apps being copied from another Mac through iCloud.
-    public var copies: [CopyStatus] = []
 
     public var hasPendingChanges: Bool { dockPlan != nil || settingsPlan != nil || !missingApps.isEmpty }
 }
 
-public struct CopyStatus: Codable, Equatable, Identifiable {
-    public enum Stage: String, Codable { case waitingForUpload, downloading, installed, failed }
-    public var bundleID: String
-    public var name: String
-    public var stage: Stage
-    public var fromMachine: String?
-    public var message: String?
-    public var id: String { bundleID }
-}
-
 public struct InstallResult: Codable, Equatable, Identifiable {
-    public enum Outcome: String, Codable { case installed, openedInAppStore, copying, failed }
+    public enum Outcome: String, Codable { case installed, openedInAppStore, downloaded, failed }
     public var app: AppRef
     public var outcome: Outcome
     public var message: String?
@@ -120,9 +108,6 @@ public final class Engine {
         /// Non-spacer Dock keys at the last capture, and this Mac's view of every item's history.
         var dockKeys: [String]?
         var dockEvents: [String: DockEvent]?
-        /// Direct-download apps this Mac asked another Mac to copy, by bundle ID, with their names.
-        var pendingCopies: [String: String]?
-        var finishedCopies: [CopyStatus]?
         var publishedHash: String?
         var publishedAt: Date?
         var settingsHash: String?
@@ -144,6 +129,7 @@ public final class Engine {
     let prefs: PreferencesStoring
     let proUnlocked: Bool
     private var missingNames: [String: String] = [:]
+    private var missingDownloads: [String: DirectApp] = [:]
 
     public init(env: MacSyncEnvironment, dock: DockStoring, locator: AppLocating, runner: CommandRunning,
                 prefs: PreferencesStoring = InMemoryPreferences(), proUnlocked: Bool = ProLicense.isUnlocked,
@@ -185,36 +171,18 @@ public final class Engine {
         } catch {
             issues.append(error.localizedDescription)
         }
-        if env.iCloudAvailable { exchangeCopies(&state) }
+        if env.iCloudAvailable { removeOldCopies() }
         let result = overview(snapshot: snapshot, state: state, issues: issues)
         state.lastMissing = result.missingApps.map(\.app.token)
         try saveState(state)
         return result
     }
 
-    /// Uploads apps other Macs asked for, and installs copies this Mac was waiting for.
-    private func exchangeCopies(_ state: inout LocalState) {
-        let share = AppShare(env: env, runner: runner, now: now)
-        share.serve(local: state.inventory?.directApps ?? [])
-        var pending = state.pendingCopies ?? [:]
-        var finished = (state.finishedCopies ?? []).suffix(10).map { $0 }
-        var installedAny = false
-        for (id, name) in pending {
-            guard case .ready(let package) = share.availability(id) else { continue }
-            switch share.install(package) {
-            case .success:
-                finished.append(CopyStatus(bundleID: id, name: name, stage: .installed, fromMachine: package.fromMachine))
-                installedAny = true
-            case .failure(let error):
-                finished.append(CopyStatus(bundleID: id, name: name, stage: .failed, fromMachine: package.fromMachine,
-                                           message: error.localizedDescription))
-                share.withdraw(id)
-            }
-            pending[id] = nil
-        }
-        state.pendingCopies = pending.isEmpty ? nil : pending
-        state.finishedCopies = finished.isEmpty ? nil : finished
-        if installedAny { state.inventory = InventoryReader(runner: runner, env: env).read(); state.inventoryAt = now() }
+    /// MacSync 0.3.0 copied apps through iCloud Drive. Apps now download from where they are
+    /// published, so any copies it left behind are deleted to free the space.
+    private func removeOldCopies() {
+        let old = env.syncDirectory.appendingPathComponent("apps", isDirectory: true)
+        if FileManager.default.fileExists(atPath: old.path) { try? FileManager.default.removeItem(at: old) }
     }
 
     /// Records the choice as what was unticked, so apps that turn up later start ticked.
@@ -362,22 +330,19 @@ public final class Engine {
             dockPlan: plan?.hasChanges == true ? plan : nil,
             dockMissing: plan?.missing ?? [],
             missingApps: missing,
-            selectedApps: missing.map(\.app.token).filter { !deselected.contains($0) },
+            selectedApps: missing.filter(\.canInstall).map(\.app.token).filter { !deselected.contains($0) },
             issues: issues + loaded.issues,
             lastRestorePoint: restorePoints().first { $0.undoneAt == nil },
             proEnabled: proUnlocked,
             settingsPlan: settingsPlan?.hasChanges == true ? settingsPlan : nil,
             settingsSkipped: settingsPlan?.skipped ?? [],
-            appPrefDomains: state.appPrefDomains ?? [],
-            copies: copyStatuses(state))
+            appPrefDomains: state.appPrefDomains ?? [])
     }
 
     /// Apps on other Macs that this one lacks, leaving out any this Mac already has under another
     /// name or source (AnyDesk from Homebrew on one Mac, downloaded on another).
     private func missingApps(_ state: LocalState, others: [MachineSnapshot]) -> [MissingApp] {
-        let pending = Set((state.pendingCopies ?? [:]).keys)
-        return Planner.missingApps(local: state.inventory ?? Inventory(), others: others).filter { missing in
-            if missing.app.source == .direct, pending.contains(missing.app.name) { return false }
+        Planner.missingApps(local: state.inventory ?? Inventory(), others: others).filter { missing in
             // A simulated Mac (its Dock lives in a file) has only its own Applications folder, not this Mac's apps.
             guard env.dockFile == nil,
                   let bundle = missing.detail?.bundleID ?? (missing.app.source == .direct ? missing.app.name : nil) else { return true }
@@ -388,20 +353,6 @@ public final class Engine {
     static func sourceLabel(_ merged: Planner.MergedDock, everyone: [MachineSnapshot]) -> String {
         let names = everyone.filter { $0.dock != nil }.map(\.machineName)
         return names.count <= 1 ? merged.orderSourceName : "your Macs"
-    }
-
-    private func copyStatuses(_ state: LocalState) -> [CopyStatus] {
-        let share = AppShare(env: env, runner: runner, now: now)
-        var list: [CopyStatus] = []
-        for (id, name) in (state.pendingCopies ?? [:]).sorted(by: { $0.value < $1.value }) {
-            switch share.availability(id) {
-            case .ready(let p), .downloading(let p):
-                list.append(CopyStatus(bundleID: id, name: name, stage: .downloading, fromMachine: p.fromMachine))
-            case .notYet:
-                list.append(CopyStatus(bundleID: id, name: name, stage: .waitingForUpload))
-            }
-        }
-        return list + (state.finishedCopies ?? [])
     }
 
     // MARK: Apply
@@ -427,6 +378,8 @@ public final class Engine {
 
         var results: [InstallResult] = []
         missingNames = Dictionary(before.missingApps.map { ($0.app.token, $0.displayName) }, uniquingKeysWith: { a, _ in a })
+        missingDownloads = Dictionary(before.missingApps.compactMap { m in m.download.map { (m.app.token, $0) } },
+                                      uniquingKeysWith: { a, _ in a })
         for app in apps {
             progress("Installing \(missingNames[app.token] ?? app.name)…")
             var result = install(app)
@@ -510,22 +463,18 @@ public final class Engine {
             return InstallResult(app: app, outcome: result.status == 0 ? .openedInAppStore : .failed,
                                  message: result.status == 0 ? "Click Get in the App Store to finish." : result.stderr)
         case .direct:
-            let share = AppShare(env: env, runner: runner, now: now)
             let name = missingNames[app.token] ?? app.name
-            if case .ready(let package) = share.availability(app.name) {
-                switch share.install(package) {
-                case .success: return InstallResult(app: app, outcome: .installed, message: "Copied from \(package.fromMachine).")
-                case .failure(let error): return InstallResult(app: app, outcome: .failed, message: error.localizedDescription)
-                }
+            guard let source = missingDownloads[app.token] else {
+                return InstallResult(app: app, outcome: .failed,
+                                     message: "MacSync doesn't know where \(name) is published. Get it from the developer's website.")
             }
-            do { try share.request(app.name) } catch {
-                return InstallResult(app: app, outcome: .failed, message: "MacSync couldn't ask your other Macs for \(name).")
+            switch AppDownloader(env: env, runner: runner, now: now).fetch(source) {
+            case .success(let path):
+                return InstallResult(app: app, outcome: .downloaded,
+                                     message: "Saved to Downloads as \((path as NSString).lastPathComponent) and opened. Finish installing it there.")
+            case .failure(let error):
+                return InstallResult(app: app, outcome: .failed, message: error.localizedDescription)
             }
-            var state = loadState()
-            state.pendingCopies = (state.pendingCopies ?? [:]).merging([app.name: name]) { $1 }
-            try? saveState(state)
-            return InstallResult(app: app, outcome: .copying,
-                                 message: "Copying from your other Mac through iCloud. It installs by itself when the copy arrives.")
         case .cask, .formula:
             guard let brew = env.brewPath else {
                 return InstallResult(app: app, outcome: .failed, message: "Homebrew isn't installed. Get it at brew.sh.")

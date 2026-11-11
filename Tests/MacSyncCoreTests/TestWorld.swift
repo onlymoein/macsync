@@ -14,18 +14,19 @@ final class FakeRunner: CommandRunning {
     var failing: Set<String> = []
     var casks: [String] = []
     var formulae: [String] = []
+    /// What the internet serves, by address. Anything else fails like a missing page.
+    var web: [String: Data] = [:]
 
     func run(_ executable: String, _ arguments: [String], input: Data?, environment: [String: String]) -> CommandResult {
         calls.append([executable] + arguments)
-        if executable == "/usr/bin/ditto" {
-            // Real zipping, so app copies through the shared folder can be tested end to end.
-            let process = Process()
-            process.executableURL = URL(fileURLWithPath: executable)
-            process.arguments = arguments
-            try? process.run()
-            process.waitUntilExit()
-            return CommandResult(status: process.terminationStatus)
+        if executable == "/usr/bin/curl" {
+            guard let url = arguments.last, let body = web[url] else { return CommandResult(status: 22, stderr: "404") }
+            if let i = arguments.firstIndex(of: "-o") {
+                return (try? body.write(to: URL(fileURLWithPath: arguments[i + 1]))) != nil ? CommandResult(status: 0) : CommandResult(status: 23)
+            }
+            return CommandResult(status: 0, stdout: body)
         }
+        if executable == "/usr/bin/xattr" || executable == "/usr/bin/open" { return CommandResult(status: 0) }
         if arguments.first == "list" { return CommandResult(status: 0, stdout: Data(casks.joined(separator: "\n").utf8)) }
         if arguments.first == "leaves" { return CommandResult(status: 0, stdout: Data(formulae.joined(separator: "\n").utf8)) }
         if let name = arguments.last, failing.contains(name) {
@@ -111,7 +112,7 @@ final class TestWorld {
         let env = MacSyncEnvironment(
             syncDirectory: sync, dataDirectory: folder.appendingPathComponent("data"), machineID: id, machineName: id.capitalized,
             dockFile: dockURL, brewPath: brew, applicationsDirectory: folder.appendingPathComponent("Applications"),
-            homeDirectory: "/Users/test")
+            homeDirectory: folder.path)
         let runner = FakeRunner()
         let prefs = InMemoryPreferences()
         let engine = Engine(env: env, dock: store, locator: TestLocator(apps: locate ?? Set(dock)), runner: runner,
@@ -140,10 +141,11 @@ final class TestWorld {
     }
 
     /// A downloaded app (neither Homebrew nor the App Store) in a Mac's Applications folder.
-    func installDirectApp(_ name: String, bundleID: String, on mac: String) throws {
+    func installDirectApp(_ name: String, bundleID: String, on mac: String, feed: String? = nil) throws {
         let app = root.appendingPathComponent(mac).appendingPathComponent("Applications/\(name).app/Contents")
         try FileManager.default.createDirectory(at: app.appendingPathComponent("MacOS"), withIntermediateDirectories: true)
-        let info: [String: Any] = ["CFBundleIdentifier": bundleID, "CFBundleName": name, "CFBundleShortVersionString": "1.0"]
+        var info: [String: Any] = ["CFBundleIdentifier": bundleID, "CFBundleName": name, "CFBundleShortVersionString": "1.0"]
+        if let feed { info["SUFeedURL"] = feed }
         try PropertyListSerialization.data(fromPropertyList: info, format: .xml, options: 0).write(to: app.appendingPathComponent("Info.plist"))
         try Data("binary".utf8).write(to: app.appendingPathComponent("MacOS/\(name)"))
     }
