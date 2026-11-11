@@ -184,6 +184,15 @@ public final class Engine {
     /// action can run others (Apply ends with a sync).
     private let stateLock = NSRecursiveLock()
     private var missingDownloads: [String: DirectApp] = [:]
+    /// Where apps go for the install in progress, when the person chose a folder.
+    private var installFolder: URL?
+
+    /// A folder apps can be installed into: one that exists and can be written to.
+    static func isUsableFolder(_ url: URL) -> Bool {
+        var isDir: ObjCBool = false
+        return url.isFileURL && FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir) && isDir.boolValue
+            && FileManager.default.isWritableFile(atPath: url.path)
+    }
 
     public init(env: MacSyncEnvironment, dock: DockStoring, locator: AppLocating, runner: CommandRunning,
                 prefs: PreferencesStoring = InMemoryPreferences(), proUnlocked: Bool = ProLicense.isUnlocked,
@@ -938,11 +947,13 @@ public final class Engine {
 
     /// Gets one app straight away, outside Apply: installs it with Homebrew, opens its App Store
     /// page, or downloads its installer from the developer. Nothing else on the Mac changes.
-    public func getApp(_ missing: MissingApp) -> InstallResult {
+    public func getApp(_ missing: MissingApp, into folder: URL? = nil) -> InstallResult {
         stateLock.lock(); defer { stateLock.unlock() }
         guard missing.app.isSafe else { return InstallResult(app: missing.app, outcome: .failed, message: "That app's name isn't valid.") }
         missingNames[missing.app.token] = missing.displayName
         if let download = missing.download { missingDownloads[missing.app.token] = download.sanitized }
+        installFolder = folder.flatMap { Self.isUsableFolder($0) ? $0 : nil }
+        defer { installFolder = nil }
         var result = install(missing.app)
         result.displayName = missing.displayName
         // Gone from Homebrew: nothing to install, so stop offering it on this Mac.
@@ -969,6 +980,10 @@ public final class Engine {
                                  message: result.status == 0 ? "Click Get in the App Store to finish." : result.stderr)
         case .direct:
             let name = missingNames[app.token] ?? app.name
+            // Published as a Homebrew cask: install it fully instead of opening its installer.
+            if let token = missingDownloads[app.token]?.cask, DirectApp.isSafeCask(token), env.brewPath != nil {
+                return install(AppRef(source: .cask, name: token))
+            }
             guard let source = missingDownloads[app.token] else {
                 return InstallResult(app: app, outcome: .failed,
                                      message: "MacSync doesn't know where \(name) is published. Get it from the developer's website.")
@@ -985,7 +1000,8 @@ public final class Engine {
             guard let brew = env.brewPath else {
                 return InstallResult(app: app, outcome: .failed, message: "Homebrew isn't installed. Get it at brew.sh.")
             }
-            let args = app.source == .cask ? ["install", "--cask", app.name] : ["install", app.name]
+            var args = app.source == .cask ? ["install", "--cask", app.name] : ["install", app.name]
+            if app.source == .cask, let folder = installFolder { args.insert("--appdir=\(folder.path)", at: 2) }
             let result = runner.run(brew, args, input: nil, environment: InventoryReader.brewEnvironment(brew))
             guard result.status != 0 else { return InstallResult(app: app, outcome: .installed, message: nil) }
             // Installed another way (a download, npm, another formula): it's here, so it's done.

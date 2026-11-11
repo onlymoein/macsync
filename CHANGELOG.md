@@ -1,6 +1,8 @@
 # Changelog
 
 ## 0.6.2
+- Get All on a group asks which folder to install into, and remembers it (for example Applications/ArtCraft).
+- A downloaded app that Homebrew also publishes installs fully through Homebrew instead of opening its installer.
 - Apps from one developer show as one row: the ArtCraft suite is a single "ArtCraft · 11 apps" row with one Get All and one switch, and opens to show each app.
 
 ## 0.6.1

@@ -366,7 +366,7 @@ final class EngineTests: XCTestCase {
         try world.installDirectApp("PhotoCraft", bundleID: "ai.storyteller.photocraft", on: "studio")
         try studio.engine.sync()
 
-        let air = try world.mac("air", dock: ["a"])
+        let air = try world.mac("air", dock: ["a"], brew: nil)  // No Homebrew: the installer is downloaded.
         air.runner.web[CaskCatalog.address] = catalog
         air.runner.web["https://example.com/PhotoCraft.dmg"] = installer
         let offered = try air.engine.sync()
@@ -393,7 +393,7 @@ final class EngineTests: XCTestCase {
         studio.runner.web[CaskCatalog.address] = catalog
         try world.installDirectApp("PhotoCraft", bundleID: "ai.storyteller.photocraft", on: "studio")
         try studio.engine.sync()
-        let air = try world.mac("air", dock: ["a"])
+        let air = try world.mac("air", dock: ["a"], brew: nil)  // No Homebrew: the installer is downloaded.
         air.runner.web[CaskCatalog.address] = catalog
         air.runner.web["https://example.com/PhotoCraft.dmg"] = Data("tampered".utf8)
         let photo = try XCTUnwrap(try air.engine.sync().missingApps.first { $0.app.source == .direct })
@@ -636,6 +636,24 @@ final class EngineTests: XCTestCase {
         let tldr = air.engine.getApp(try XCTUnwrap(offered.first { $0.app.name == "tldr" }))
         XCTAssertEqual(tldr.outcome, .failed)
         XCTAssertTrue(try air.engine.sync().skippedApps.contains("formula:tldr"))
+    }
+
+    func testGroupInstallsIntoTheChosenFolderThroughHomebrew() throws {
+        let catalog = Data("""
+        [{"token":"photocraft","url":"https://example.com/p.dmg","sha256":"no_check","artifacts":[{"app":["PhotoCraft.app"]}]}]
+        """.utf8)
+        let world = try TestWorld()
+        let studio = try world.mac("studio", dock: ["a"])
+        studio.runner.web[CaskCatalog.address] = catalog
+        try world.installDirectApp("PhotoCraft", bundleID: "ai.storyteller.photocraft", on: "studio")
+        try studio.engine.sync()
+        let air = try world.mac("air", dock: ["a"])
+        let photo = try XCTUnwrap(try air.engine.sync().missingApps.first { $0.app.source == .direct })
+        let folder = world.root.appendingPathComponent("air/Applications/ArtCraft")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let result = air.engine.getApp(photo, into: folder)
+        XCTAssertEqual(result.outcome, .installed)
+        XCTAssertTrue(air.runner.calls.contains(["/fake/brew", "install", "--cask", "--appdir=\(folder.path)", "photocraft"]))
     }
 
     func testOldICloudCopiesAreDeleted() throws {

@@ -398,6 +398,32 @@ final class AppModel: ObservableObject {
         }
     }
 
+    /// Where each app goes, when the person chose a folder for it (by app token).
+    private var installFolders: [String: URL] = [:]
+
+    /// Asks where a group of apps should go, remembering the answer for that group.
+    func chooseFolder(for familyID: String, name: String) -> URL? {
+        let key = "installFolder." + familyID
+        let panel = NSOpenPanel()
+        panel.title = "Where should the \(name) apps go?"
+        panel.message = "Choose a folder for the \(name) apps. You can make a new one, like Applications/\(name)."
+        panel.prompt = "Install Here"
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.canCreateDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.directoryURL = UserDefaults.standard.url(forKey: key) ?? URL(fileURLWithPath: "/Applications")
+        NSApp.activate(ignoringOtherApps: true)
+        guard panel.runModal() == .OK, let url = panel.url else { return nil }
+        UserDefaults.standard.set(url, forKey: key)
+        return url
+    }
+
+    func get(_ apps: [MissingApp], into folder: URL) {
+        for app in apps { installFolders[app.app.token] = folder }
+        get(apps)
+    }
+
     func get(_ apps: [MissingApp]) {
         let fresh = apps.filter { $0.canInstall && !getting.contains($0.app.token) && gotten[$0.app.token]?.outcome != .installed
                                   && gotten[$0.app.token]?.outcome != .downloaded }
@@ -413,7 +439,8 @@ final class AppModel: ObservableObject {
         let engine = engine
         progress = "Getting \(next.displayName)…"
         Task {
-            let result = await Task.detached { engine.getApp(next) }.value
+            let folder = installFolders.removeValue(forKey: next.app.token)
+            let result = await Task.detached { engine.getApp(next, into: folder) }.value
             getQueue.removeFirst()
             getting.remove(next.app.token)
             gotten[next.app.token] = result

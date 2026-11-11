@@ -623,7 +623,11 @@ private struct FamilyRow: View {
                 } else if left.isEmpty {
                     Text(wanted.isEmpty ? "Not needed" : "Done").font(.callout).foregroundStyle(.secondary)
                 } else {
-                    Button("Get All \(left.count)") { model.get(left) }.primaryGlassButton().controlSize(.small)
+                    Button("Get All \(left.count)…") {
+                        if let folder = model.chooseFolder(for: family.id, name: family.name) { model.get(left, into: folder) }
+                    }
+                    .primaryGlassButton().controlSize(.small)
+                    .help("Choose a folder, then install all \(left.count) apps there")
                 }
                 Toggle("", isOn: Binding(get: { !wanted.isEmpty }, set: { on in model.setSkipped(tokens: family.apps.map(\.app.token), !on) }))
                     .toggleStyle(.switch).labelsHidden().controlSize(.small)

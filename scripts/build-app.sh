@@ -59,4 +59,7 @@ if [ -n "${SIGN_KEYCHAIN:-}" ]; then KC=(--keychain "$SIGN_KEYCHAIN"); fi
 codesign --force --options runtime $TS ${KC[@]+"${KC[@]}"} --sign "$IDENTITY" "$APP/Contents/Helpers/macsync"
 codesign --force --options runtime $TS ${KC[@]+"${KC[@]}"} --sign "$IDENTITY" "$APP"
 codesign --verify --strict "$APP"
+# Keep macOS from opening this build copy (for macsync:// links or after an update) instead of
+# the installed one in Applications.
+/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -u "$APP" 2>/dev/null || true
 echo "Built $APP ($VERSION), signed with: $IDENTITY"
