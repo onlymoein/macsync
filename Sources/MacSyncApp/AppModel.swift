@@ -459,6 +459,10 @@ final class AppModel: ObservableObject {
     @Published var craftBusy: Set<String> = []
     @Published var craftErrors: [String: String] = [:]
     private var craftRegistered = false
+    /// Craft apps waiting for the batch in progress to finish.
+    private var craftQueue: [CraftApp] = []
+    /// A refresh asked for while one was running; it runs again after.
+    private var craftReloadWanted = false
 
     /// A Craft app's icon: from the app when it's installed, otherwise the one a Mac saved to iCloud.
     func craftIcon(_ app: CraftApp) -> NSImage? {
@@ -486,13 +490,14 @@ final class AppModel: ObservableObject {
     private var craftIconsAsked: Set<String> = []
 
     func loadCraft(refresh: Bool = false) {
-        guard !craftLoading else { return }
+        guard !craftLoading else { craftReloadWanted = true; return }
         craftLoading = true
         let engine = engine
         Task {
             let apps = await Task.detached { engine.craftApps(refresh: refresh) }.value
             craftLoading = false
             if !apps.isEmpty { craftApps = apps }
+            if craftReloadWanted { craftReloadWanted = false; loadCraft() }
             // Once per launch, and never mid-install: list what's installed but missing from the launcher.
             if !craftRegistered, craftBusy.isEmpty, apps.contains(where: { $0.isInstalled }) {
                 craftRegistered = true
@@ -506,6 +511,12 @@ final class AppModel: ObservableObject {
         let fresh = apps.filter { !craftBusy.contains($0.id) }
         guard !fresh.isEmpty else { return }
         for app in fresh { craftBusy.insert(app.id); craftErrors[app.id] = nil }
+        // One ArtCraft batch at a time: an Install pressed during one goes in line after it.
+        if work["craft"] != nil {
+            craftQueue += fresh
+            work["craft"]?.names += fresh.map(\.name)
+            return
+        }
         let engine = engine
         // The launcher goes first, and comes along when it isn't on this Mac yet.
         var ordered = fresh.filter(\.availableOnMac).sorted { ($0.id == "artcraft-launcher" ? 0 : 1) < ($1.id == "artcraft-launcher" ? 0 : 1) }
@@ -537,6 +548,12 @@ final class AppModel: ObservableObject {
             craftLoading = false
             loadCraft()
             syncNow()
+            if !craftQueue.isEmpty {
+                let next = craftQueue
+                craftQueue = []
+                for app in next { craftBusy.remove(app.id) }
+                installCraft(next)
+            }
         }
     }
 

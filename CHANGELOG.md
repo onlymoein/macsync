@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.8.8
+- An ArtCraft Install pressed while a batch is running waits its turn ("After CADCraft") and runs right after, instead of starting a second batch alongside that overwrote the first one's progress and could leave the app showing Install with no error.
+- A refresh of the ArtCraft list asked for while one is already running now runs again after it, so a finished install always shows as Installed.
+
 ## 0.8.7
 - A Craft app's signature check waits at most 15 seconds. After 8 it says macOS is busy checking new apps. When the download matched ArtCraft's published checksum, the app installs right after, without asking macOS a second time; macOS checks the signature itself when the app first opens.
 
