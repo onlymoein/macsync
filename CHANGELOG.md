@@ -5,6 +5,7 @@
 - macOS 26 and later open disk images with diskutil, which Apple now recommends over hdiutil.
 - A tool that ignores being stopped can no longer freeze MacSync: it's stopped, then forced, then left behind.
 - Each ArtCraft app goes into ArtCraft Launcher's list the moment it's installed, not at the end of the batch, with the launcher closed while the apps go in so it can't overwrite its list, and reopened hidden afterwards.
+- Craft apps already in the install folder but missing from ArtCraft Launcher's list (installed by an earlier MacSync, like AniCraft) are added to it once, after a signature check, so the launcher stops offering to install them again.
 - MacSync only quits and reopens ArtCraft Launcher for your real home folder, so its own tests no longer touch the launcher.
 
 ## 0.8.5

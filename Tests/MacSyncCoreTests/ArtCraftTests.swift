@@ -119,3 +119,25 @@ final class LiveCraftInstallTests: XCTestCase {
         XCTAssertLessThan(seconds, 120)
     }
 }
+
+final class UnlistedCraftTests: XCTestCase {
+    func testAnInstalledAppMissingFromTheLaunchersListIsAdded() throws {
+        let world = try TestWorld()
+        let root = world.root
+        let home = root.appendingPathComponent("home"), apps = root.appendingPathComponent("Applications"), data = root.appendingPathComponent("data")
+        let env = MacSyncEnvironment(syncDirectory: world.sync, dataDirectory: data, machineID: "a", machineName: "A", dockFile: nil,
+                                     brewPath: nil, applicationsDirectory: apps, homeDirectory: home.path)
+        try FileManager.default.createDirectory(at: data, withIntermediateDirectories: true)
+        var ani = CraftApp(id: "anicraft", name: "AniCraft", version: "0.2.0", dmgURL: "https://github.com/storytold/anicraft/a.dmg")
+        ani.bundleName = "AniCraft"
+        try JSONEncoder().encode([ani]).write(to: data.appendingPathComponent("artcraft-catalog.json"))
+        let bundle = apps.appendingPathComponent("Artcraft/AniCraft.app/Contents")
+        try FileManager.default.createDirectory(at: bundle, withIntermediateDirectories: true)
+        try PropertyListSerialization.data(fromPropertyList: ["CFBundleIdentifier": "ai.storyteller.anicraft", "CFBundleShortVersionString": "0.2.0"],
+                                           format: .xml, options: 0).write(to: bundle.appendingPathComponent("Info.plist"))
+        let craft = ArtCraft(env: env, runner: FakeRunner(), now: Date.init)
+        XCTAssertEqual(craft.registerUnlisted(), ["AniCraft"])
+        XCTAssertEqual(craft.records()["anicraft"]?["path"] as? String, apps.appendingPathComponent("Artcraft/AniCraft.app").path)
+        XCTAssertEqual(craft.registerUnlisted(), [], "listed once")
+    }
+}

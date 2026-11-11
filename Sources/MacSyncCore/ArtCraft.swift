@@ -233,6 +233,28 @@ public struct ArtCraft {
         }
     }
 
+    /// Craft apps that are on this Mac but missing from ArtCraft Launcher's list: installed by an
+    /// earlier MacSync, or by hand. Each is checked against its catalog signing team first.
+    func unlisted() -> [(CraftApp, String)] {
+        let records = records()
+        return status().compactMap { app in
+            guard let path = app.installedPath, records[app.id] == nil, app.id != "artcraft-launcher" else { return nil }
+            if let team = app.team, case .team(let found) = Self.signingTeam(of: URL(fileURLWithPath: path), within: 10), found != team {
+                return nil
+            }
+            return (app, path)
+        }
+    }
+
+    /// Adds them to the launcher's list, with the launcher closed for the write.
+    @discardableResult
+    func registerUnlisted() -> [String] {
+        let found = unlisted()
+        guard !found.isEmpty else { return [] }
+        editRecords { apps in for (app, path) in found { apps[app.id] = Self.record(app, path: path, now: now()) } }
+        return found.map(\.0.name)
+    }
+
     // MARK: Installing
 
     /// Installs or updates apps one by one, then records them in the launcher's list in one go.
@@ -528,6 +550,10 @@ extension Engine {
         }
         return craft.install(apps, progress: progress, finished: finished)
     }
+
+    /// Lists Craft apps that are installed but missing from ArtCraft Launcher's list. Returns their names.
+    @discardableResult
+    public func registerUnlistedCraft() -> [String] { ArtCraft(env: env, runner: runner, now: now).registerUnlisted() }
 
     /// Where ArtCraft apps go on this Mac: the folder picked in MacSync, else the launcher's.
     public func craftInstallFolder(chosen: URL? = nil) -> URL {

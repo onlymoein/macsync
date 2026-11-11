@@ -458,6 +458,7 @@ final class AppModel: ObservableObject {
     @Published var craftLoading = false
     @Published var craftBusy: Set<String> = []
     @Published var craftErrors: [String: String] = [:]
+    private var craftRegistered = false
 
     /// A Craft app's icon: from the app when it's installed, otherwise the one a Mac saved to iCloud.
     func craftIcon(_ app: CraftApp) -> NSImage? {
@@ -492,6 +493,11 @@ final class AppModel: ObservableObject {
             let apps = await Task.detached { engine.craftApps(refresh: refresh) }.value
             craftLoading = false
             if !apps.isEmpty { craftApps = apps }
+            // Once per launch, and never mid-install: list what's installed but missing from the launcher.
+            if !craftRegistered, craftBusy.isEmpty, apps.contains(where: { $0.isInstalled }) {
+                craftRegistered = true
+                _ = await Task.detached { engine.registerUnlistedCraft() }.value
+            }
         }
     }
 
