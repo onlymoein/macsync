@@ -63,6 +63,7 @@ struct ReviewView: View {
                     if let plan = model.overview?.settingsPlan { SettingsPanel(plan: plan, model: model) }
                     if model.proEnabled { AppSettingsPanel(model: model) }
                     AppsPanel(kind: .apps, model: model)
+                    AppsPanel(kind: .appStore, model: model)
                     AppsPanel(kind: .tools, model: model)
                     ThisMacPanel(kind: .apps, model: model)
                     ThisMacPanel(kind: .tools, model: model)
@@ -650,7 +651,7 @@ private struct AppSettingsPanel: View {
 }
 
 private struct AppsPanel: View {
-    enum Kind { case apps, tools }
+    enum Kind { case apps, appStore, tools }
     let kind: Kind
     @ObservedObject var model: AppModel
     @AppStorage private var open: Bool
@@ -659,12 +660,19 @@ private struct AppsPanel: View {
         self.kind = kind
         self.model = model
         // Apps start open; the long list of tools starts closed.
-        _open = AppStorage(wrappedValue: kind == .apps, kind == .apps ? "review.apps.open" : "review.tools.open")
+        _open = AppStorage(wrappedValue: kind != .tools,
+                           kind == .apps ? "review.apps.open" : kind == .appStore ? "review.appStore.open" : "review.tools.open")
     }
 
     private var list: [MissingApp] {
         (model.overview?.missingApps ?? [])
-            .filter { ($0.app.source == .formula) == (kind == .tools) }
+            .filter { app in
+                switch kind {
+                case .apps: return app.app.source == .cask || app.app.source == .direct
+                case .appStore: return app.app.source == .appStore
+                case .tools: return app.app.source == .formula
+                }
+            }
             .sorted { $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending }
     }
     private var skippedTokens: Set<String> { Set(model.overview?.skippedApps ?? []) }
@@ -673,12 +681,13 @@ private struct AppsPanel: View {
     var body: some View {
         if !list.isEmpty {
             VStack(alignment: .leading, spacing: 14) {
-                PanelHeader(symbol: kind == .apps ? "square.grid.2x2.fill" : "terminal.fill",
-                            title: kind == .apps ? "Apps on your other Macs" : "Command-line tools",
-                            subtitle: "\(wanted) of \(list.count) needed" + (kind == .apps ? " · switch off what this Mac doesn't need" : " · installed with Homebrew"),
+                PanelHeader(symbol: kind == .apps ? "square.grid.2x2.fill" : kind == .appStore ? "bag.fill" : "terminal.fill",
+                            title: kind == .apps ? "Apps on your other Macs" : kind == .appStore ? "App Store apps" : "Command-line tools",
+                            subtitle: "\(wanted) of \(list.count) needed" + (kind == .apps ? " · Homebrew installs them, others download from the developer"
+                                : kind == .appStore ? " · each opens its App Store page, click Get there" : " · installed with Homebrew"),
                             isExpanded: $open) {
                     HStack(spacing: 12) {
-                        getAll(list, label: kind == .apps ? "Get All" : "Install All")
+                        getAll(list, label: kind == .tools ? "Install All" : "Get All")
                         switchAll(list)
                     }
                 }
