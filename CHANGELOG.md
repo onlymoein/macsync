@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.7.6
+- The menu shows Homebrew at a glance: how many updates are waiting and which, with Update All, or what was just updated. Click it to open the window.
+- The settings menu is grouped: Sync, Homebrew and MacSync, each with its own switches and Check for Updates Now.
+- Each Mac's row shows its MacSync version only when it needs updating, and the version no longer repeats in the footer.
+
 ## 0.7.5
 - **Homebrew updates** is its own section at the top of the window: what needs updating (from → to), Update and Update All, and an Install automatically switch. It opens by itself when something is waiting.
 - The menu's items say what they do: Install Homebrew Updates Automatically, and Check Homebrew for Updates (which only lists them when automatic is off).

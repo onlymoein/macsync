@@ -65,6 +65,7 @@ enum UIProbe {
             for key in ReviewView.probeSections {
                 if let view = ReviewView.probeSection(key, model: model) { write(view, dir, "section-\(key)-\(suffix)") }
             }
+            write(MenuView(model: model).background(background), dir, "probe-menu-brew-\(suffix)")
         }
     }
 

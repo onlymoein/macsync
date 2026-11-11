@@ -16,6 +16,7 @@ struct MenuView: View {
                 .padding(.horizontal, 6)
                 Divider()
             }
+            HomebrewRow(model: model)
             notices
             actions
             Divider()
@@ -92,22 +93,31 @@ struct MenuView: View {
     private var footer: some View {
         HStack {
             Menu {
-                Button("Open Sync Window…") { ReviewWindow.shared.show(model: model) }
-                Button("History…") {
+                Button { ReviewWindow.shared.show(model: model) } label: { Label("Open Sync Window…", systemImage: "macwindow") }
+                Button {
                     model.showHistory = true
                     ReviewWindow.shared.show(model: model)
+                } label: { Label("History…", systemImage: "clock.arrow.circlepath") }
+                Section("Sync") {
+                    Toggle("Sync Automatically", isOn: $model.autoSync)
+                    Toggle("Apply Dock Changes When I Open the Lid", isOn: $model.autoApplyDock)
+                }
+                Section("Homebrew") {
+                    Toggle("Install Updates Automatically", isOn: $model.autoUpgrade)
+                    Button(model.upgrading ? "Checking…" : "Check for Updates Now") {
+                        if model.autoUpgrade { model.upgradeAll() } else { model.checkUpgrades() }
+                    }
+                    .disabled(model.upgrading)
+                }
+                Section("MacSync \(MacSyncEnvironment.appVersion)") {
+                    Toggle("Open at Login", isOn: Binding(get: { model.openAtLogin }, set: { model.setOpenAtLogin($0) }))
+                    Toggle("Update Automatically", isOn: $model.autoUpdate)
+                    Button("Check for Updates Now") { model.checkForUpdates(manual: true) }
                 }
                 Divider()
-                Toggle("Sync Automatically", isOn: $model.autoSync)
-                Toggle("Apply Dock Changes When I Open the Lid", isOn: $model.autoApplyDock)
-                Toggle("Open at Login", isOn: Binding(get: { model.openAtLogin }, set: { model.setOpenAtLogin($0) }))
-                Toggle("Update Automatically", isOn: $model.autoUpdate)
-                Toggle("Install Homebrew Updates Automatically", isOn: $model.autoUpgrade)
-                Button(model.upgrading ? "Checking Homebrew…" : "Check Homebrew for Updates") { if model.autoUpgrade { model.upgradeAll() } else { model.checkUpgrades() } }
-                    .disabled(model.upgrading)
-                Button("Check for Updates") { model.checkForUpdates(manual: true) }
-                Divider()
-                Button("Support MacSync…") { NSWorkspace.shared.open(URL(string: "https://buymeacoffee.com/onlymoein")!) }
+                Button { NSWorkspace.shared.open(URL(string: "https://buymeacoffee.com/onlymoein")!) } label: {
+                    Label("Support MacSync…", systemImage: "cup.and.saucer")
+                }
             } label: {
                 Image(systemName: "gearshape")
             }
@@ -116,7 +126,6 @@ struct MenuView: View {
             .fixedSize()
             .accessibilityLabel("Settings")
             Spacer()
-            Text("MacSync \(MacSyncEnvironment.appVersion)").font(.caption).foregroundStyle(.tertiary)
             Button("Quit") { NSApp.terminate(nil) }
                 .buttonStyle(.borderless)
                 .foregroundStyle(.secondary)
@@ -145,9 +154,9 @@ struct MachineRow: View {
     var body: some View {
         HStack(spacing: 10) {
             Image(systemName: symbol)
-                .font(.title3)
+                .font(.system(size: 16))
                 .foregroundStyle(.secondary)
-                .frame(width: 26)
+                .frame(width: 28)
             VStack(alignment: .leading, spacing: 1) {
                 Text(machine.name + (machine.isThisMac ? " (this Mac)" : ""))
                     .lineLimit(1)
@@ -155,19 +164,15 @@ struct MachineRow: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
-                Group {
-                    if machine.isOutdated {
-                        Label {
-                            Text("MacSync \(machine.appVersion) · update it on that Mac").foregroundStyle(.primary)
-                        } icon: {
-                            Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(Color.warning)
-                        }
-                    } else {
-                        Text("MacSync \(machine.appVersion)").foregroundStyle(.tertiary)
+                if machine.isOutdated {
+                    Label {
+                        Text("MacSync \(machine.appVersion) · update it on that Mac").foregroundStyle(.primary)
+                    } icon: {
+                        Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(Color.warning)
                     }
+                    .font(.caption2)
+                    .lineLimit(1)
                 }
-                .font(.caption2)
-                .lineLimit(1)
             }
             Spacer(minLength: 6)
             Text(state.text)
@@ -177,5 +182,54 @@ struct MachineRow: View {
         .padding(.horizontal, 6)
         .padding(.vertical, 5)
         .accessibilityElement(children: .combine)
+    }
+}
+
+
+/// Homebrew at a glance: how many updates wait, or what was just updated.
+private struct HomebrewRow: View {
+    @ObservedObject var model: AppModel
+
+    var body: some View {
+        if let report = model.upgradeReport ?? (model.upgrading ? UpgradeReport(ranAt: Date()) : nil) {
+            let outdated = report.outdated ?? []
+            HStack(spacing: 10) {
+                Image(systemName: "mug").font(.system(size: 16)).foregroundStyle(.secondary).frame(width: 28)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(title(report, outdated)).font(.body).lineLimit(1)
+                    if let detail = detail(report, outdated) {
+                        Text(detail).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                    }
+                }
+                Spacer(minLength: 6)
+                if model.upgrading { ProgressView().controlSize(.small) }
+                else if !outdated.isEmpty {
+                    Button("Update All") { model.upgrade(outdated) }.buttonStyle(.borderless).font(.caption.weight(.semibold))
+                        .foregroundStyle(Color.accentColor)
+                }
+            }
+            .padding(.horizontal, 14).padding(.vertical, 8)
+            .contentShape(Rectangle())
+            .onTapGesture { ReviewWindow.shared.show(model: model) }
+            Divider()
+        }
+    }
+
+    private func title(_ report: UpgradeReport, _ outdated: [OutdatedItem]) -> String {
+        if model.upgrading { return model.progress ?? "Checking Homebrew…" }
+        if !outdated.isEmpty { return "\(outdated.count) Homebrew update\(outdated.count == 1 ? "" : "s")" }
+        if !report.upgraded.isEmpty { return "Updated \(report.upgraded.count) with Homebrew" }
+        return "Homebrew is up to date"
+    }
+
+    private func detail(_ report: UpgradeReport, _ outdated: [OutdatedItem]) -> String? {
+        if model.upgrading { return nil }
+        let names = (outdated.isEmpty ? report.upgraded : outdated).map(\.name)
+        var parts: [String] = []
+        if !names.isEmpty { parts.append(names.prefix(3).joined(separator: ", ") + (names.count > 3 ? " +\(names.count - 3)" : "")) }
+        if !report.waiting.isEmpty { parts.append("\(report.waiting.count) waiting") }
+        if !report.failures.isEmpty { parts.append("\(report.failures.count) failed") }
+        if names.isEmpty { parts.append("checked \(report.ranAt.formatted(.relative(presentation: .named)))") }
+        return parts.joined(separator: " · ")
     }
 }
