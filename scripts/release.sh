@@ -63,5 +63,5 @@ Next, by hand (nothing was published):
   1. git tag v$VERSION && git push origin v$VERSION
   2. gh release create v$VERSION $OUT/$ZIP --title "MacSync $VERSION" --notes-file <your notes>
   3. cp $OUT/macsync.rb <homebrew-tap>/Casks/macsync.rb, commit, push
-  4. On a clean Mac: brew install --cask onlymehdi/tap/macsync
+  4. On a clean Mac: brew install --cask onlymoein/tap/macsync
 EOF

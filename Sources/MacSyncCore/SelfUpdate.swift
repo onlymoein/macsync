@@ -14,7 +14,7 @@ public struct SelfUpdater {
         public var notes: String?
     }
 
-    public static let releasesAPI = "https://api.github.com/repos/onlymehdi/macsync/releases/latest"
+    public static let releasesAPI = "https://api.github.com/repos/onlymoein/macsync/releases/latest"
     public static let bundleID = "com.onlymehdi.macsync"
 
     let runner: CommandRunning
@@ -48,7 +48,7 @@ public struct SelfUpdater {
         guard version.range(of: "^[0-9]+(\\.[0-9]+){0,3}$", options: .regularExpression) != nil else { return nil }
         let assets = (root["assets"] as? [[String: Any]] ?? []).compactMap { asset -> (String, String)? in
             guard let name = asset["name"] as? String, let url = asset["browser_download_url"] as? String,
-                  url.hasPrefix("https://github.com/onlymehdi/macsync/releases/download/") else { return nil }
+                  url.hasPrefix("https://github.com/onlymoein/macsync/releases/download/") else { return nil }
             return (name, url)
         }
         guard let zip = assets.first(where: { $0.0 == "MacSync-\(version).zip" })?.1 else { return nil }

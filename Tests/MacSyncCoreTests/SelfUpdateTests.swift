@@ -3,7 +3,7 @@ import XCTest
 
 final class SelfUpdateTests: XCTestCase {
     func release(_ tag: String, assets: [String], prerelease: Bool = false) -> Data {
-        let list = assets.map { #"{"name":"\#($0)","browser_download_url":"https://github.com/onlymehdi/macsync/releases/download/\#(tag)/\#($0)"}"# }
+        let list = assets.map { #"{"name":"\#($0)","browser_download_url":"https://github.com/onlymoein/macsync/releases/download/\#(tag)/\#($0)"}"# }
         return Data(#"{"tag_name":"\#(tag)","prerelease":\#(prerelease),"assets":[\#(list.joined(separator: ","))]}"#.utf8)
     }
 

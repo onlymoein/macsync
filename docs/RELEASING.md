@@ -57,12 +57,12 @@ gh release create v0.2.0 build/release/MacSync-0.2.0.zip --title "MacSync 0.2.0"
 ```
 
 4. Update the tap. Copy `build/release/macsync.rb` to `Casks/macsync.rb` in
-   `onlymehdi/homebrew-tap`, replacing the old Python formula if it is still there, then commit
+   `onlymoein/homebrew-tap`, replacing the old Python formula if it is still there, then commit
    and push.
 5. On a Mac that has never had MacSync, check the whole path:
 
 ```bash
-brew install --cask onlymehdi/tap/macsync
+brew install --cask onlymoein/tap/macsync
 ```
 
 ## Checks worth doing before the first public release

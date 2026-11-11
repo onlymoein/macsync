@@ -40,6 +40,8 @@ public struct SyncOverview: Codable, Equatable {
     public var selectedApps: [String]
     public var issues: [String]
     public var lastRestorePoint: RestorePointInfo?
+    /// Every saved restore point, newest first, so the person can go back to any of them.
+    public var history: [RestorePointInfo] = []
     public var proEnabled: Bool
     public var settingsPlan: SettingsPlan?
     public var settingsSkipped: [String]
@@ -733,6 +735,7 @@ public final class Engine {
             selectedApps: missing.filter(\.canInstall).map(\.app.token).filter { !deselected.contains($0) },
             issues: issues + loaded.issues,
             lastRestorePoint: restorePoints().first { $0.undoneAt == nil },
+            history: restorePoints(),
             proEnabled: proUnlocked,
             settingsPlan: settingsPlan?.hasChanges == true ? settingsPlan : nil,
             settingsSkipped: settingsPlan?.skipped ?? [],
@@ -1142,20 +1145,37 @@ public final class Engine {
     /// Puts the Dock back exactly as it was. Installed apps stay installed, and the result says so.
     public func undoLast() throws -> RestorePointInfo {
         stateLock.lock(); defer { stateLock.unlock() }
+        guard let point = restorePoints().first(where: { $0.undoneAt == nil }) else { throw EngineError.nothingToUndo }
+        return try restore(point.id)
+    }
+
+    /// Puts this Mac back to how it was just before that Apply: its Dock and settings. Every
+    /// Apply made after it is rolled back too. Installed apps stay installed.
+    @discardableResult
+    public func restore(_ id: String) throws -> RestorePointInfo {
+        stateLock.lock(); defer { stateLock.unlock() }
         let lock = try acquireLock()
         defer { close(lock) }
-        guard var point = restorePoints().first(where: { $0.undoneAt == nil }) else { throw EngineError.nothingToUndo }
+        let all = restorePoints()
+        guard var point = all.first(where: { $0.id == id }) else { throw EngineError.nothingToUndo }
         if point.touchedDock != false {
             let backup = try Data(contentsOf: restoreDirectory(point.id).appendingPathComponent("dock.plist"))
             try commit(backup, expecting: try fingerprint(of: backup))
         }
-        if point.touchedSettings == true { try restoreSettings(from: point) }
+        // Settings come back newest first, so each one ends as it was before this Apply.
+        for later in all.filter({ $0.id >= id && $0.undoneAt == nil && $0.touchedSettings == true }) {
+            try restoreSettings(from: later)
+        }
         if let data = try? Data(contentsOf: restoreDirectory(point.id).appendingPathComponent("dock-history.json")),
            let history = try? JSONDecoder.iso.decode(DockHistory.self, from: data) {
             var state = loadState()
             state.dockKeys = history.keys
             state.dockEvents = history.events
             try saveState(state)
+        }
+        for var later in all where later.id > id && later.undoneAt == nil {
+            later.undoneAt = now()
+            try writeRestoreInfo(later)
         }
         point.undoneAt = now()
         try writeRestoreInfo(point)

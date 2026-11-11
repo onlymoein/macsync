@@ -2,10 +2,10 @@ cask "macsync" do
   version "@VERSION@"
   sha256 "@SHA256@"
 
-  url "https://github.com/onlymehdi/macsync/releases/download/v#{version}/MacSync-#{version}.zip"
+  url "https://github.com/onlymoein/macsync/releases/download/v#{version}/MacSync-#{version}.zip"
   name "MacSync"
   desc "Sync your Dock, apps and settings across Macs through iCloud Drive"
-  homepage "https://github.com/onlymehdi/macsync"
+  homepage "https://github.com/onlymoein/macsync"
 
   livecheck do
     url :url

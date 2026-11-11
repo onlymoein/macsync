@@ -16,6 +16,7 @@ macsync \(MacSyncEnvironment.appVersion): keep your Macs set up the same way.
   macsync undo [--yes]       Undo the last apply
   macsync app-prefs [add|remove <domain>]   Choose apps whose preferences sync (Pro)
   macsync restore-points     List saved restore points
+  macsync restore <id>       Go back to just before that restore point
 
 Add --json to status, sync, preview, apply or undo for machine-readable output.
 """
@@ -147,9 +148,15 @@ do {
         let points = engine.restorePoints()
         if json { try printJSON(points) } else if points.isEmpty { print("No restore points yet.") } else {
             for point in points {
-                print("\(point.createdAt): \(point.summary) from \(point.sourceMachine)\(point.undoneAt == nil ? "" : " (undone)")")
+                print("\(point.id)  \(point.createdAt): \(point.summary) from \(point.sourceMachine)\(point.undoneAt == nil ? "" : " (undone)")")
             }
         }
+    case "restore":
+        guard let id = arguments.dropFirst().first(where: { !$0.hasPrefix("-") }) else {
+            fail("Say which restore point: macsync restore <id> (see macsync restore-points).", code: 2)
+        }
+        let point = try engine.restore(id)
+        print("Back to how this Mac was before \(point.createdAt).")
     default:
         fail("Unknown command \(command).\n\n\(usage)", code: 2)
     }

@@ -558,6 +558,26 @@ final class EngineTests: XCTestCase {
         XCTAssertEqual(try studio.engine.sync().dockPlan?.removed.compactMap(\.bundleID), ["b"])
     }
 
+    func testRestoringAnOlderPointUndoesEverythingAfterIt() throws {
+        let world = try TestWorld()
+        let studio = try world.mac("studio", dock: ["a", "b", "c"])
+        try studio.engine.sync()
+        world.tick()
+        let air = try world.mac("air", dock: ["a", "b", "c"])
+        try air.engine.sync()
+        world.tick()
+        let keys = try XCTUnwrap(try air.engine.sync().dockPreview).targetApps.map(\.key)
+        _ = try air.engine.apply(ApplyRequest(applyDock: true, apps: [], dockOrder: [keys[2], keys[0], keys[1]]))
+        world.tick()
+        _ = try air.engine.apply(ApplyRequest(applyDock: true, apps: [], dockOrder: [keys[1], keys[2], keys[0]]))
+        XCTAssertEqual(try dockBundleIDs(air), ["b", "c", "a"])
+        let history = air.engine.restorePoints()
+        XCTAssertEqual(history.count, 2)
+        try air.engine.restore(try XCTUnwrap(history.last).id)  // the older one
+        XCTAssertEqual(try dockBundleIDs(air), ["a", "b", "c"])
+        XCTAssertTrue(air.engine.restorePoints().allSatisfy { $0.undoneAt != nil })
+    }
+
     func testOldICloudCopiesAreDeleted() throws {
         let world = try TestWorld()
         let old = world.sync.appendingPathComponent("apps/packages")

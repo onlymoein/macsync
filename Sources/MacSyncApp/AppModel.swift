@@ -478,6 +478,28 @@ final class AppModel: ObservableObject {
         }
     }
 
+    /// Puts this Mac back to just before a past Apply.
+    func restore(_ point: RestorePointInfo) {
+        let engine = engine
+        actionError = nil
+        autoApplyMessage = nil
+        isApplying = true
+        progress = "Restoring…"
+        Task {
+            let result = await Task.detached { Result { try engine.restore(point.id) } }.value
+            isApplying = false
+            progress = nil
+            switch result {
+            case .success:
+                lastReport = nil
+                undoMessage = "Back to how this Mac was before \(point.createdAt.formatted(date: .abbreviated, time: .shortened)). Installed apps stay installed."
+            case .failure(let error):
+                actionError = error.localizedDescription
+            }
+            syncNow()
+        }
+    }
+
     func undo() {
         let engine = engine
         actionError = nil

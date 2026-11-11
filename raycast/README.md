@@ -1,7 +1,7 @@
 # MacSync for Raycast
 
-Control [MacSync](https://github.com/onlymehdi/macsync) from Raycast. It needs the MacSync app installed
-(`brew install --cask onlymehdi/tap/macsync`, or from the releases page).
+Control [MacSync](https://github.com/onlymoein/macsync) from Raycast. It needs the MacSync app installed
+(`brew install --cask onlymoein/tap/macsync`, or from the releases page).
 
 - **Sync Now**: save this Mac's setup and check your other Macs. Changes nothing here.
 - **Apply Dock Layout**: apply the combined Dock from your Macs. A restore point is saved first.

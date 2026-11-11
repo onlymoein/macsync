@@ -72,6 +72,7 @@ struct ReviewView: View {
                     AppsPanel(kind: .tools, model: model)
                     ThisMacPanel(kind: .apps, model: model)
                     ThisMacPanel(kind: .tools, model: model)
+                    HistoryPanel(model: model)
                     if let overview = model.overview, !overview.hasPendingChanges, !model.canApply, model.lastReport == nil {
                         VStack(spacing: 8) {
                             Image(systemName: "checkmark.seal.fill").font(.system(size: 34)).foregroundStyle(.green)
@@ -672,6 +673,57 @@ private struct ThisMacPanel: View {
         }
         .padding(.horizontal, 8).padding(.vertical, 4)
         .opacity(isShared ? 1 : 0.6)
+    }
+}
+
+/// Every Apply on this Mac, newest first. Restore goes back to just before any of them.
+private struct HistoryPanel: View {
+    @ObservedObject var model: AppModel
+    @AppStorage("review.history.open") private var open = false
+    @State private var confirm: RestorePointInfo?
+
+    private var points: [RestorePointInfo] { model.overview?.history ?? [] }
+
+    var body: some View {
+        if !points.isEmpty {
+            VStack(alignment: .leading, spacing: 12) {
+                PanelHeader(symbol: "clock.arrow.circlepath", title: "History",
+                            subtitle: "\(points.count) saved on this Mac · go back to before any of them", isExpanded: $open) { EmptyView() }
+                if open {
+                    VStack(spacing: 2) {
+                        ForEach(points) { point in
+                            HStack(spacing: 12) {
+                                Image(systemName: point.undoneAt == nil ? "circle.fill" : "arrow.uturn.backward.circle")
+                                    .font(.caption).foregroundStyle(point.undoneAt == nil ? Color.accentColor : .secondary)
+                                VStack(alignment: .leading, spacing: 1) {
+                                    Text(point.createdAt.formatted(date: .abbreviated, time: .shortened)).font(.body.weight(.medium))
+                                    Text("\(point.summary.prefix(1).uppercased() + point.summary.dropFirst()), from \(point.sourceMachine)"
+                                         + (point.undoneAt != nil ? " · undone" : ""))
+                                        .font(.caption).foregroundStyle(.secondary).lineLimit(2)
+                                }
+                                Spacer()
+                                Button("Restore") { confirm = point }
+                                    .glassButton().controlSize(.small)
+                                    .disabled(model.isApplying)
+                                    .help("Put this Mac's Dock and settings back to just before this")
+                            }
+                            .padding(.horizontal, 8).padding(.vertical, 5)
+                            .opacity(point.undoneAt == nil ? 1 : 0.6)
+                        }
+                    }
+                    Text("Each Apply saves one. Restoring puts this Mac's Dock and settings back to just before it, undoing it and anything applied after it. Installed apps stay installed. The last 20 are kept.")
+                        .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .padding(18)
+            .glassPanel()
+            .confirmationDialog("Go back to before \(confirm?.createdAt.formatted(date: .abbreviated, time: .shortened) ?? "")?",
+                                isPresented: Binding(get: { confirm != nil }, set: { if !$0 { confirm = nil } })) {
+                Button("Restore") { if let point = confirm { model.restore(point) } }
+            } message: {
+                Text("This Mac's Dock and settings go back to how they were then. Your other Macs follow this Dock next time you apply there.")
+            }
+        }
     }
 }
 
