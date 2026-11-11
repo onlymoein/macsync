@@ -300,10 +300,12 @@ public final class Engine {
 
     /// Marks an app as not needed on this Mac, or brings it back. Kept even after it stops being
     /// offered, so it stays hidden if another Mac installs it again later.
-    public func setSkipped(_ token: String, _ skipped: Bool) throws {
+    public func setSkipped(_ token: String, _ skipped: Bool) throws { try setSkipped([token], skipped) }
+
+    public func setSkipped(_ tokens: [String], _ skipped: Bool) throws {
         var state = loadState()
         var set = Set(state.deselectedApps ?? [])
-        if skipped { set.insert(token) } else { set.remove(token) }
+        if skipped { set.formUnion(tokens) } else { set.subtract(tokens) }
         state.deselectedApps = set.sorted()
         try saveState(state)
     }

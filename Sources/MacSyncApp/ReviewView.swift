@@ -60,7 +60,9 @@ struct ReviewView: View {
                         if !plan.missing.isEmpty { NotInstalledPanel(items: plan.missing, model: model) }
                     }
                     if let plan = model.overview?.settingsPlan { SettingsPanel(plan: plan, model: model) }
-                    AppsPanel(model: model)
+                    if model.proEnabled { AppSettingsPanel(model: model) }
+                    AppsPanel(kind: .apps, model: model)
+                    AppsPanel(kind: .tools, model: model)
                     if model.overview?.hasPendingChanges != true, model.lastReport == nil {
                         VStack(spacing: 8) {
                             Image(systemName: "checkmark.seal.fill").font(.system(size: 34)).foregroundStyle(.green)
@@ -228,6 +230,25 @@ private struct DockPanel: View {
 
 private enum Badge { case added, removed, waiting }
 
+/// One switch for a whole section: on when every item in it is on.
+private struct AllSwitch: View {
+    let onCount: Int
+    let total: Int
+    let set: (Bool) -> Void
+
+    var body: some View {
+        let allOn = onCount == total
+        Toggle(isOn: Binding(get: { allOn }, set: { set($0) })) {
+            Text(allOn ? "All on" : onCount == 0 ? "All off" : "\(onCount) on").font(.caption).foregroundStyle(.secondary)
+        }
+        .toggleStyle(.switch)
+        .controlSize(.small)
+        .disabled(total == 0)
+        .help(allOn ? "Turn all off" : "Turn all on")
+        .accessibilityLabel(allOn ? "Turn all off" : "Turn all on")
+    }
+}
+
 private struct DockStrip: View {
     let items: [DockItem]
     @ObservedObject var model: AppModel
@@ -278,7 +299,11 @@ struct NotInstalledPanel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             PanelHeader(symbol: "arrow.down.app.fill", title: "Not installed here",
-                        subtitle: "\(needed) of \(items.count) needed · in the Dock on your other Mac", isExpanded: $open) { EmptyView() }
+                        subtitle: "\(needed) of \(items.count) needed · in the Dock on your other Mac", isExpanded: $open) {
+                AllSwitch(onCount: needed, total: items.count) { on in
+                    model.setSkipped(tokens: items.map { model.skipToken(for: $0) }, !on)
+                }
+            }
             if open {
                 Text("Click one to open its download page. Switch off what this Mac doesn't need. Each one joins this Dock once it's installed.")
                     .font(.caption).foregroundStyle(.secondary)
@@ -380,65 +405,129 @@ private struct DockIcon: View {
 
 // MARK: - Apps
 
-private struct AppsPanel: View {
+/// Apps, or command-line tools, from the other Macs: each in its own section.
+/// Which apps' own settings match on every Mac. Passwords, tokens and keys never sync.
+private struct AppSettingsPanel: View {
     @ObservedObject var model: AppModel
-    @State private var showTools = false
-    @AppStorage("review.apps.open") private var open = true
+    @AppStorage("review.appSettings.open") private var open = true
+    @State private var chosen: Set<String> = []
+    @State private var apps: [PrefApp] = []
+    @State private var search = ""
+    @State private var loaded = false
 
-    private var everything: [MissingApp] {
-        (model.overview?.missingApps ?? []).sorted { $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending }
+    private var shown: [PrefApp] {
+        search.isEmpty ? apps : apps.filter { $0.name.localizedCaseInsensitiveContains(search) }
     }
-    private var skippedTokens: Set<String> { Set(model.overview?.skippedApps ?? []) }
-    private var all: [MissingApp] { everything }
-    private var wanted: Int { everything.filter { !skippedTokens.contains($0.app.token) }.count }
-    private var apps: [MissingApp] { all.filter { $0.app.source != .formula } }
-    private var tools: [MissingApp] { all.filter { $0.app.source == .formula } }
 
     var body: some View {
-        if !everything.isEmpty {
+        VStack(alignment: .leading, spacing: 12) {
+            PanelHeader(symbol: "slider.horizontal.3", title: "App settings",
+                        subtitle: "\(chosen.count) of \(apps.count) apps match on all your Macs", isExpanded: $open) {
+                AllSwitch(onCount: apps.filter { chosen.contains($0.domain) }.count, total: apps.count) { on in
+                    chosen = on ? chosen.union(apps.map(\.domain)) : chosen.subtracting(apps.map(\.domain))
+                    model.setAppPrefDomains(Array(chosen))
+                }
+            }
+            if open {
+                Text("Turn on the apps whose settings should match on all your Macs. Passwords, tokens, license keys and window positions are never copied.")
+                    .font(.caption).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                TextField("Search apps", text: $search).textFieldStyle(.roundedBorder)
+                VStack(spacing: 2) { ForEach(shown) { row($0) } }
+            }
+        }
+        .padding(18)
+        .glassPanel()
+        .onAppear { if !loaded { load(); loaded = true } }
+    }
+
+    private func row(_ app: PrefApp) -> some View {
+        let isOn = Binding(
+            get: { chosen.contains(app.domain) },
+            set: { on in
+                if on { chosen.insert(app.domain) } else { chosen.remove(app.domain) }
+                model.setAppPrefDomains(Array(chosen))
+            })
+        return HStack(spacing: 12) {
+            Group {
+                if let icon = app.icon { Image(nsImage: icon).resizable().scaledToFit() }
+                else { Image(systemName: "app.dashed").font(.title2).foregroundStyle(.secondary) }
+            }
+            .frame(width: 30, height: 30)
+            Text(app.name).lineLimit(1)
+            Spacer()
+            Toggle("", isOn: isOn).toggleStyle(.switch).labelsHidden().controlSize(.small)
+        }
+        .padding(.horizontal, 8).padding(.vertical, 4)
+        .help(app.domain)
+    }
+
+    private func load() {
+        chosen = Set(model.appPrefDomains())
+        let domains = Set(model.availableAppPrefDomains()).union(chosen)
+        var found: [PrefApp] = []
+        var names = Set<String>()
+        for domain in domains.sorted() {
+            if let app = PrefApp.find(domain) {
+                guard names.insert(app.name.lowercased()).inserted || chosen.contains(domain) else { continue }
+                found.append(app)
+            } else if chosen.contains(domain) {
+                found.append(PrefApp(domain: domain, name: domain, icon: nil))
+            }
+        }
+        apps = found.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    }
+}
+
+private struct AppsPanel: View {
+    enum Kind { case apps, tools }
+    let kind: Kind
+    @ObservedObject var model: AppModel
+    @AppStorage private var open: Bool
+
+    init(kind: Kind, model: AppModel) {
+        self.kind = kind
+        self.model = model
+        // Apps start open; the long list of tools starts closed.
+        _open = AppStorage(wrappedValue: kind == .apps, kind == .apps ? "review.apps.open" : "review.tools.open")
+    }
+
+    private var list: [MissingApp] {
+        (model.overview?.missingApps ?? [])
+            .filter { ($0.app.source == .formula) == (kind == .tools) }
+            .sorted { $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending }
+    }
+    private var skippedTokens: Set<String> { Set(model.overview?.skippedApps ?? []) }
+    private var wanted: Int { list.filter { !skippedTokens.contains($0.app.token) }.count }
+
+    var body: some View {
+        if !list.isEmpty {
             VStack(alignment: .leading, spacing: 14) {
-                PanelHeader(symbol: "square.grid.2x2.fill", title: "Apps on your other Macs",
-                            subtitle: "\(wanted) of \(everything.count) needed · switch off what this Mac doesn't need",
+                PanelHeader(symbol: kind == .apps ? "square.grid.2x2.fill" : "terminal.fill",
+                            title: kind == .apps ? "Apps on your other Macs" : "Command-line tools",
+                            subtitle: "\(wanted) of \(list.count) needed" + (kind == .apps ? " · switch off what this Mac doesn't need" : " · installed with Homebrew"),
                             isExpanded: $open) {
-                    getAll(apps, label: "Get All")
+                    HStack(spacing: 12) {
+                        getAll(list, label: kind == .apps ? "Get All" : "Install All")
+                        switchAll(list)
+                    }
                 }
                 if open {
-                if !apps.isEmpty {
-                    VStack(spacing: 2) {
-                        ForEach(apps) { AppRow(missing: $0, model: model) }
+                    VStack(spacing: 2) { ForEach(list) { AppRow(missing: $0, model: model) } }
+                    if model.overview?.brewAvailable == false, list.contains(where: { $0.app.source == .cask || $0.app.source == .formula }) {
+                        Label("Homebrew isn't on this Mac yet, so Homebrew apps can't be installed. Get it at brew.sh.", systemImage: "info.circle")
+                            .font(.callout).foregroundStyle(.secondary)
                     }
-                }
-                if !tools.isEmpty {
-                    VStack(alignment: .leading, spacing: 6) {
-                        HStack {
-                            // The whole label opens the list, not just the small arrow.
-                            Button { withAnimation(.easeInOut(duration: 0.2)) { showTools.toggle() } } label: {
-                                HStack(spacing: 8) {
-                                    Image(systemName: "chevron.right").font(.caption.weight(.bold))
-                                        .rotationEffect(.degrees(showTools ? 90 : 0))
-                                    Text("Command-line tools").font(.callout.weight(.medium))
-                                    Text("\(tools.count)").font(.callout).foregroundStyle(.secondary)
-                                }
-                                .contentShape(Rectangle())
-                            }
-                            .buttonStyle(.plain)
-                            .accessibilityLabel(showTools ? "Hide command-line tools" : "Show command-line tools")
-                            Spacer()
-                            getAll(tools, label: "Install All")
-                        }
-                        if showTools {
-                            VStack(spacing: 2) { ForEach(tools) { AppRow(missing: $0, model: model) } }
-                        }
-                    }
-                }
-                if model.overview?.brewAvailable == false, all.contains(where: { $0.app.source == .cask || $0.app.source == .formula }) {
-                    Label("Homebrew isn't on this Mac yet, so Homebrew apps can't be installed. Get it at brew.sh.", systemImage: "info.circle")
-                        .font(.callout).foregroundStyle(.secondary)
-                }
                 }
             }
             .padding(18)
             .glassPanel()
+        }
+    }
+
+    private func switchAll(_ list: [MissingApp]) -> some View {
+        AllSwitch(onCount: list.filter { !skippedTokens.contains($0.app.token) }.count, total: list.count) { on in
+            model.setSkipped(tokens: list.map(\.app.token), !on)
         }
     }
 

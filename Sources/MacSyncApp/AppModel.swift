@@ -195,12 +195,14 @@ final class AppModel: ObservableObject {
     /// Hides an app this Mac doesn't need, or brings it back. Remembered across syncs.
     func setSkipped(_ app: MissingApp, _ skipped: Bool) { setSkipped(token: app.app.token, skipped) }
 
-    func setSkipped(token: String, _ skipped: Bool) {
-        try? engine.setSkipped(token, skipped)
-        skippedDock = skipped ? skippedDock.union([token]) : skippedDock.subtracting([token])
+    func setSkipped(token: String, _ skipped: Bool) { setSkipped(tokens: [token], skipped) }
+
+    func setSkipped(tokens: [String], _ skipped: Bool) {
+        try? engine.setSkipped(tokens, skipped)
+        skippedDock = skipped ? skippedDock.union(tokens) : skippedDock.subtracting(tokens)
         guard var current = overview else { return }
-        current.skippedApps.removeAll { $0 == token }
-        if skipped { current.skippedApps.append(token) }
+        current.skippedApps.removeAll { tokens.contains($0) }
+        if skipped { current.skippedApps += tokens }
         overview = current
     }
 

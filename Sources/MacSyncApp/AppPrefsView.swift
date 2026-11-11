@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 /// An app whose preferences can sync, as people know it: its name and icon.
-private struct PrefApp: Identifiable {
+struct PrefApp: Identifiable {
     let domain: String
     let name: String
     let icon: NSImage?
