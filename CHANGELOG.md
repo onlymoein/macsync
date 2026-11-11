@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.8.7
+- A Craft app's signature check waits at most 15 seconds. After 8 it says macOS is busy checking new apps. When the download matched ArtCraft's published checksum, the app installs right after, without asking macOS a second time; macOS checks the signature itself when the app first opens.
+
 ## 0.8.6
 - ArtCraft installs copy the app off its disk image first, close the image, and check the copy on this Mac's own disk. Reading the freshly opened image is what held "Checking the signature" on some Macs while macOS scanned it. If macOS still doesn't answer, Apple's codesign gets a second try; if neither answers and the download matched ArtCraft's published checksum, the app installs and the row says why.
 - macOS 26 and later open disk images with diskutil, which Apple now recommends over hdiutil.

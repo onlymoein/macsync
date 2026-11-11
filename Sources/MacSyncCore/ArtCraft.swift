@@ -284,7 +284,7 @@ public struct ArtCraft {
 
     /// The team that signed an app, read by macOS's Security framework on this Mac: no other
     /// program and no network, and it gives up after `seconds`.
-    static func signingTeam(of app: URL, within seconds: TimeInterval) -> SigningCheck {
+    static func signingTeam(of app: URL, within seconds: TimeInterval, slow: (() -> Void)? = nil) -> SigningCheck {
         var answer: SigningCheck = .unsigned
         let done = DispatchSemaphore(value: 0)
         DispatchQueue.global(qos: .userInitiated).async {
@@ -296,6 +296,11 @@ public struct ArtCraft {
                 answer = .team(team)
             }
             done.signal()
+        }
+        // Taking a while means macOS is busy (often scanning apps that just arrived): say so.
+        if let slow, seconds > 8, done.wait(timeout: .now() + 8) == .timedOut {
+            slow()
+            return done.wait(timeout: .now() + seconds - 8) == .timedOut ? .timedOut : answer
         }
         return done.wait(timeout: .now() + seconds) == .timedOut ? .timedOut : answer
     }
@@ -384,8 +389,11 @@ public struct ArtCraft {
         }
         if let team = app.team {
             progress("Checking \(app.name)'s signature…")
-            var check = Self.signingTeam(of: source, within: 60)
-            if case .timedOut = check {
+            var check = Self.signingTeam(of: source, within: 15) {
+                progress("Waiting for macOS to check \(app.name); it's busy checking new apps…")
+            }
+            // With a matching checksum there's no need to wait on macOS again; without one, codesign gets a turn.
+            if case .timedOut = check, app.sha256 == nil {
                 // A second opinion from Apple's codesign, on the same local copy, for 30 seconds.
                 let sig = runner.stream("/usr/bin/codesign", ["-dv", "--verbose=2", source.path], input: nil, environment: [:],
                                         idleTimeout: 30) { _ in }
@@ -401,7 +409,7 @@ public struct ArtCraft {
                 // macOS checks the signature itself the first time the app opens.
                 progress("\(app.name): macOS didn't answer the signature check; the checksum matched, so it's installed…")
             case .timedOut:
-                return .failure(.refused("Checking \(app.name)'s signature didn't finish. Try again."))
+                return .failure(.refused("macOS didn't finish checking \(app.name)'s signature. Try again in a minute."))
             default:
                 return .failure(.refused("\(app.name) isn't signed by its developer as ArtCraft's catalog says, so it wasn't installed."))
             }
