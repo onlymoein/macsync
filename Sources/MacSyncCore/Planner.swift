@@ -208,8 +208,9 @@ public enum Planner {
         var found: [AppRef: Set<String>] = [:]
         var details: [String: AppDetail] = [:]
         var downloads: [String: DirectApp] = [:]
-        let casks = Set(local.casks)
-        let formulae = Set(local.formulae + (local.allFormulae ?? []))
+        // A formula that moved to a cask (vercel) is the same tool under either kind.
+        let casks = Set(local.casks + local.formulae + (local.allFormulae ?? []))
+        let formulae = Set(local.formulae + (local.allFormulae ?? []) + local.casks)
         let store = Set(local.appStore.map(\.id))
         let direct = Set((local.directApps ?? []).map(\.bundleID))
         for machine in others {

@@ -271,7 +271,18 @@ public struct ArtCraft {
         defer { if wasOpen { reopenLauncher() } }
         for app in apps {
             progress("\(app.isInstalled ? "Updating" : "Installing") \(app.name)…")
-            let result = withoutActuallyEscaping(progress) { report in installOne(app, into: folder, progress: report) }
+            let started = Date()
+            log("\(app.name) \(app.version): start, into \(folder.path), checksum \(app.sha256 == nil ? "unknown" : "known"), team \(app.team ?? "none")")
+            let result = withoutActuallyEscaping(progress) { report in
+                installOne(app, into: folder) { message in
+                    log("\(app.name) +\(Int(Date().timeIntervalSince(started)))s: \(message)")
+                    report(message)
+                }
+            }
+            switch result {
+            case .success(let path): log("\(app.name) +\(Int(Date().timeIntervalSince(started)))s: installed at \(path)")
+            case .failure(let error): log("\(app.name) +\(Int(Date().timeIntervalSince(started)))s: FAILED: \(error.localizedDescription)")
+            }
             results.append((app, result))
             if case .success(let path) = result { writeRecords { apps in apps[app.id] = Self.record(app, path: path, now: now()) } }
             // Each app's outcome shows as soon as it's known, not when the whole batch ends.
@@ -303,6 +314,21 @@ public struct ArtCraft {
             return done.wait(timeout: .now() + seconds - 8) == .timedOut ? .timedOut : answer
         }
         return done.wait(timeout: .now() + seconds) == .timedOut ? .timedOut : answer
+    }
+
+    /// One line per step, with how long since the app started, to ~/Library/Logs/MacSync/craft.log
+    /// and to MacSync/logs in this person's iCloud Drive, so it can be read from their other Macs.
+    func log(_ line: String) {
+        let stamp = ISO8601DateFormatter().string(from: Date())
+        let text = "\(stamp) \(env.machineName): \(line)\n"
+        let places = [URL(fileURLWithPath: env.homeDirectory).appendingPathComponent("Library/Logs/MacSync/craft.log"),
+                      env.syncDirectory.appendingPathComponent("logs/\(env.machineID)-craft.log")]
+        for url in places {
+            try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            var old = (try? String(contentsOf: url, encoding: .utf8)) ?? ""
+            if old.count > 200_000 { old = String(old.suffix(100_000)) }
+            try? (old + text).write(to: url, atomically: true, encoding: .utf8)
+        }
     }
 
     /// Opens a disk image read-only and out of sight. macOS 26 and later prefer diskutil; older
@@ -403,17 +429,19 @@ public struct ArtCraft {
         }
         if let team = app.team {
             progress("Checking \(app.name)'s signature…")
-            var check = Self.signingTeam(of: source, within: 15) {
+            // First Apple's codesign, which reads the team from the app's own signature and doesn't
+            // check certificates over the network; then the Security framework, which can.
+            var check: SigningCheck = .timedOut
+            let sig = runner.stream("/usr/bin/codesign", ["-dv", "--verbose=2", source.path], input: nil, environment: [:],
+                                    idleTimeout: 15) { _ in }
+            if let line = (sig.stderr + sig.output).split(whereSeparator: \.isNewline).first(where: { $0.hasPrefix("TeamIdentifier=") }) {
+                let team = String(line.dropFirst("TeamIdentifier=".count))
+                check = team == "not set" ? .unsigned : .team(team)
+            } else if sig.status != -2 {
+                check = .unsigned
+            } else {
                 progress("Waiting for macOS to check \(app.name); it's busy checking new apps…")
-            }
-            // With a matching checksum there's no need to wait on macOS again; without one, codesign gets a turn.
-            if case .timedOut = check, app.sha256 == nil {
-                // A second opinion from Apple's codesign, on the same local copy, for 30 seconds.
-                let sig = runner.stream("/usr/bin/codesign", ["-dv", "--verbose=2", source.path], input: nil, environment: [:],
-                                        idleTimeout: 30) { _ in }
-                if let line = (sig.stderr + sig.output).split(whereSeparator: \.isNewline).first(where: { $0.hasPrefix("TeamIdentifier=") }) {
-                    check = .team(String(line.dropFirst("TeamIdentifier=".count)))
-                }
+                check = Self.signingTeam(of: source, within: 15)
             }
             switch check {
             case .team(let found) where found == team:

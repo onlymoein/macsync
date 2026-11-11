@@ -460,6 +460,8 @@ final class AppModel: ObservableObject {
     @Published var craftLoading = false
     @Published var craftBusy: Set<String> = []
     @Published var craftErrors: [String: String] = [:]
+    /// Why an ArtCraft app didn't install, kept until it does.
+    @Published var craftFailures: [String: String] = [:]
     private var craftRegistered = false
     /// Craft apps waiting for the batch in progress to finish.
     private var craftQueue: [CraftApp] = []

@@ -713,7 +713,7 @@ private struct ArtCraftPanel: View {
             .frame(width: 34, height: 34)
             VStack(alignment: .leading, spacing: 1) {
                 Text(app.name).font(.body.weight(.medium)).lineLimit(1)
-                if let error = model.craftErrors[app.id] {
+                if let error = model.craftErrors[app.id] ?? (model.craftBusy.contains(app.id) ? nil : model.craftFailures[app.id]) {
                     Text(error).font(.caption).foregroundStyle(Color.warning).lineLimit(2)
                 } else if let from = removedEverywhere[app.skipToken] {
                     Text(app.isInstalled ? "Removed on \(from) · still on this Mac" : "Removed from all Macs on \(from)")

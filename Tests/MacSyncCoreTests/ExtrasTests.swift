@@ -177,3 +177,12 @@ final class DependencyFormulaTests: XCTestCase {
         XCTAssertEqual(Planner.missingApps(local: local, others: [other]).map(\.app.name), ["jq"])
     }
 }
+
+final class MovedFormulaTests: XCTestCase {
+    func testAFormulaThatMovedToACaskIsNotMissing() {
+        var studio = TestWorld.snapshot(id: "studio", apps: [], changedAt: Date())
+        studio.inventory = Inventory(brewAvailable: true, formulae: ["vercel"])
+        let air = Inventory(brewAvailable: true, casks: ["vercel"])
+        XCTAssertTrue(Planner.missingApps(local: air, others: [studio]).isEmpty)
+    }
+}

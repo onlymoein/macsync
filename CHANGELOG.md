@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.8.11
+- A Craft app's signature is read with Apple's codesign first (15 seconds), which doesn't check certificates over the network, and the Security framework second.
+- Why an ArtCraft app didn't install stays on its row until it installs, whatever else refreshes the list.
+- Every ArtCraft step is logged with its timing and result to ~/Library/Logs/MacSync/craft.log, and to MacSync/logs in your iCloud Drive so it can be read from your other Macs.
+- A tool that moved from a Homebrew formula to a cask (vercel) counts as installed either way, so it's no longer offered again.
+
 ## 0.8.10
 - **Apps that update themselves** (ChatGPT, Claude, Grok, Dropbox, TablePlus…) and weren't installed with Homebrew are now in the updates list when Homebrew publishes a newer version than the one on the Mac. Updating hands the app to Homebrew, which keeps it current from then on. App Store apps are listed too when `mas` is installed. The section is now App and Homebrew updates.
 - Versions compare by their numbers only, so a nightly build (8.12.48-19.NIGHTLY) isn't mistaken for an older one.

@@ -269,9 +269,14 @@ extension AppModel {
     /// One ArtCraft app is done: its row shows Installed or why not straight away.
     func craftFinished(_ app: CraftApp, _ result: Result<String, EngineError>) {
         craftBusy.remove(app.id)
-        if case .failure(let error) = result {
+        switch result {
+        case .failure(let error):
             craftErrors[app.id] = error.localizedDescription
+            // Kept until this app installs, whatever else refreshes the list.
+            craftFailures[app.id] = error.localizedDescription
             work["craft"]?.failed += 1
+        case .success:
+            craftFailures[app.id] = nil
         }
         if let index = work["craft"]?.names.firstIndex(of: app.name) { work["craft"]?.done = index + 1 }
         if workCurrent["craft"] == app.id { workCurrent["craft"] = nil; work["craft"]?.status = nil }
