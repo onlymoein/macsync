@@ -483,10 +483,17 @@ public struct ArtCraft {
     }
 
     /// Quits ArtCraft Launcher if it's running. True when it was.
+    /// Left while MacSync has the launcher closed, so a MacSync that was stopped meanwhile reopens it next time.
+    var launcherClosedMarker: URL { env.dataDirectory.appendingPathComponent("launcher-closed-by-macsync") }
+
     private func quitLauncher() -> Bool {
         // Only the real launcher of the real home folder; tests and demos use pretend ones.
         guard env.homeDirectory == NSHomeDirectory() else { return false }
         let running = NSRunningApplication.runningApplications(withBundleIdentifier: Self.launcherBundleID)
+        if !running.isEmpty {
+            try? FileManager.default.createDirectory(at: env.dataDirectory, withIntermediateDirectories: true)
+            FileManager.default.createFile(atPath: launcherClosedMarker.path, contents: Data())
+        }
         for app in running { app.terminate() }
         for _ in 0..<20 where running.contains(where: { !$0.isTerminated }) { Thread.sleep(forTimeInterval: 0.25) }
         // A tray app can decline to quit; it must be gone, or it writes its old list back over ours.
@@ -496,7 +503,8 @@ public struct ArtCraft {
     }
 
     /// Back in the menu bar the way it was, not as a window in front of you.
-    private func reopenLauncher() {
+    func reopenLauncher() {
+        try? FileManager.default.removeItem(at: launcherClosedMarker)
         guard env.homeDirectory == NSHomeDirectory(), let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: Self.launcherBundleID) else { return }
         let configuration = NSWorkspace.OpenConfiguration()
         configuration.arguments = ["--hidden"]
@@ -574,6 +582,13 @@ extension Engine {
             apps.insert(launcher, at: 0)
         }
         return craft.install(apps, progress: progress, finished: finished)
+    }
+
+    /// MacSync closed ArtCraft Launcher and was stopped before reopening it: reopen it now, hidden.
+    public func reopenLauncherIfLeftClosed() {
+        let craft = ArtCraft(env: env, runner: runner, now: now)
+        guard FileManager.default.fileExists(atPath: craft.launcherClosedMarker.path) else { return }
+        craft.reopenLauncher()
     }
 
     /// Lists Craft apps that are installed but missing from ArtCraft Launcher's list. Returns their names.

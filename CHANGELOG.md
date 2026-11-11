@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.8.10
+- An ArtCraft install starts straight away even while MacSync is syncing; taking back a "removed on another Mac" mark now happens after the install. Rows say Preparing… until the first step.
+- A sync can't hang: login items (which can wait on a macOS permission prompt), Homebrew taps, editor extensions, npm and uv are each read with a time limit.
+- If MacSync is stopped while it has ArtCraft Launcher closed, it reopens the launcher, hidden, the next time it starts.
+
 ## 0.8.9
 - Downloads can't sit silently: the row says "Connecting to ArtCraft's downloads" before the first byte, a connection that doesn't answer in 30 seconds or a download that stalls for a minute is retried twice and then stops with a plain reason (stopped making progress, couldn't be reached, too many requests), and the Install button tries again. App downloads from developers get the same limits.
 - ArtCraft Launcher is made to quit if it declines, before MacSync writes its list, so it can't write its old list back over the new one.

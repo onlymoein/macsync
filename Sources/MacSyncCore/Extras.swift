@@ -921,7 +921,8 @@ final class Extras {
 
     private func readLoginItems(_ state: inout State) {
         let script = "JSON.stringify(Application('System Events').loginItems().map(i => ({name: i.name(), path: i.path()})))"
-        let result = runner.run("/usr/bin/osascript", ["-l", "JavaScript", "-e", script], input: nil, environment: [:])
+        // A macOS permission prompt can hold System Events: 20 seconds, then it's tried next time.
+        let result = runner.stream("/usr/bin/osascript", ["-l", "JavaScript", "-e", script], input: nil, environment: [:], idleTimeout: 20) { _ in }
         state.loginItemsAt = now()
         guard result.status == 0 else {
             if !result.stderr.isEmpty { state.loginItemsIssue = "Login items: \(Self.automationProblem(result.stderr))" }
@@ -950,7 +951,7 @@ final class Extras {
         var tokens: [String] = []
         var names: [String: String] = [:]
         if let brew = env.brewPath {
-            let result = runner.run(brew, ["tap"], input: nil, environment: InventoryReader.brewEnvironment(brew))
+            let result = runner.stream(brew, ["tap"], input: nil, environment: InventoryReader.brewEnvironment(brew), idleTimeout: 60) { _ in }
             if result.status == 0 {
                 tokens += InventoryReader.lines(result.output).filter { !["homebrew/core", "homebrew/cask", "homebrew/bundle", "homebrew/services"].contains($0) }
                     .map { "tap:" + $0 }
@@ -958,18 +959,18 @@ final class Extras {
         }
         for (kind, cli) in [("vscode", Packages.code), ("cursor", Packages.cursor)] {
             guard let path = cli.first(where: FileManager.default.isExecutableFile) else { continue }
-            let result = runner.run(path, ["--list-extensions"], input: nil, environment: Packages.toolEnv)
+            let result = runner.stream(path, ["--list-extensions"], input: nil, environment: Packages.toolEnv, idleTimeout: 30) { _ in }
             if result.status == 0 { tokens += InventoryReader.lines(result.output).map { "\(kind):\($0.lowercased())" } }
         }
         if let npm = Packages.npm.first(where: FileManager.default.isExecutableFile) {
-            let result = runner.run(npm, ["ls", "-g", "--depth=0", "--json"], input: nil, environment: Packages.toolEnv)
+            let result = runner.stream(npm, ["ls", "-g", "--depth=0", "--json"], input: nil, environment: Packages.toolEnv, idleTimeout: 30) { _ in }
             if let data = result.output.data(using: .utf8),
                let deps = (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["dependencies"] as? [String: Any] {
                 tokens += deps.keys.filter { !["npm", "corepack"].contains($0) }.map { "npm:" + $0 }
             }
         }
         if let uv = Packages.uv.first(where: FileManager.default.isExecutableFile) {
-            let result = runner.run(uv, ["tool", "list"], input: nil, environment: Packages.toolEnv)
+            let result = runner.stream(uv, ["tool", "list"], input: nil, environment: Packages.toolEnv, idleTimeout: 30) { _ in }
             if result.status == 0 {
                 tokens += InventoryReader.lines(result.output).filter { !$0.hasPrefix("-") }
                     .compactMap { $0.split(separator: " ").first.map { "uv:" + $0 } }

@@ -156,6 +156,8 @@ final class AppModel: ObservableObject {
         NSAppleEventManager.shared().setEventHandler(URLHandler.shared, andSelector: #selector(URLHandler.openFiles(_:reply:)),
                                                      forEventClass: AEEventClass(kCoreEventClass), andEventID: AEEventID(kAEOpenDocuments))
         importedSetups = engine.importedSetups()
+        let reopen = engine
+        Task.detached { reopen.reopenLauncherIfLeftClosed() }
         syncNow()
         checkForUpdates()
         if CommandLine.arguments.contains("--review") {
@@ -526,13 +528,12 @@ final class AppModel: ObservableObject {
             craftBusy.insert(launcher.id)
         }
         let ids = Dictionary(ordered.map { ($0.name, $0.id) }, uniquingKeysWith: { a, _ in a })
-        work["craft"] = WorkProgress(verb: "Installing ArtCraft apps", names: ordered.map(\.name))
+        work["craft"] = WorkProgress(verb: "Installing ArtCraft apps", names: ordered.map(\.name), status: "Preparing…")
         let folder = craftFolder
         let launcherID = ordered.first?.id
         Task {
             let results = await Task.detached { () -> [(CraftApp, Result<String, EngineError>)] in
-                engine.installCraftAgain(fresh)
-                return engine.installCraft(fresh, into: folder, progress: { message in
+                engine.installCraft(fresh, into: folder, progress: { message in
                     Task { @MainActor [weak self] in self?.advance("craft", message: message, ids: ids) }
                 }, finished: { app, result in
                     Task { @MainActor [weak self] in self?.craftFinished(app, result) }
@@ -540,6 +541,10 @@ final class AppModel: ObservableObject {
             }.value
             work["craft"] = nil
             workCurrent["craft"] = nil
+            // Installed again here: take back any "removed on another Mac" for it. After the install,
+            // because it waits for a sync in progress, and the install must not.
+            let installed = results.filter { if case .success = $0.1 { return true }; return false }.map(\.0)
+            if !installed.isEmpty { Task.detached { engine.installCraftAgain(installed) } }
             if let launcherID, launcherID == "artcraft-launcher" { craftBusy.remove(launcherID) }
             for (app, result) in results {
                 craftBusy.remove(app.id)
