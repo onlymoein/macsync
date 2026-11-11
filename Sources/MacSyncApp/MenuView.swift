@@ -140,6 +140,35 @@ struct MenuView: View {
             .menuIndicator(.hidden)
             .fixedSize()
             .accessibilityLabel("Settings")
+            .help("Settings")
+            Button {
+                model.showHistory = true
+                ReviewWindow.shared.show(model: model)
+            } label: { Image(systemName: "clock.arrow.circlepath") }
+                .buttonStyle(.borderless)
+                .padding(.leading, 10)
+                .help("History: what changed and when, with undo")
+                .accessibilityLabel("History")
+            Button { ReviewWindow.shared.show(model: model); model.requestShare = true } label: {
+                Image(systemName: "square.and.arrow.up")
+            }
+                .buttonStyle(.borderless)
+                .padding(.leading, 10)
+                .help("Share My Setup with a friend")
+                .accessibilityLabel("Share My Setup")
+            Button {
+                if let release = model.availableUpdate { model.installUpdate(release) } else { model.checkForUpdates(manual: true) }
+                if model.autoUpgrade { model.upgradeAll() } else { model.checkUpgrades() }
+            } label: {
+                Image(systemName: model.availableUpdate != nil ? "arrow.down.circle.fill" : "arrow.triangle.2.circlepath")
+                    .foregroundStyle(model.availableUpdate != nil ? Color.accentColor : Color.primary)
+            }
+                .buttonStyle(.borderless)
+                .padding(.leading, 10)
+                .disabled(model.isUpdating || model.upgrading)
+                .help(model.availableUpdate.map { "Update MacSync to \($0.version), and check apps and tools" }
+                      ?? "Check for updates to MacSync, apps and tools")
+                .accessibilityLabel("Update")
             Spacer()
             Button("Quit") { NSApp.terminate(nil) }
                 .buttonStyle(.borderless)

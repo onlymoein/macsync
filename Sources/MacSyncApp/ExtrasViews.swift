@@ -69,13 +69,14 @@ struct FilesPanel: View {
         _open = AppStorage(wrappedValue: true, "review.files.\(area.rawValue).open")
     }
 
-    private var title: String { ["config": "Config files", "ai": "AI setup", "appData": "App data"][area.rawValue] ?? "" }
-    private var symbol: String { ["config": "doc.text.fill", "ai": "sparkles", "appData": "tray.full.fill"][area.rawValue] ?? "doc" }
+    private var title: String { ["config": "Config files", "ai": "AI setup", "appData": "App data", "dev": "Developer setup"][area.rawValue] ?? "" }
+    private var symbol: String { ["config": "doc.text.fill", "ai": "sparkles", "appData": "tray.full.fill", "dev": "hammer.fill"][area.rawValue] ?? "doc" }
     private var about: String {
         switch area {
         case .config: return "Shell, Git, editors, terminals, Raycast and your fonts"
         case .ai: return "Skills, agents, rules, CLAUDE.md, settings and MCP servers for Claude, Codex and Cursor"
         case .appData: return "Presets and settings for apps such as Photoshop, Camera Raw and iStat Menus"
+        case .dev: return "Xcode themes, key bindings, snippets and templates; Android Studio keymaps, code styles, colors and templates. Simulators and the Android SDK are under Extensions and packages"
         }
     }
 

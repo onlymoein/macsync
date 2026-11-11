@@ -358,11 +358,16 @@ extension AppModel {
 
 extension AppModel {
     /// For an installer that needs the Mac's password: Terminal opens with the install ready.
-    func installInTerminal(_ missing: MissingApp) {
+    func installInTerminal(_ missing: MissingApp) { installInTerminal([missing]) }
+
+    func installInTerminal(_ apps: [MissingApp]) {
         let folder = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0].appendingPathComponent("MacSync")
-        guard let url = Engine.terminalInstall(missing.app, in: folder) else { return }
+        guard let url = Engine.terminalInstall(apps, in: folder) else { return }
         NSWorkspace.shared.open(url)
-        gotten[missing.app.token] = nil
+        for app in apps {
+            gotten[app.app.token] = nil
+            inTerminal.insert(app.app.token)
+        }
         // Picks it up once it's installed.
         DispatchQueue.main.asyncAfter(deadline: .now() + 60) { [weak self] in self?.syncNow() }
     }

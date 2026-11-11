@@ -391,6 +391,8 @@ final class AppModel: ObservableObject {
     /// Apps being fetched one at a time from the list, and how each one went.
     @Published var getting: Set<String> = []
     @Published var gotten: [String: InstallResult] = [:]
+    /// Installs handed to Terminal, where the person types their password.
+    @Published var inTerminal: Set<String> = []
     private var getQueue: [MissingApp] = []
 
     /// Hides an app this Mac doesn't need, or brings it back. Remembered across syncs.

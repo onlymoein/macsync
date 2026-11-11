@@ -87,6 +87,7 @@ struct ReviewView: View {
                     FilesPanel(area: .config, model: model)
                     FilesPanel(area: .ai, model: model)
                     FilesPanel(area: .appData, model: model)
+                    FilesPanel(area: .dev, model: model)
                     LoginItemsPanel(model: model)
                     // Settings sit lower down: Dock and apps first, then settings, then history.
                     if let plan = model.overview?.settingsPlan {
@@ -1212,6 +1213,12 @@ private struct AppsPanel: View {
                                 : kind == .appStore ? " · each opens its App Store page, click Get there" : " · installed with Homebrew"),
                             isExpanded: $open) {
                     HStack(spacing: 12) {
+                        let password = list.filter { Engine.needsPassword(model.gotten[$0.app.token]?.message) }
+                        if password.count > 1 {
+                            Button("Install \(password.count) in Terminal") { model.installInTerminal(password) }
+                                .glassButton().controlSize(.small)
+                                .help("Opens one Terminal window that installs them all; type your Mac password there. MacSync never types it.")
+                        }
                         getAll(list, label: kind == .tools ? "Install All" : "Get All")
                         switchAll(list)
                     }
@@ -1266,7 +1273,13 @@ private struct AppRow: View {
             AppIcon(missing: missing, image: model.icon(for: missing))
             VStack(alignment: .leading, spacing: 1) {
                 Text(missing.displayName).font(.body.weight(.medium)).lineLimit(1)
-                if let result, result.outcome == .failed, let message = result.message {
+                if model.inTerminal.contains(token) {
+                    Label("Installing in Terminal. Type your Mac password there.", systemImage: "terminal")
+                        .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                } else if let result, result.outcome == .failed, Engine.needsPassword(result.message) {
+                    Label("Needs your Mac password, so it installs in Terminal", systemImage: "lock.fill")
+                        .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                } else if let result, result.outcome == .failed, let message = result.message {
                     Text(message).font(.caption).foregroundStyle(Color.warning).lineLimit(2)
                 } else if let summary = missing.detail?.summary {
                     Text(summary).font(.caption).foregroundStyle(.secondary).lineLimit(1)
@@ -1302,7 +1315,10 @@ private struct AppRow: View {
     }
 
     @ViewBuilder private var action: some View {
-        if model.getting.contains(token) && model.isWaiting("get", token) {
+        if model.inTerminal.contains(token) {
+            Button("Check") { model.inTerminal.remove(token); model.syncNow() }.glassButton().controlSize(.small)
+                .help("When Terminal says Done, click to see it here. If you closed Terminal early, this shows Install again.")
+        } else if model.getting.contains(token) && model.isWaiting("get", token) {
             Label(model.work["get"]?.current.map { "After \($0)" } ?? "Starting…", systemImage: "clock")
                 .font(.caption).foregroundStyle(.secondary)
         } else if model.getting.contains(token) {
@@ -1324,7 +1340,7 @@ private struct AppRow: View {
             case .removed:
                 Label("Removed", systemImage: "trash").font(.callout).foregroundStyle(.secondary)
             case .failed:
-                if Engine.needsPassword(result.message) {
+                if Engine.needsPassword(result.message), Engine.brewCommand(for: missing) != nil {
                     Button("Install in Terminal") { model.installInTerminal(missing) }.primaryGlassButton().controlSize(.small)
                         .help("Opens Terminal with the install ready; type your Mac password there. MacSync never types it.")
                 } else {

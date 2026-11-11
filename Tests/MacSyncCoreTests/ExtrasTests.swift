@@ -186,3 +186,28 @@ final class MovedFormulaTests: XCTestCase {
         XCTAssertTrue(Planner.missingApps(local: air, others: [studio]).isEmpty)
     }
 }
+
+final class TerminalInstallTests: XCTestCase {
+    func testADevelopersAppPublishedByHomebrewInstallsInTerminal() throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("macsync-term-\(UUID().uuidString.prefix(6))")
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let tailscale = MissingApp(app: AppRef(source: .direct, name: "Tailscale"), fromMachines: ["Air"],
+                                   detail: AppDetail(displayName: "Tailscale"),
+                                   download: DirectApp(bundleID: "io.tailscale.ipn.macsys", name: "Tailscale", cask: "tailscale-app"))
+        let docker = MissingApp(app: AppRef(source: .cask, name: "docker-desktop"), fromMachines: ["Air"], detail: AppDetail(displayName: "Docker Desktop"))
+        let url = try XCTUnwrap(Engine.terminalInstall([docker, tailscale], in: folder))
+        let script = try String(contentsOf: url, encoding: .utf8)
+        XCTAssertTrue(script.contains("brew install --cask docker-desktop"))
+        XCTAssertTrue(script.contains("brew install --cask tailscale-app"))
+        XCTAssertEqual(url.lastPathComponent, "Install 2 apps.command")
+        let unknown = MissingApp(app: AppRef(source: .direct, name: "Thing"), fromMachines: [])
+        XCTAssertNil(Engine.terminalInstall([unknown], in: folder))
+    }
+
+    func testFindsTheDevelopersSetupFilesButNeverProvisioningProfiles() {
+        XCTAssertEqual(ExtrasCatalog.group(for: "~/Library/Developer/Xcode/UserData/KeyBindings/Mine.idekeybindings")?.id, "xcode")
+        XCTAssertNil(ExtrasCatalog.group(for: "~/Library/Developer/Xcode/UserData/Provisioning Profiles/x.mobileprovision")?.id)
+        XCTAssertTrue(Packages.isSafe("android-sdk:platforms/android-36"))
+        XCTAssertEqual(Packages.platformName("com.apple.platform.iphonesimulator".components(separatedBy: ".").last!), "iOS")
+    }
+}

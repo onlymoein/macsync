@@ -1042,7 +1042,7 @@ public final class Engine {
     static func brewStatus(_ line: String, name: String) -> String? {
         let text = line.trimmingCharacters(in: .whitespaces)
         if text.contains("Password:") || text.contains("sudo:") || text.contains("a terminal is required") {
-            return "\(name) needs your Mac password, which MacSync never types. Install it in Terminal: brew install \(name)"
+            return "Needs your Mac password, which MacSync never types."
         }
         if text.contains("xcode-select") || text.contains("Command Line Tools") {
             return "Homebrew needs Apple's Command Line Tools first. Run xcode-select --install in Terminal"
@@ -1061,16 +1061,34 @@ public final class Engine {
     /// Homebrew stopped because the installer wants the Mac's password (Adobe Creative Cloud, Office).
     public static func needsPassword(_ message: String?) -> Bool {
         guard let message else { return false }
-        return message.contains("password is required") || message.contains("needs your Mac password") || message.contains("a terminal is required")
+        return message.contains("password is required") || message.contains("eeds your Mac password") || message.contains("a terminal is required")
     }
 
-    /// Opens Terminal with a Homebrew install ready to go, where the person types their own password.
-    public static func terminalInstall(_ app: AppRef, in folder: URL) -> URL? {
-        guard app.isSafe, app.source == .cask || app.source == .formula else { return nil }
-        let command = app.source == .cask ? "brew install --cask \(app.name)" : "brew install \(app.name)"
-        let script = "#!/bin/zsh\nexport PATH=/opt/homebrew/bin:/usr/local/bin:$PATH\necho 'MacSync: installing \(app.name). Type your Mac password when asked.'\n\(command)\necho\necho 'Done. You can close this window.'\n"
+    /// The Homebrew command that installs an app, including a developer's app that Homebrew publishes.
+    public static func brewCommand(for missing: MissingApp) -> String? {
+        switch missing.app.source {
+        case .cask: return missing.app.isSafe ? "brew install --cask \(missing.app.name)" : nil
+        case .formula: return missing.app.isSafe ? "brew install \(missing.app.name)" : nil
+        case .direct:
+            guard let cask = missing.download?.cask, DirectApp.isSafeCask(cask) else { return nil }
+            return "brew install --cask \(cask)"
+        case .appStore: return nil
+        }
+    }
+
+    /// Opens Terminal with the installs ready to go, where the person types their own password.
+    public static func terminalInstall(_ apps: [MissingApp], in folder: URL) -> URL? {
+        let steps = apps.compactMap { app in brewCommand(for: app).map { (app.displayName, $0) } }
+        guard !steps.isEmpty else { return nil }
+        // Names go into echo lines, so only plain characters.
+        func plain(_ s: String) -> String { String(s.unicodeScalars.filter { CharacterSet.alphanumerics.contains($0) || " .-+".unicodeScalars.contains($0) }) }
+        var script = "#!/bin/zsh\nexport PATH=/opt/homebrew/bin:/usr/local/bin:$PATH\n"
+        script += "echo 'MacSync: installing \(steps.map { plain($0.0) }.joined(separator: ", ")). Type your Mac password when asked.'\n"
+        for (name, command) in steps { script += "echo\necho '==> \(plain(name))'\n\(command)\n" }
+        script += "echo\necho 'Done. MacSync picks this up on its next check. You can close this window.'\n"
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-        let url = folder.appendingPathComponent("Install \(app.name).command")
+        let title = steps.count == 1 ? plain(steps[0].0) : "\(steps.count) apps"
+        let url = folder.appendingPathComponent("Install \(title).command")
         guard (try? script.write(to: url, atomically: true, encoding: .utf8)) != nil else { return nil }
         try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: url.path)
         return url
@@ -1085,7 +1103,7 @@ public final class Engine {
             return "Homebrew no longer has \(name), so it can't be installed.\(hint) Switch it off if you don't need it."
         }
         if stderr.contains("a password is required") || stderr.contains("a terminal is required to read the password") {
-            return "\(name)'s installer needs your Mac password, which MacSync never types. Use Install in Terminal."
+            return "Needs your Mac password, which MacSync never types."
         }
         let last = lines.last { !$0.isEmpty } ?? "brew exited with \(status)."
         return last.replacingOccurrences(of: "^(Error|Warning): ", with: "", options: .regularExpression)

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.8.14
+
+- **Developer setup**: Xcode themes, key bindings, snippets and templates, and Android Studio keymaps, code styles, colors and templates sync like config files. Provisioning profiles, signing files and adb keys never leave the Mac.
+- Xcode simulators and Android SDK packages (platforms, build tools, system images) are listed per Mac, with Install for the missing ones through Xcode and Google's sdkmanager. Android licenses are never accepted for you.
+- Apps whose installer needs your Mac password now say so calmly, by name, and Install in Terminal works for developer apps Homebrew publishes too (Tailscale). Several at once get one "Install N in Terminal" button, and rows show Check while Terminal works.
+- The menu has History, Share and Update buttons next to the settings gear.
+
 ## 0.8.13
 - A command-line tool that's already on the Mac another way (vercel from npm, a binary you put there) is no longer offered again and again: its command in Homebrew's bin folder counts, and so does Homebrew saying it's already installed another way.
 - In AI apps, the ones not on this Mac fold away under "Not on this Mac yet", closed until you open it.

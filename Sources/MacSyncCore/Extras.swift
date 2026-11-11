@@ -52,7 +52,7 @@ public struct ExtrasSection: Codable, Equatable {
 
 // MARK: What is synced
 
-public enum FileArea: String, Codable, CaseIterable { case config, ai, appData }
+public enum FileArea: String, Codable, CaseIterable { case config, ai, appData, dev }
 
 public enum FileMode: Equatable {
     /// Text, shared only if nothing in it looks like a secret.
@@ -112,6 +112,18 @@ public enum ExtrasCatalog {
         g("cursor", .ai, "Cursor", "cursorarrow.rays", ["~/.cursor/rules/**"]),
         g("cursor-mcp", .ai, "Cursor MCP servers", "server.rack", ["~/.cursor/mcp.json"], .json),
 
+        // Developer setup. Never provisioning profiles, certificates or keystores: those are secrets.
+        g("xcode", .dev, "Xcode", "hammer", ["~/Library/Developer/Xcode/UserData/FontAndColorThemes/**",
+                                            "~/Library/Developer/Xcode/UserData/KeyBindings/**",
+                                            "~/Library/Developer/Xcode/UserData/CodeSnippets/**",
+                                            "~/Library/Developer/Xcode/Templates/**"], needs: ["com.apple.dt.Xcode"]),
+        g("android-studio", .dev, "Android Studio", "a.square", ["~/Library/Application Support/Google/AndroidStudio*/keymaps/**",
+                                                                 "~/Library/Application Support/Google/AndroidStudio*/codestyles/**",
+                                                                 "~/Library/Application Support/Google/AndroidStudio*/colors/**",
+                                                                 "~/Library/Application Support/Google/AndroidStudio*/templates/**",
+                                                                 "~/Library/Application Support/Google/AndroidStudio*/fileTemplates/**"],
+          needs: ["com.google.android.studio"]),
+
         g("photoshop", .appData, "Photoshop presets", "paintbrush", ["~/Library/Application Support/Adobe/Adobe Photoshop */Presets/**"],
           .binary, needs: ["com.adobe.Photoshop"]),
         g("cameraraw", .appData, "Camera Raw presets", "camera.aperture", ["~/Library/Application Support/Adobe/CameraRaw/Settings/**",
@@ -132,7 +144,7 @@ public enum ExtrasCatalog {
     }
 
     /// Never shared, whatever the pattern says.
-    static let neverPrefixes = ["~/.ssh", "~/.aws", "~/.gnupg", "~/.config/op", "~/.netrc", "~/.docker", "~/.kube",
+    static let neverPrefixes = ["~/Library/Developer/Xcode/UserData/Provisioning Profiles", "~/Library/MobileDevice", "~/.android/adbkey", "~/.ssh", "~/.aws", "~/.gnupg", "~/.config/op", "~/.netrc", "~/.docker", "~/.kube",
                                 "~/.config/gh", "~/.claude/.credentials", "~/.codex/auth.json", "~/.config/raycast/extensions"]
     static let neverNames = try! NSRegularExpression(pattern:
         "(history|\\.env($|\\.)|secret|credential|token|password|id_rsa|id_ed25519|\\.pem$|\\.key$|\\.p12$|\\.p8$|keychain|\\.sqlite|\\.db$|\\.log$|cookies)",
@@ -995,6 +1007,37 @@ final class Extras {
                 if let repo = (source?["repo"] as? String) ?? (source?["url"] as? String) { marketplaces[name] = repo }
             }
         }
+        // Xcode's simulator runtimes, so the other Macs can download the same ones.
+        if FileManager.default.isExecutableFile(atPath: "/usr/bin/xcrun") {
+            let r = runner.stream("/usr/bin/xcrun", ["simctl", "runtime", "list", "-j"], input: nil, environment: [:], idleTimeout: 30) { _ in }
+            if r.status == 0, let data = r.output.data(using: .utf8),
+               let all = try? JSONSerialization.jsonObject(with: data) as? [String: [String: Any]] {
+                for runtime in all.values {
+                    guard let version = runtime["version"] as? String,
+                          let platform = (runtime["platformIdentifier"] as? String)?.components(separatedBy: ".").last else { continue }
+                    let name = Packages.platformName(platform)
+                    let token = "xcode-runtime:\(name)@\(version)"
+                    tokens.append(token)
+                    names[token] = "\(name) \(version) simulator"
+                }
+            }
+        }
+        // The Android SDK: platforms, build tools, system images.
+        if let sdk = Packages.sdkmanager() {
+            let r = runner.stream(sdk, ["--list_installed"], input: nil, environment: Packages.androidEnv, idleTimeout: 60) { _ in }
+            if r.status == 0 {
+                for line in InventoryReader.lines(r.output) {
+                    let path = line.split(separator: " ").first.map(String.init) ?? ""
+                    guard path.contains("/") || ["platform-tools", "emulator"].contains(path),
+                          !path.hasPrefix("cmdline-tools"), !line.hasPrefix("Installed") else { continue }
+                    let token = "android-sdk:" + path
+                    tokens.append(token)
+                    if let desc = line.components(separatedBy: "  ").filter({ !$0.trimmingCharacters(in: .whitespaces).isEmpty }).last {
+                        names[token] = String(desc.trimmingCharacters(in: .whitespaces).prefix(60))
+                    }
+                }
+            }
+        }
         // Steam games, so the other Macs can download them from Steam.
         let steam = ExtrasFiles.expand("~/Library/Application Support/Steam/steamapps", home: env.homeDirectory)
         for file in ((try? FileManager.default.contentsOfDirectory(atPath: steam)) ?? []) where file.hasPrefix("appmanifest_") {
@@ -1025,7 +1068,31 @@ public enum Packages {
         ("cursor", "Cursor extensions", "puzzlepiece.extension"), ("npm", "npm packages", "shippingbox"),
         ("uv", "Python tools (uv)", "shippingbox"), ("claude-plugin", "Claude Code plugins", "sparkles"),
         ("steam", "Steam games", "gamecontroller"),
+        ("xcode-runtime", "Xcode simulators", "iphone"), ("android-sdk", "Android SDK", "a.square"),
     ]
+
+    static func platformName(_ id: String) -> String {
+        switch id.lowercased() {
+        case "iphonesimulator": return "iOS"
+        case "watchsimulator": return "watchOS"
+        case "appletvsimulator": return "tvOS"
+        case "xrsimulator": return "visionOS"
+        default: return id
+        }
+    }
+
+    static let androidSDK = NSHomeDirectory() + "/Library/Android/sdk"
+    static func sdkmanager() -> String? {
+        [androidSDK + "/cmdline-tools/latest/bin/sdkmanager", "/opt/homebrew/bin/sdkmanager"].first(where: FileManager.default.isExecutableFile)
+    }
+    /// sdkmanager needs Java; Android Studio carries its own.
+    static var androidEnv: [String: String] {
+        var env = toolEnv
+        let jbr = "/Applications/Android Studio.app/Contents/jbr/Contents/Home"
+        if FileManager.default.fileExists(atPath: jbr) { env["JAVA_HOME"] = jbr }
+        env["ANDROID_HOME"] = androidSDK
+        return env
+    }
 
     public static func kind(_ token: String) -> String { String(token.prefix { $0 != ":" }) }
     public static func label(kind: String) -> String { kinds.first { $0.kind == kind }?.label ?? kind }
@@ -1034,7 +1101,7 @@ public enum Packages {
         let kind = kind(token)
         let name = String(token.dropFirst(kind.count + 1))
         guard kinds.contains(where: { $0.kind == kind }), !name.isEmpty, !name.hasPrefix("-"), name.count < 200 else { return false }
-        return name.range(of: "^[A-Za-z0-9@._/+-]+$", options: .regularExpression) != nil
+        return name.range(of: "^[A-Za-z0-9@._/+;-]+$", options: .regularExpression) != nil
     }
 
     static func canInstall(_ token: String, env: MacSyncEnvironment, locator: AppLocating) -> Bool {
@@ -1047,6 +1114,8 @@ public enum Packages {
         case "uv": return uv.contains(where: fm.isExecutableFile)
         case "claude-plugin": return claude.contains(where: fm.isExecutableFile)
         case "steam": return locator.path(forBundleID: "com.valvesoftware.steam") != nil
+        case "xcode-runtime": return FileManager.default.fileExists(atPath: "/Applications/Xcode.app")
+        case "android-sdk": return sdkmanager() != nil
         default: return false
         }
     }
@@ -1077,6 +1146,21 @@ public enum Packages {
         case "steam":
             let result = runner.run("/usr/bin/open", ["steam://install/" + name], input: nil, environment: [:])
             return result.status == 0 ? .success(()) : .failure(.refused("Steam didn't open"))
+        case "xcode-runtime":
+            let parts = name.split(separator: "@").map(String.init)
+            guard parts.count == 2 else { return .failure(.refused("unknown runtime")) }
+            let r = runner.stream("/usr/bin/xcodebuild", ["-downloadPlatform", parts[0], "-buildVersion", parts[1]], input: nil,
+                                  environment: [:], idleTimeout: 900) { _ in }
+            return r.status == 0 ? .success(()) : .failure(.refused(r.stderr.split(whereSeparator: \.isNewline).last.map(String.init)
+                                                                    ?? "Xcode didn't download it. Use Xcode → Settings → Components."))
+        case "android-sdk":
+            guard let sdk = sdkmanager() else { return .failure(.refused("Android's sdkmanager isn't on this Mac")) }
+            let r = runner.stream(sdk, [name.replacingOccurrences(of: "/", with: ";")], input: nil, environment: androidEnv, idleTimeout: 900) { _ in }
+            if r.status == 0 { return .success(()) }
+            if (r.output + r.stderr).lowercased().contains("license") {
+                return .failure(.refused("Android's licenses haven't been accepted on this Mac. In Terminal: sdkmanager --licenses"))
+            }
+            return .failure(.refused((r.output + r.stderr).split(whereSeparator: \.isNewline).last.map(String.init) ?? "it didn't install"))
         default: return .failure(.refused("unknown kind"))
         }
     }
@@ -1101,6 +1185,12 @@ public enum Packages {
         case "steam":
             let result = runner.run("/usr/bin/open", ["steam://uninstall/" + name], input: nil, environment: [:])
             return result.status == 0 ? .success(()) : .failure(.refused("Steam didn't open"))
+        case "xcode-runtime": return .failure(.refused("Remove simulators in Xcode → Settings → Components."))
+        case "android-sdk":
+            guard let sdk = sdkmanager() else { return .failure(.refused("Android's sdkmanager isn't on this Mac")) }
+            let r = runner.stream(sdk, ["--uninstall", name.replacingOccurrences(of: "/", with: ";")], input: nil, environment: androidEnv,
+                                  idleTimeout: 300) { _ in }
+            return r.status == 0 ? .success(()) : .failure(.refused("sdkmanager couldn't remove it"))
         default: return .failure(.refused("unknown kind"))
         }
     }
