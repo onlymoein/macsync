@@ -93,6 +93,10 @@ struct MenuView: View {
         HStack {
             Menu {
                 Button("Open Sync Window…") { ReviewWindow.shared.show(model: model) }
+                Button("History…") {
+                    model.showHistory = true
+                    ReviewWindow.shared.show(model: model)
+                }
                 Divider()
                 Toggle("Sync Automatically", isOn: $model.autoSync)
                 Toggle("Apply Dock Changes When I Open the Lid", isOn: $model.autoApplyDock)

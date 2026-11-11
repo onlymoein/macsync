@@ -41,7 +41,7 @@ final class AppModel: ObservableObject {
     @Published var availableUpdate: SelfUpdater.Release?
     @Published var updateMessage: String?
     @Published var isUpdating = false
-    /// Off by default: when on, opening the lid applies Dock changes from the other Macs without
+    /// On by default: opening the lid applies Dock changes from the other Macs without
     /// asking. A restore point is saved first, and Undo is in the menu.
     @Published var autoApplyDock: Bool {
         didSet { UserDefaults.standard.set(autoApplyDock, forKey: "autoApplyDock") }
@@ -90,7 +90,7 @@ final class AppModel: ObservableObject {
     init() {
         autoSync = UserDefaults.standard.object(forKey: "autoSync") as? Bool ?? true
         autoUpdate = UserDefaults.standard.object(forKey: "autoUpdate") as? Bool ?? true
-        autoApplyDock = UserDefaults.standard.bool(forKey: "autoApplyDock")
+        autoApplyDock = UserDefaults.standard.object(forKey: "autoApplyDock") as? Bool ?? true
         scheduleTimer()
         wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
@@ -405,6 +405,9 @@ final class AppModel: ObservableObject {
             getNext()
         }
     }
+
+    /// Set to open the sync window at its History section.
+    @Published var showHistory = false
 
     func setDockOrder(_ machineID: String?) {
         let engine = engine

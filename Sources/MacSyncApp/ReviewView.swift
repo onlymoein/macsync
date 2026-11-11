@@ -47,6 +47,7 @@ struct ReviewView: View {
     var body: some View {
         ZStack(alignment: .bottom) {
             Backdrop()
+            ScrollViewReader { scroller in
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     header
@@ -72,7 +73,7 @@ struct ReviewView: View {
                     AppsPanel(kind: .tools, model: model)
                     ThisMacPanel(kind: .apps, model: model)
                     ThisMacPanel(kind: .tools, model: model)
-                    HistoryPanel(model: model)
+                    HistoryPanel(model: model).id("history")
                     if let overview = model.overview, !overview.hasPendingChanges, !model.canApply, model.lastReport == nil {
                         VStack(spacing: 8) {
                             Image(systemName: "checkmark.seal.fill").font(.system(size: 34)).foregroundStyle(.green)
@@ -85,6 +86,9 @@ struct ReviewView: View {
                 .padding(.horizontal, 22)
                 .padding(.top, 34)
                 .padding(.bottom, 96)
+            }
+            .onAppear { jumpToHistory(scroller) }
+            .onChange(of: model.showHistory) { _ in jumpToHistory(scroller) }
             }
             footer
         }
@@ -103,6 +107,15 @@ struct ReviewView: View {
                     }
                 }
             }
+        }
+    }
+
+    private func jumpToHistory(_ scroller: ScrollViewProxy) {
+        guard model.showHistory else { return }
+        UserDefaults.standard.set(true, forKey: "review.history.open")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            withAnimation { scroller.scrollTo("history", anchor: .top) }
+            model.showHistory = false
         }
     }
 
@@ -685,11 +698,16 @@ private struct HistoryPanel: View {
     private var points: [RestorePointInfo] { model.overview?.history ?? [] }
 
     var body: some View {
-        if !points.isEmpty {
+        do {
             VStack(alignment: .leading, spacing: 12) {
                 PanelHeader(symbol: "clock.arrow.circlepath", title: "History",
-                            subtitle: "\(points.count) saved on this Mac · go back to before any of them", isExpanded: $open) { EmptyView() }
-                if open {
+                            subtitle: points.isEmpty ? "Nothing applied on this Mac yet"
+                                : "\(points.count) saved on this Mac · go back to before any of them", isExpanded: $open) { EmptyView() }
+                if open && points.isEmpty {
+                    Text("Each time you press Apply, MacSync saves how this Mac was first. They show up here, and Restore goes back to any of them.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                if open && !points.isEmpty {
                     VStack(spacing: 2) {
                         ForEach(points) { point in
                             HStack(spacing: 12) {

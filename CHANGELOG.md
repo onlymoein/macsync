@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.5.6
+- Apply Dock changes when you open the lid is now on by default.
+- History is in the gear menu, and the History section shows even before your first Apply.
+
 ## 0.5.5
 - Homebrew installs and upgrades work whether MacSync is open or not: a running MacSync restarts itself into the new version when its app is replaced.
 
