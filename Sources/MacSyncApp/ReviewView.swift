@@ -332,15 +332,25 @@ private struct AppsPanel: View {
                     }
                 }
                 if !tools.isEmpty {
-                    DisclosureGroup(isExpanded: $showTools) {
-                        VStack(spacing: 2) { ForEach(tools) { AppRow(missing: $0, model: model) } }
-                            .padding(.top, 6)
-                    } label: {
+                    VStack(alignment: .leading, spacing: 6) {
                         HStack {
-                            Text("Command-line tools").font(.callout.weight(.medium))
-                            Text("\(tools.count)").font(.callout).foregroundStyle(.secondary)
+                            // The whole label opens the list, not just the small arrow.
+                            Button { withAnimation(.easeInOut(duration: 0.2)) { showTools.toggle() } } label: {
+                                HStack(spacing: 8) {
+                                    Image(systemName: "chevron.right").font(.caption.weight(.bold))
+                                        .rotationEffect(.degrees(showTools ? 90 : 0))
+                                    Text("Command-line tools").font(.callout.weight(.medium))
+                                    Text("\(tools.count)").font(.callout).foregroundStyle(.secondary)
+                                }
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel(showTools ? "Hide command-line tools" : "Show command-line tools")
                             Spacer()
                             getAll(tools, label: "Install All")
+                        }
+                        if showTools {
+                            VStack(spacing: 2) { ForEach(tools) { AppRow(missing: $0, model: model) } }
                         }
                     }
                 }
