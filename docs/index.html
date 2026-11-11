@@ -158,7 +158,14 @@
   .share .mug { background: linear-gradient(140deg, #5e5ce6, #0a84ff); box-shadow: 0 10px 24px -8px #5e5ce6aa; }
   .share .pill { background: color-mix(in srgb, #5e5ce6 16%, transparent); }
 
+
+  .progress { background: radial-gradient(120% 90% at 0% 100%, color-mix(in srgb, #28b858 12%, transparent), transparent 60%), var(--card); }
+  .progress .mug { background: linear-gradient(140deg, #28b858, #7ad94a); box-shadow: 0 10px 24px -8px #28b858aa; }
+  .progress .pill { background: color-mix(in srgb, #28b858 16%, transparent); }
+  .progress-shots { display:grid; grid-template-columns: 1.5fr 1fr; gap: 14px; align-items:start; }
+
   @media (max-width: 820px) {
+    .progress-shots { grid-template-columns: 1fr; }
     .share { grid-template-columns: 1fr; padding: 22px; }
     .brew { grid-template-columns: 1fr; padding: 22px; }
     .stop { grid-template-columns: 1fr; gap: 14px; } .stop:nth-child(even) .stop-text { order: 0; }
@@ -399,6 +406,34 @@ brew install --cask macsync</pre>
           <li>Remove it any time; whatever they already took stays</li>
         </ul>
         <div class="badge-row"><span class="pill">One .macsync file</span><span class="pill">You choose the sections</span><span class="pill">Secrets left out</span></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="progress">
+    <div class="brew progress">
+      <div>
+        <span class="mug"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg></span>
+        <p class="eyebrow">Always shows its work</p>
+        <h2>See exactly what it's doing, and what's next</h2>
+        <ul class="ticks">
+          <li>A progress bar while it installs, removes or updates: how many are done, what's happening now, and what comes next</li>
+          <li>The same bar in the menu bar, so you can close the window and still follow along</li>
+          <li>The app being downloaded shows its own bar and percentage</li>
+          <li>Everything still in line says Waiting; a finished one says Installed, or why it didn't</li>
+          <li>Works for apps, ArtCraft, Homebrew updates and removals</li>
+        </ul>
+        <div class="badge-row"><span class="pill">n of N</span><span class="pill">Downloading 42%</span><span class="pill">Next: btop</span></div>
+      </div>
+      <div class="progress-shots">
+        <div>
+          <img class="shot shot-light" src="assets/section-progress-light.png" alt="ArtCraft apps installing, one downloading with a progress bar and the rest waiting" loading="lazy">
+          <img class="shot shot-dark" src="assets/section-progress-dark.png" alt="ArtCraft apps installing, one downloading with a progress bar and the rest waiting" loading="lazy">
+        </div>
+        <div>
+          <img class="shot shot-light" src="assets/menu-progress-light.png" alt="The MacSync menu with a progress bar and what's next" loading="lazy">
+          <img class="shot shot-dark" src="assets/menu-progress-dark.png" alt="The MacSync menu with a progress bar and what's next" loading="lazy">
+        </div>
       </div>
     </div>
   </section>
