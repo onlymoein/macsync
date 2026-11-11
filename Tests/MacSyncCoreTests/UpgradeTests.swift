@@ -60,10 +60,10 @@ final class StreamTests: XCTestCase {
     func testLinesArriveAsTheyArePrintedAndSilenceStopsIt() {
         var lines: [String] = []
         let ok = SystemCommandRunner().stream("/bin/sh", ["-c", "echo '==> Downloading x'; sleep 0.3; echo '==> Pouring x'"],
-                                              environment: [:], idleTimeout: 5) { lines.append($0) }
+                                              input: nil, environment: [:], idleTimeout: 5) { lines.append($0) }
         XCTAssertEqual(ok.status, 0)
         XCTAssertEqual(lines, ["==> Downloading x", "==> Pouring x"])
-        let quiet = SystemCommandRunner().stream("/bin/sh", ["-c", "echo start; sleep 30"], environment: [:], idleTimeout: 1) { _ in }
+        let quiet = SystemCommandRunner().stream("/bin/sh", ["-c", "echo start; sleep 30"], input: nil, environment: [:], idleTimeout: 1) { _ in }
         XCTAssertEqual(quiet.status, -2)
         XCTAssertTrue(quiet.stderr.contains("printed nothing"))
         XCTAssertEqual(Engine.brewStatus("Password:", name: "x")?.contains("password"), true)

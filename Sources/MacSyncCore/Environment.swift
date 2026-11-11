@@ -20,7 +20,7 @@ public struct MacSyncEnvironment {
     public var applicationsDirectory: URL
     public var homeDirectory: String
 
-    public static let appVersion = "0.8.3"
+    public static let appVersion = "0.8.4"
 
     public var iCloudAvailable: Bool {
         FileManager.default.fileExists(atPath: syncDirectory.deletingLastPathComponent().path)
@@ -62,14 +62,14 @@ public protocol CommandRunning {
     func run(_ executable: String, _ arguments: [String], input: Data?, environment: [String: String]) -> CommandResult
     /// Like `run`, but hands over each line as it's printed, and stops the tool when it prints
     /// nothing for `idleTimeout` seconds.
-    func stream(_ executable: String, _ arguments: [String], environment: [String: String], idleTimeout: TimeInterval,
+    func stream(_ executable: String, _ arguments: [String], input: Data?, environment: [String: String], idleTimeout: TimeInterval,
                 onLine: @escaping (String) -> Void) -> CommandResult
 }
 
 extension CommandRunning {
-    public func stream(_ executable: String, _ arguments: [String], environment: [String: String], idleTimeout: TimeInterval,
+    public func stream(_ executable: String, _ arguments: [String], input: Data?, environment: [String: String], idleTimeout: TimeInterval,
                        onLine: @escaping (String) -> Void) -> CommandResult {
-        let result = run(executable, arguments, input: nil, environment: environment)
+        let result = run(executable, arguments, input: input, environment: environment)
         (result.output + "\n" + result.stderr).split(whereSeparator: \.isNewline).forEach { onLine(String($0)) }
         return result
     }
@@ -90,13 +90,14 @@ public struct CommandResult {
 public struct SystemCommandRunner: CommandRunning {
     public init() {}
 
-    public func stream(_ executable: String, _ arguments: [String], environment: [String: String], idleTimeout: TimeInterval,
+    public func stream(_ executable: String, _ arguments: [String], input: Data?, environment: [String: String], idleTimeout: TimeInterval,
                        onLine: @escaping (String) -> Void) -> CommandResult {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: executable)
         process.arguments = arguments
         process.environment = ProcessInfo.processInfo.environment.merging(environment) { $1 }
-        process.standardInput = FileHandle.nullDevice
+        let inPipe = input == nil ? nil : Pipe()
+        process.standardInput = inPipe ?? FileHandle.nullDevice
         let out = Pipe(), err = Pipe()
         process.standardOutput = out
         process.standardError = err
@@ -120,6 +121,10 @@ public struct SystemCommandRunner: CommandRunning {
         err.fileHandleForReading.readabilityHandler = { handle in let d = handle.availableData; if !d.isEmpty { take(d, isError: true) } }
         do { try process.run() } catch {
             return CommandResult(status: -1, stderr: "Could not run \(executable): \(error.localizedDescription)")
+        }
+        if let inPipe, let input {
+            inPipe.fileHandleForWriting.write(input)
+            try? inPipe.fileHandleForWriting.close()
         }
         var timedOut = false
         while process.isRunning {

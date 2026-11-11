@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.8.4
+- ArtCraft installs say which step they're on: Downloading, Verifying, Opening the disk image, Checking the signature, Copying into the folder.
+- No step can wait forever: opening a disk image stops after 3 quiet minutes and copying after 10, with an error and the Install button to try again. A disk image with a license agreement is answered automatically.
+
 ## 0.8.3
 - Homebrew installs say what they're doing on the row as it happens: Downloading btop… 12 MB (watched as it arrives), Installing, Installing what it needs, Building from source, or Waiting for another Homebrew job to finish.
 - When Homebrew wants your Mac password, or Apple's Command Line Tools, the row says so and how to do it, instead of sitting on Installing.

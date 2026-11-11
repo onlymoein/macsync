@@ -1125,7 +1125,7 @@ public final class Engine {
                 report?("Downloading \(name)… \(ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file))")
             }
             watcher.start()
-            let result = runner.stream(brew, args, environment: InventoryReader.brewEnvironment(brew), idleTimeout: 600) { line in
+            let result = runner.stream(brew, args, input: nil, environment: InventoryReader.brewEnvironment(brew), idleTimeout: 600) { line in
                 if let status = Self.brewStatus(line, name: name) { report?(status) }
             }
             watcher.stop()

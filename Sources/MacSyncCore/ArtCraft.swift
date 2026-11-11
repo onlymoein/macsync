@@ -284,16 +284,23 @@ public struct ArtCraft {
             progress(percent.map { "Downloading \(app.name)… \($0)%" }
                      ?? "Downloading \(app.name)… \(ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file))")
         }
-        progress("Checking and installing \(app.name)…")
         guard get.status == 0, fm.fileExists(atPath: dmg.path) else { return .failure(.refused("\(app.name) didn't download.")) }
+        progress("Verifying \(app.name)…")
         if let expected = app.sha256, AppDownloader.sha256(of: dmg) != expected {
             return .failure(.refused("The download of \(app.name) didn't match ArtCraft's published checksum, so it wasn't installed."))
         }
         let mount = work.appendingPathComponent("mount")
         try? fm.createDirectory(at: mount, withIntermediateDirectories: true)
-        guard runner.run("/usr/bin/hdiutil", ["attach", "-nobrowse", "-readonly", "-noautoopen", "-mountpoint", mount.path, dmg.path],
-                         input: nil, environment: [:]).status == 0 else {
-            return .failure(.refused("\(app.name)'s disk image couldn't be opened."))
+        progress("Opening \(app.name)'s disk image…")
+        // A disk image with a license agreement asks on stdin: it gets its "Y", and the pager is
+        // cat, so nothing waits on a person. And nothing waits forever: three quiet minutes ends it.
+        let attach = runner.stream("/usr/bin/hdiutil", ["attach", "-nobrowse", "-readonly", "-noautoopen", "-noverify",
+                                                         "-mountpoint", mount.path, dmg.path],
+                                   input: Data("Y\n".utf8), environment: ["PAGER": "/bin/cat"], idleTimeout: 180) { _ in }
+        guard attach.status == 0 else {
+            _ = runner.run("/usr/bin/hdiutil", ["detach", mount.path, "-quiet", "-force"], input: nil, environment: [:])
+            return .failure(.refused(attach.status == -2 ? "\(app.name)'s disk image didn't open within 3 minutes. Try again."
+                                                         : "\(app.name)'s disk image couldn't be opened."))
         }
         defer { _ = runner.run("/usr/bin/hdiutil", ["detach", mount.path, "-quiet", "-force"], input: nil, environment: [:]) }
         let found = ((try? fm.contentsOfDirectory(atPath: mount.path)) ?? []).first { $0.hasSuffix(".app") }
@@ -305,6 +312,7 @@ public struct ArtCraft {
             return .failure(.refused("\(app.name)'s disk image doesn't hold a proper app."))
         }
         if let team = app.team {
+            progress("Checking \(app.name)'s signature…")
             let sig = runner.run("/usr/bin/codesign", ["-dv", "--verbose=2", source.path], input: nil, environment: [:])
             guard (sig.stderr + sig.output).contains("TeamIdentifier=\(team)") else {
                 return .failure(.refused("\(app.name) isn't signed by its developer as ArtCraft's catalog says, so it wasn't installed."))
@@ -312,9 +320,12 @@ public struct ArtCraft {
         }
         let target = folder.appendingPathComponent(found)
         let staged = folder.appendingPathComponent(".macsync-\(UUID().uuidString.prefix(6))-" + found)
-        guard runner.run("/usr/bin/ditto", [source.path, staged.path], input: nil, environment: [:]).status == 0 else {
+        progress("Copying \(app.name) into \(folder.lastPathComponent)…")
+        let copy = runner.stream("/usr/bin/ditto", [source.path, staged.path], input: nil, environment: [:], idleTimeout: 600) { _ in }
+        guard copy.status == 0 else {
             try? fm.removeItem(at: staged)
-            return .failure(.refused("\(app.name) couldn't be copied into \(folder.lastPathComponent)."))
+            return .failure(.refused(copy.status == -2 ? "Copying \(app.name) stopped making progress. Try again."
+                                                       : "\(app.name) couldn't be copied into \(folder.lastPathComponent)."))
         }
         // An update: the old copy goes to the Trash, where it can be put back.
         if fm.fileExists(atPath: target.path) {
