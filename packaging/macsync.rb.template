@@ -19,6 +19,9 @@ cask "macsync" do
   app "MacSync.app"
   binary "#{appdir}/MacSync.app/Contents/Helpers/macsync"
 
+  # No quit step: a running MacSync notices when its app is replaced and restarts itself into
+  # the new version, so installs and upgrades work whether it's open or not.
+
   zap trash: [
     "~/Library/Application Support/MacSync",
     "~/Library/Preferences/com.onlymehdi.macsync.plist",

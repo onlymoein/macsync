@@ -68,6 +68,20 @@ final class AppModel: ObservableObject {
     /// Checks the live Dock every few seconds, so a moved icon shows up and syncs right away
     /// even before macOS writes the Dock's file.
     private var dockPoll: Timer?
+    private var replacedCheck: Timer?
+
+    /// Restarts into the new version once the app on disk has been replaced, unless something
+    /// is in the middle of changing the Mac. The version in Info.plist on disk tells.
+    func relaunchIfReplaced() {
+        let plist = Bundle.main.bundleURL.appendingPathComponent("Contents/Info.plist")
+        guard let info = NSDictionary(contentsOf: plist), let onDisk = info["CFBundleShortVersionString"] as? String,
+              onDisk != MacSyncEnvironment.appVersion,
+              !isApplying, !isSyncing, getting.isEmpty, removing.isEmpty, !isUpdating else { return }
+        // Once per new version, so a mismatched copy can't restart over and over.
+        guard UserDefaults.standard.string(forKey: "relaunchedFor") != onDisk else { return }
+        UserDefaults.standard.set(onDisk, forKey: "relaunchedFor")
+        Self.relaunch()
+    }
     private var lastDockFingerprint: String?
 
     private static let syncInterval: TimeInterval = 5 * 60
@@ -101,6 +115,10 @@ final class AppModel: ObservableObject {
         }
         dockPoll = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.pollDock() }
+        }
+        // Homebrew, a manual drag or an update may replace the app while it runs: restart into it.
+        replacedCheck = Timer.scheduledTimer(withTimeInterval: 20, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.relaunchIfReplaced() }
         }
         syncNow()
         checkForUpdates()
@@ -620,11 +638,12 @@ final class AppModel: ObservableObject {
         }
     }
 
-    private static func relaunch() {
+    static func relaunch() {
         let path = Bundle.main.bundleURL.path
         let task = Process()
         task.executableURL = URL(fileURLWithPath: "/bin/sh")
-        task.arguments = ["-c", "sleep 1; /usr/bin/open \"$0\"", path]
+        // A moment's wait, so whatever is replacing the app has finished.
+        task.arguments = ["-c", "sleep 3; /usr/bin/open \"$0\"", path]
         try? task.run()
         NSApp.terminate(nil)
     }
