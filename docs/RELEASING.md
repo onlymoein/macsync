@@ -62,7 +62,7 @@ gh release create v0.2.0 build/release/MacSync-0.2.0.zip --title "MacSync 0.2.0"
 5. On a Mac that has never had MacSync, check the whole path:
 
 ```bash
-brew install --cask onlymoein/tap/macsync
+brew tap onlymoein/tap && brew trust onlymoein/tap && brew install --cask macsync
 ```
 
 ## Checks worth doing before the first public release

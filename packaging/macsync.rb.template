@@ -14,7 +14,7 @@ cask "macsync" do
 
   # MacSync updates itself from GitHub releases (through `brew upgrade` when Homebrew installed it).
   auto_updates true
-  depends_on macos: ">= :ventura"
+  depends_on macos: :ventura
 
   app "MacSync.app"
   binary "#{appdir}/MacSync.app/Contents/Helpers/macsync"

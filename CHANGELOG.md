@@ -2,7 +2,7 @@
 
 ## 0.5.4
 - History: every Apply is saved, and you can go back to before any of the last 20, not only the last one (sync window, or `macsync restore <id>`).
-- Updates and Homebrew now come from github.com/onlymoein/macsync: `brew install --cask onlymoein/tap/macsync`.
+- Updates and Homebrew now come from github.com/onlymoein/macsync: `brew tap onlymoein/tap && brew trust onlymoein/tap && brew install --cask macsync`.
 
 ## 0.5.3
 - Optional: apply Dock changes from your other Macs when you open the lid.
