@@ -519,6 +519,16 @@ struct SignInPanel: View {
 
 struct UpdatesPanel: View {
     @ObservedObject var model: AppModel
+
+    static func kind(_ token: String) -> String {
+        switch Packages.kind(token) {
+        case "cask": return "Homebrew app"
+        case "formula": return "Homebrew tool"
+        case "npm": return "npm"
+        case "uv": return "uv"
+        default: return ""
+        }
+    }
     @AppStorage("review.updates.open") private var open = true
 
     var body: some View {
@@ -531,12 +541,35 @@ struct UpdatesPanel: View {
                         isExpanded: $open) {
                 Toggle("Automatic", isOn: $model.autoUpgrade).toggleStyle(.switch).controlSize(.small)
                     .help("Check and update on open and every six hours")
-                let pending = !(report?.waiting.isEmpty ?? true) || !(report?.failures.isEmpty ?? true)
-                Button(model.upgrading ? "Checking…" : pending || report == nil ? "Update Now" : "Check Again") { model.upgradeAll() }
-                    .help("Look for newer versions now")
+                let outdated = report?.outdated ?? []
+                if !outdated.isEmpty {
+                    Button("Update All (\(outdated.count))") { model.upgrade(outdated) }
+                        .primaryGlassButton().controlSize(.small).disabled(model.upgrading)
+                }
+                Button(model.upgrading ? "Checking…" : "Check Again") { if model.autoUpgrade { model.upgradeAll() } else { model.checkUpgrades() } }
+                    .help(model.autoUpgrade ? "Look for newer versions and install them" : "Look for newer versions")
                     .glassButton().controlSize(.small).disabled(model.upgrading)
             }
             if open, let report {
+                let outdated = report.outdated ?? []
+                if !outdated.isEmpty {
+                    Text("Newer versions are out. Update them one at a time, or all at once.")
+                        .font(.caption).foregroundStyle(.secondary)
+                    ForEach(outdated) { item in
+                        HStack(spacing: 12) {
+                            if let image = model.icon(forApp: item.bundleID) { Image(nsImage: image).resizable().frame(width: 28, height: 28) }
+                            else { RowIcon(symbol: item.token.hasPrefix("cask:") ? "app.dashed" : "terminal") }
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(item.name).font(.body.weight(.medium)).lineLimit(1)
+                                Text("\(item.from) → \(item.to) · \(Self.kind(item.token))").font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                            }
+                            Spacer()
+                            if model.upgradeBusy.contains(item.token) { ProgressView().controlSize(.small) }
+                            else { Button("Update") { model.upgrade([item]) }.glassButton().controlSize(.small).disabled(model.upgrading) }
+                        }
+                        .padding(.horizontal, 8).padding(.vertical, 3)
+                    }
+                }
                 if !report.waiting.isEmpty {
                     Text("Open right now, so they wait. Quit and Update closes the app, updates it and opens it again.")
                         .font(.caption).foregroundStyle(.secondary)

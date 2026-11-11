@@ -15,6 +15,7 @@ macsync \(MacSyncEnvironment.appVersion): keep your Macs set up the same way.
       --all-apps             Also install everything your other Macs have
   macsync undo [--yes]       Undo the last apply
   macsync app-prefs [add|remove <domain>]   Choose apps whose preferences sync (Pro)
+  macsync outdated           List Homebrew apps and tools, npm packages and uv tools with newer versions
   macsync files              List the config files, AI setup and app data this Mac shares, and what it keeps back
   macsync restore-points     List saved restore points
   macsync restore <id>       Go back to just before that restore point
@@ -144,6 +145,12 @@ do {
         if json { try printJSON(now) } else {
             print(now.isEmpty ? "No apps chosen yet. Try: macsync app-prefs add com.raycast.macos" : "Syncing preferences of: " + now.joined(separator: ", "))
             if words.isEmpty { print("Available on this Mac: \(engine.availableAppPrefDomains().count). Passwords, tokens and keys are never synced.") }
+        }
+    case "outdated":
+        let report = engine.upgrader.check()
+        let items = report.outdated ?? []
+        if json { try printJSON(items) } else if items.isEmpty { print("Everything is up to date.") } else {
+            for item in items { print("\(item.name): \(item.from) → \(item.to)  (\(item.token))") }
         }
     case "files":
         let scan = engine.scanFiles()

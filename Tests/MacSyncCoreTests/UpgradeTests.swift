@@ -37,4 +37,21 @@ final class UpgradeTests: XCTestCase {
         XCTAssertFalse(upgrader.isDue(now: Date(timeIntervalSince1970: 2000)))
         XCTAssertTrue(upgrader.isDue(now: Date(timeIntervalSince1970: 1000 + 7 * 3600)))
     }
+
+    func testCheckListsWithoutInstallingThenUpdateOne() throws {
+        let world = try TestWorld()
+        let env = MacSyncEnvironment(syncDirectory: world.sync, dataDirectory: world.root.appendingPathComponent("data"), machineID: "s",
+                                     machineName: "S", dockFile: nil, brewPath: "/fake/brew",
+                                     applicationsDirectory: world.root.appendingPathComponent("studio/Applications"), homeDirectory: "/nowhere")
+        let runner = BrewRunner()
+        var upgrader = Upgrader(env: env, runner: runner)
+        upgrader.isRunning = { _ in false }
+        let found = upgrader.check()
+        XCTAssertEqual(Set((found.outdated ?? []).map(\.token)), ["formula:jq", "cask:raycast", "cask:ghostty"])
+        XCTAssertFalse(runner.calls.contains { $0.first == "upgrade" }, "checking installs nothing")
+        let jq = try XCTUnwrap(found.outdated?.first { $0.token == "formula:jq" })
+        let after = upgrader.upgrade([jq])
+        XCTAssertEqual(after.upgraded.map(\.token), ["formula:jq"])
+        XCTAssertEqual(Set((after.outdated ?? []).map(\.token)), ["cask:raycast", "cask:ghostty"], "the rest are still listed")
+    }
 }

@@ -55,8 +55,38 @@ extension AppModel {
     /// Runs on open and after a sync, at most every six hours.
     func upgradeIfDue() {
         if upgradeReport == nil { upgradeReport = engine.upgrader.lastReport() }
-        guard autoUpgrade, !upgrading, !isApplying, engine.upgrader.isDue() else { return }
-        upgradeAll()
+        guard !upgrading, !isApplying, engine.upgrader.isDue() else { return }
+        if autoUpgrade { upgradeAll() } else { checkUpgrades() }
+    }
+
+    /// Looks for newer versions and lists them, without installing anything.
+    func checkUpgrades() {
+        guard !upgrading else { return }
+        upgrading = true
+        let upgrader = engine.upgrader
+        Task {
+            let report = await Task.detached { upgrader.check() }.value
+            upgrading = false
+            upgradeReport = report
+        }
+    }
+
+    /// Updates the ones listed (all of them, or one row).
+    func upgrade(_ items: [OutdatedItem]) {
+        guard !upgrading, !items.isEmpty else { return }
+        upgrading = true
+        for item in items { upgradeBusy.insert(item.token) }
+        let upgrader = engine.upgrader
+        Task {
+            let report = await Task.detached { upgrader.upgrade(items) { message in
+                Task { @MainActor [weak self] in self?.progress = message }
+            } }.value
+            for item in items { upgradeBusy.remove(item.token) }
+            upgrading = false
+            progress = nil
+            upgradeReport = report
+            if !report.upgraded.isEmpty { runSync(refreshInventory: true) }
+        }
     }
 
     func upgradeAll() {

@@ -17,9 +17,13 @@ public struct UpgradeReport: Codable, Equatable {
     /// Open right now, so they wait: updating would quit them.
     public var waiting: [OutdatedItem] = []
     public var failures: [String] = []
+    /// Newer versions found and not installed yet.
+    public var outdated: [OutdatedItem]?
     public var summary: String {
-        if upgraded.isEmpty && waiting.isEmpty && failures.isEmpty { return "Everything is up to date" }
+        let pending = outdated ?? []
+        if upgraded.isEmpty && waiting.isEmpty && failures.isEmpty && pending.isEmpty { return "Everything is up to date" }
         var parts: [String] = []
+        if !pending.isEmpty { parts.append("\(pending.count) to update") }
         if !upgraded.isEmpty { parts.append("Updated \(upgraded.count)") }
         if !waiting.isEmpty { parts.append("\(waiting.count) waiting until you quit them") }
         if !failures.isEmpty { parts.append("\(failures.count) didn't update") }
@@ -51,8 +55,36 @@ public struct Upgrader {
         return now.timeIntervalSince(last) > Self.interval
     }
 
-    /// What has a newer version, from Homebrew's own list.
+    /// What has a newer version: Homebrew apps and tools, npm packages and uv tools.
     public func outdated() -> [OutdatedItem] {
+        brewOutdated() + npmOutdated() + uvOutdated()
+    }
+
+    func npmOutdated() -> [OutdatedItem] {
+        guard let npm = Packages.npm.first(where: FileManager.default.isExecutableFile) else { return [] }
+        let result = runner.run(npm, ["outdated", "-g", "--json"], input: nil, environment: Packages.toolEnv)
+        guard let data = result.output.data(using: .utf8),
+              let root = try? JSONSerialization.jsonObject(with: data) as? [String: [String: Any]] else { return [] }
+        return root.compactMap { name, info in
+            guard Packages.isSafe("npm:" + name), let latest = info["latest"] as? String,
+                  (info["current"] as? String) != latest else { return nil }
+            return OutdatedItem(token: "npm:" + name, name: name, from: info["current"] as? String ?? "?", to: latest)
+        }.sorted { $0.name < $1.name }
+    }
+
+    func uvOutdated() -> [OutdatedItem] {
+        guard let uv = Packages.uv.first(where: FileManager.default.isExecutableFile) else { return [] }
+        let result = runner.run(uv, ["tool", "list", "--outdated"], input: nil, environment: Packages.toolEnv)
+        guard result.status == 0, let regex = try? NSRegularExpression(pattern: "^(\\S+) v(\\S+) \\[latest: v?([^\\]]+)\\]") else { return [] }
+        return InventoryReader.lines(result.output).compactMap { line in
+            guard let m = regex.firstMatch(in: line, range: NSRange(line.startIndex..., in: line)),
+                  let a = Range(m.range(at: 1), in: line), let b = Range(m.range(at: 2), in: line), let c = Range(m.range(at: 3), in: line),
+                  Packages.isSafe("uv:" + line[a]) else { return nil }
+            return OutdatedItem(token: "uv:" + line[a], name: String(line[a]), from: String(line[b]), to: String(line[c]))
+        }
+    }
+
+    func brewOutdated() -> [OutdatedItem] {
         guard let brew = env.brewPath else { return [] }
         let benv = InventoryReader.brewEnvironment(brew)
         _ = runner.run(brew, ["update", "--quiet"], input: nil, environment: benv)
@@ -94,34 +126,60 @@ public struct Upgrader {
         return out
     }
 
-    /// Updates everything that isn't open, then npm and uv tools. Saves the report.
+    /// Looks for newer versions without installing anything, and saves what it found.
+    @discardableResult
+    public func check(now: Date = Date()) -> UpgradeReport {
+        var report = UpgradeReport(ranAt: now)
+        report.outdated = outdated()
+        save(report)
+        return report
+    }
+
+    /// Updates everything that isn't open. Saves the report.
     @discardableResult
     public func upgradeAll(now: Date = Date(), progress: (String) -> Void = { _ in }) -> UpgradeReport {
+        progress("Checking for updates…")
+        return upgrade(outdated(), now: now, progress: progress)
+    }
+
+    /// Updates these. An app that is open waits, so it doesn't quit under you.
+    @discardableResult
+    public func upgrade(_ items: [OutdatedItem], now: Date = Date(), progress: (String) -> Void = { _ in }) -> UpgradeReport {
         var report = UpgradeReport(ranAt: now)
-        if let brew = env.brewPath {
-            progress("Checking for updates…")
-            let items = outdated()
-            report.waiting = items.filter { item in item.bundleID.map(isRunning) ?? false }
-            let ready = items.filter { item in !report.waiting.contains(item) }
-            for item in ready {
-                progress("Updating \(item.name)…")
-                if let problem = upgrade(item, brew: brew) { report.failures.append("\(item.name): \(problem)") }
-                else { report.upgraded.append(item) }
-            }
+        let previous = lastReport()
+        report.waiting = items.filter { item in item.bundleID.map(isRunning) ?? false }
+        for item in items where !report.waiting.contains(item) {
+            progress("Updating \(item.name)…")
+            if let problem = upgradeOne(item) { report.failures.append("\(item.name): \(problem)") }
+            else { report.upgraded.append(item) }
         }
-        if let npm = Packages.npm.first(where: FileManager.default.isExecutableFile) {
-            progress("Updating npm packages…")
-            let result = runner.run(npm, ["update", "-g"], input: nil, environment: Packages.toolEnv)
-            if result.status != 0 { report.failures.append("npm packages: \(Self.lastLine(result.stderr))") }
-        }
-        if let uv = Packages.uv.first(where: FileManager.default.isExecutableFile) {
-            progress("Updating uv tools…")
-            let result = runner.run(uv, ["tool", "upgrade", "--all"], input: nil, environment: Packages.toolEnv)
-            if result.status != 0 { report.failures.append("uv tools: \(Self.lastLine(result.stderr))") }
-        }
+        // Anything found earlier and not part of this run is still waiting to be updated.
+        let handled = Set(items.map(\.token))
+        report.outdated = (previous?.outdated ?? []).filter { !handled.contains($0.token) }
+        save(report)
+        return report
+    }
+
+    private func save(_ report: UpgradeReport) {
         try? FileManager.default.createDirectory(at: env.dataDirectory, withIntermediateDirectories: true)
         try? JSONEncoder.iso.encode(report).write(to: stateURL, options: .atomic)
-        return report
+    }
+
+    private func upgradeOne(_ item: OutdatedItem) -> String? {
+        let name = String(item.token.drop { $0 != ":" }.dropFirst())
+        switch Packages.kind(item.token) {
+        case "npm":
+            guard let npm = Packages.npm.first(where: FileManager.default.isExecutableFile) else { return "npm isn't on this Mac" }
+            let result = runner.run(npm, ["install", "-g", name + "@latest"], input: nil, environment: Packages.toolEnv)
+            return result.status == 0 ? nil : Self.lastLine(result.stderr)
+        case "uv":
+            guard let uv = Packages.uv.first(where: FileManager.default.isExecutableFile) else { return "uv isn't on this Mac" }
+            let result = runner.run(uv, ["tool", "upgrade", name], input: nil, environment: Packages.toolEnv)
+            return result.status == 0 ? nil : Self.lastLine(result.stderr)
+        default:
+            guard let brew = env.brewPath else { return "Homebrew isn't on this Mac" }
+            return upgrade(item, brew: brew)
+        }
     }
 
     /// Quits an open app, updates it and opens it again.
@@ -132,14 +190,16 @@ public struct Upgrader {
             let deadline = Date().addingTimeInterval(10)
             while isRunning(id) && Date() < deadline { usleep(200_000) }
         }
-        let problem = upgrade(item, brew: brew)
+        let problem = upgradeOne(item)
+        _ = brew
         if let id = item.bundleID, let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: id) {
             NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration())
         }
         if var report = lastReport() {
             report.waiting.removeAll { $0.token == item.token }
+            report.outdated?.removeAll { $0.token == item.token }
             if problem == nil { report.upgraded.append(item) }
-            try? JSONEncoder.iso.encode(report).write(to: stateURL, options: .atomic)
+            save(report)
         }
         return problem.map { .failure(.refused($0)) } ?? .success(())
     }

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.7.4
+- **See what needs updating:** the Updates section lists every Homebrew app and tool, npm package and uv tool with a newer version, from → to, with Update on each row and Update All. With Automatic off, MacSync still checks on open and every six hours and lists them; with it on, it installs them.
+- `macsync outdated` lists the same from Terminal.
+
 ## 0.7.3
 - No more "Checking your Macs…" forever: files another Mac shares that are still in iCloud download in the background and show as still arriving, instead of being waited for one by one.
 - Many files from one place (a folder of skills) fold into one row with Show, and a switch for all of them.
