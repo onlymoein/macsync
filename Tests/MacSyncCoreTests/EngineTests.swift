@@ -156,7 +156,7 @@ final class EngineTests: XCTestCase {
         let report = try air.engine.apply(ApplyRequest(applyDock: false, apps: overview.missingApps.map(\.app)))
         XCTAssertTrue(report.hasFailures)
         XCTAssertEqual(report.results.first { $0.app.name == "bad" }?.outcome, .failed)
-        XCTAssertEqual(report.results.first { $0.app.name == "bad" }?.message, "Error: bad needs a password")
+        XCTAssertEqual(report.results.first { $0.app.name == "bad" }?.message, "bad needs a password")
         XCTAssertEqual(report.results.first { $0.app.name == "good" }?.outcome, .installed)
         XCTAssertEqual(report.results.first { $0.app.name == "jq" }?.outcome, .installed)
         XCTAssertNotNil(report.restorePoint)
