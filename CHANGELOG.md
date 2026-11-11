@@ -1,7 +1,9 @@
 # Changelog
 
 ## 0.6.4
-- ArtCraft has its own section, with the real Craft icons, now including CADCraft, FigCraft, SoundCraft and ArtCraft. ArtCraft Launcher does the installing, into its own install folder, so it knows about every app: MacSync installs the launcher if needed and opens it.
+- ArtCraft has its own section with every app in ArtCraft Launcher's catalog, official and community, as it grows: version, installed or not, update available, real icons. Install All and Update All.
+- Craft apps come from their official downloads, checked against their published SHA-256 and their signing team, go into ArtCraft Launcher's install folder, and are recorded in the launcher's list so it knows them and keeps them updated.
+- Checking for MacSync updates no longer uses GitHub's API, so GitHub's request limit never blocks it.
 - An update that finds the sync window open installs as soon as you close it.
 
 ## 0.6.3

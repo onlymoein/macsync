@@ -23,6 +23,9 @@ final class FakeRunner: CommandRunning {
         calls.append([executable] + arguments)
         if executable == "/usr/bin/curl" {
             guard let url = arguments.last, let body = web[url] else { return CommandResult(status: 22, stderr: "404") }
+            if let i = arguments.firstIndex(of: "-o"), arguments[i + 1] == "/dev/null" {
+                return CommandResult(status: 0, stdout: body)  // -w output, like a redirect address
+            }
             if let i = arguments.firstIndex(of: "-o") {
                 return (try? body.write(to: URL(fileURLWithPath: arguments[i + 1]))) != nil ? CommandResult(status: 0) : CommandResult(status: 23)
             }

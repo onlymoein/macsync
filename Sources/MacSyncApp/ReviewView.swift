@@ -61,7 +61,7 @@ struct ReviewView: View {
                         DockPanel(plan: plan, model: model, matches: model.overview?.dockPlan == nil)
                         if !plan.missing.isEmpty { NotInstalledPanel(items: plan.missing, model: model) }
                     }
-                    ForEach(AppSuite.all, id: \.name) { suite in SuitePanel(suite: suite, model: model) }
+                    ArtCraftPanel(model: model)
                     AppsPanel(kind: .apps, model: model)
                     AppsPanel(kind: .appStore, model: model)
                     AppsPanel(kind: .tools, model: model)
@@ -546,84 +546,96 @@ extension AppSuite {
     public func member(for app: MissingApp) -> Member? {
         members.first { m in app.app.name == m.cask || app.detail?.bundleID == m.bundleID || app.app.name == m.bundleID }
     }
-    public static func contains(_ app: MissingApp) -> Bool { all.contains { $0.member(for: app) != nil } }
+    public static func contains(_ app: MissingApp) -> Bool {
+        if all.contains(where: { $0.member(for: app) != nil }) { return true }
+        let id = (app.detail?.bundleID ?? (app.app.source == .direct ? app.app.name : "")).lowercased()
+        return id.hasPrefix("ai.storyteller.")
+    }
 }
 
-/// A suite MacSync always offers (ArtCraft), in a section of its own. ArtCraft Launcher keeps its
-/// own list of what it installed and where, so it does the installing: MacSync installs the
-/// launcher if needed, then opens it.
-private struct SuitePanel: View {
-    let suite: AppSuite
+/// The ArtCraft suite, straight from ArtCraft's catalog: every app, installed or not, with its
+/// version. MacSync installs and updates them in ArtCraft Launcher's folder and records them in
+/// the launcher's list, so the launcher keeps them up to date too.
+private struct ArtCraftPanel: View {
     @ObservedObject var model: AppModel
-    @AppStorage private var open: Bool
+    @AppStorage("review.artcraft.open") private var open = true
 
-    init(suite: AppSuite, model: AppModel) {
-        self.suite = suite
-        self.model = model
-        _open = AppStorage(wrappedValue: true, "review.suite.\(suite.name).open")
-    }
-
-    private var launcherMember: AppSuite.Member? { suite.members.first { $0.name.hasSuffix(" Launcher") } }
-    private var missing: [MissingApp] {
-        (model.overview?.missingApps ?? []).filter { suite.member(for: $0) != nil }
-            .sorted { $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending }
-    }
-    private var launcherMissing: MissingApp? { missing.first { suite.member(for: $0)?.cask == launcherMember?.cask } }
-    private var apps: [MissingApp] { missing.filter { suite.member(for: $0)?.cask != launcherMember?.cask } }
+    private var apps: [CraftApp] { model.craftApps }
     private var skipped: Set<String> { Set(model.overview?.skippedApps ?? []) }
-    private var wanted: [MissingApp] { missing.filter { !skipped.contains($0.app.token) } }
+    private var toInstall: [CraftApp] {
+        apps.filter { $0.availableOnMac && !$0.isInstalled && !skipped.contains($0.skipToken) && !model.craftBusy.contains($0.id) }
+    }
+    private var toUpdate: [CraftApp] { apps.filter { $0.needsUpdate && !model.craftBusy.contains($0.id) } }
 
     var body: some View {
-        if !missing.isEmpty {
-            let onMac = suite.members.count - missing.count
-            VStack(alignment: .leading, spacing: 14) {
-                PanelHeader(symbol: "paintpalette.fill", title: suite.name,
-                            subtitle: "\(onMac) of \(suite.members.count) apps on this Mac · ArtCraft Launcher installs and updates them",
-                            isExpanded: $open) {
-                    HStack(spacing: 12) {
-                        action
-                        AllSwitch(onCount: wanted.count, total: missing.count) { on in
-                            model.setSkipped(tokens: missing.map(\.app.token), !on)
-                        }
+        VStack(alignment: .leading, spacing: 14) {
+            let installed = apps.filter(\.isInstalled).count
+            PanelHeader(symbol: "paintpalette.fill", title: "ArtCraft",
+                        subtitle: apps.isEmpty ? (model.craftLoading ? "Loading ArtCraft's apps…" : "ArtCraft's list isn't reachable right now")
+                            : "\(installed) of \(apps.count) apps on this Mac" + (toUpdate.isEmpty ? "" : " · \(toUpdate.count) to update"),
+                        isExpanded: $open) {
+                HStack(spacing: 10) {
+                    if !toUpdate.isEmpty {
+                        Button("Update All \(toUpdate.count)") { model.installCraft(toUpdate) }.glassButton().controlSize(.small)
                     }
-                }
-                if open {
-                    Text(launcherMissing == nil
-                         ? "Open ArtCraft Launcher and press Install on the ones you want. It puts them in its install folder and keeps them updated."
-                         : "MacSync installs ArtCraft Launcher with Homebrew, then opens it so you can install the apps you want.")
-                        .font(.caption).foregroundStyle(.secondary)
-                    VStack(spacing: 2) {
-                        ForEach(apps) { app in
-                            HStack(spacing: 12) {
-                                AppIcon(missing: app, image: model.icon(for: app))
-                                Text(app.displayName).font(.body.weight(.medium))
-                                Spacer()
-                                Toggle("", isOn: Binding(get: { !skipped.contains(app.app.token) }, set: { model.setSkipped(app, !$0) }))
-                                    .toggleStyle(.switch).labelsHidden().controlSize(.small)
-                            }
-                            .padding(.horizontal, 8).padding(.vertical, 4)
-                            .opacity(skipped.contains(app.app.token) ? 0.5 : 1)
-                        }
-                    }
+                    Button(toInstall.isEmpty ? "Install All" : "Install All \(toInstall.count)") { model.installCraft(toInstall) }
+                        .primaryGlassButton().controlSize(.small).disabled(toInstall.isEmpty)
                 }
             }
-            .padding(18)
-            .glassPanel()
+            if open && !apps.isEmpty {
+                Text("From ArtCraft's own downloads, checked against their published checksums, into ArtCraft Launcher's install folder. The launcher knows about them and keeps them updated.")
+                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                VStack(spacing: 2) { ForEach(apps) { row($0) } }
+            }
         }
+        .padding(18)
+        .glassPanel()
+        .onAppear { model.loadCraft() }
     }
 
-    @ViewBuilder private var action: some View {
-        if let launcher = launcherMissing {
-            if model.getting.contains(launcher.app.token) {
-                ProgressView().controlSize(.small)
-            } else {
-                Button("Install ArtCraft Launcher") { model.get([launcher], thenOpen: "ai.storyteller.artcraft-launcher") }
-                    .primaryGlassButton().controlSize(.small)
+    private func row(_ app: CraftApp) -> some View {
+        let isSkipped = skipped.contains(app.skipToken)
+        return HStack(spacing: 12) {
+            Group {
+                if let image = model.craftIcon(app) { Image(nsImage: image).resizable().scaledToFit() }
+                else { Image(systemName: "app.fill").font(.title2).foregroundStyle(.secondary) }
             }
-        } else {
-            Button("Open ArtCraft Launcher") { model.openApp(bundleID: "ai.storyteller.artcraft-launcher") }
-                .primaryGlassButton().controlSize(.small)
+            .frame(width: 34, height: 34)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(app.name).font(.body.weight(.medium)).lineLimit(1)
+                if let error = model.craftErrors[app.id] {
+                    Text(error).font(.caption).foregroundStyle(.orange).lineLimit(2)
+                } else {
+                    Text([app.tagline, app.publisher.flatMap { $0 == "ArtCraft" ? nil : "by \($0)" },
+                          !app.availableOnMac ? "Not available for Mac yet"
+                            : app.isInstalled ? "Installed \(app.installedVersion ?? "")" + (app.needsUpdate ? ", \(app.version) available" : "")
+                            : "Version \(app.version)" + (app.sizeBytes.map { ", \(ByteCountFormatter.string(fromByteCount: $0, countStyle: .file))" } ?? "")]
+                            .compactMap { $0 }.joined(separator: " · "))
+                        .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                }
+            }
+            Spacer(minLength: 8)
+            if model.craftBusy.contains(app.id) {
+                ProgressView().controlSize(.small)
+            } else if app.needsUpdate {
+                Button("Update") { model.installCraft([app]) }.primaryGlassButton().controlSize(.small)
+            } else if app.isInstalled {
+                Label("Installed", systemImage: "checkmark.circle.fill").font(.callout).foregroundStyle(.green)
+            } else if !app.availableOnMac {
+                Text("Not for Mac yet").font(.callout).foregroundStyle(.secondary)
+            } else if isSkipped {
+                Text("Not needed").font(.callout).foregroundStyle(.secondary)
+            } else {
+                Button("Install") { model.installCraft([app]) }.primaryGlassButton().controlSize(.small)
+            }
+            if !app.isInstalled {
+                Toggle("", isOn: Binding(get: { !isSkipped }, set: { model.setSkipped(token: app.skipToken, !$0) }))
+                    .toggleStyle(.switch).labelsHidden().controlSize(.small)
+                    .help(isSkipped ? "Not needed on this Mac" : "Switch off if this Mac doesn't need it")
+            }
         }
+        .padding(.horizontal, 8).padding(.vertical, 5)
+        .opacity(isSkipped && !app.isInstalled ? 0.5 : 1)
     }
 }
 

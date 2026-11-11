@@ -2,28 +2,26 @@
 import XCTest
 
 final class SelfUpdateTests: XCTestCase {
-    func release(_ tag: String, assets: [String], prerelease: Bool = false) -> Data {
-        let list = assets.map { #"{"name":"\#($0)","browser_download_url":"https://github.com/onlymoein/macsync/releases/download/\#(tag)/\#($0)"}"# }
-        return Data(#"{"tag_name":"\#(tag)","prerelease":\#(prerelease),"assets":[\#(list.joined(separator: ","))]}"#.utf8)
-    }
+    func page(_ tag: String) -> Data { Data("https://github.com/onlymoein/macsync/releases/tag/\(tag)".utf8) }
 
     func testFindsANewerRelease() throws {
         let runner = FakeRunner()
-        runner.web[SelfUpdater.releasesAPI] = release("v0.4.0", assets: ["MacSync-0.4.0.zip", "MacSync-0.4.0.zip.sha256"])
+        runner.web[SelfUpdater.releasesPage] = page("v0.4.0")
         let updater = SelfUpdater(runner: runner, brewPath: nil, appURL: URL(fileURLWithPath: "/Applications/MacSync.app"), currentVersion: "0.3.1")
         let found = try XCTUnwrap(updater.check())
         XCTAssertEqual(found.version, "0.4.0")
-        XCTAssertNotNil(found.checksumURL)
+        XCTAssertEqual(found.zipURL, "https://github.com/onlymoein/macsync/releases/download/v0.4.0/MacSync-0.4.0.zip")
+        XCTAssertEqual(found.checksumURL, found.zipURL + ".sha256")
     }
 
-    func testIgnoresOlderPrereleaseAndForeignAssets() {
+    func testIgnoresOlderAndOddReleases() {
         let runner = FakeRunner()
         let app = URL(fileURLWithPath: "/Applications/MacSync.app")
-        runner.web[SelfUpdater.releasesAPI] = release("v0.3.0", assets: ["MacSync-0.3.0.zip"])
+        runner.web[SelfUpdater.releasesPage] = page("v0.3.0")
         XCTAssertNil(SelfUpdater(runner: runner, brewPath: nil, appURL: app, currentVersion: "0.3.1").check())
-        runner.web[SelfUpdater.releasesAPI] = release("v0.9.0", assets: ["MacSync-0.9.0.zip"], prerelease: true)
+        runner.web[SelfUpdater.releasesPage] = page("v1.0-beta; rm -rf")
         XCTAssertNil(SelfUpdater(runner: runner, brewPath: nil, appURL: app, currentVersion: "0.3.1").check())
-        runner.web[SelfUpdater.releasesAPI] = Data(#"{"tag_name":"v0.9.0","assets":[{"name":"MacSync-0.9.0.zip","browser_download_url":"https://evil.example/MacSync.zip"}]}"#.utf8)
+        runner.web[SelfUpdater.releasesPage] = Data("https://github.com/onlymoein/macsync/releases".utf8)
         XCTAssertNil(SelfUpdater(runner: runner, brewPath: nil, appURL: app, currentVersion: "0.3.1").check())
     }
 

@@ -421,6 +421,59 @@ final class AppModel: ObservableObject {
         return url
     }
 
+    // MARK: ArtCraft
+
+    @Published var craftApps: [CraftApp] = []
+    @Published var craftLoading = false
+    @Published var craftBusy: Set<String> = []
+    @Published var craftErrors: [String: String] = [:]
+
+    /// A Craft app's icon: from the app when it's installed, otherwise the one a Mac saved to iCloud.
+    func craftIcon(_ app: CraftApp) -> NSImage? {
+        if let path = app.installedPath { return NSWorkspace.shared.icon(forFile: path) }
+        if let image = craftIcons[app.id] { return image }
+        guard app.iconURL != nil, !craftIconsAsked.contains(app.id) else { return nil }
+        craftIconsAsked.insert(app.id)
+        let engine = engine
+        Task {
+            let url = await Task.detached { engine.craftIconFile(app) }.value
+            if let url, let image = NSImage(contentsOf: url) { craftIcons[app.id] = image }
+        }
+        return nil
+    }
+
+    @Published private var craftIcons: [String: NSImage] = [:]
+    private var craftIconsAsked: Set<String> = []
+
+    func loadCraft(refresh: Bool = false) {
+        guard !craftLoading else { return }
+        craftLoading = true
+        let engine = engine
+        Task {
+            let apps = await Task.detached { engine.craftApps(refresh: refresh) }.value
+            craftLoading = false
+            if !apps.isEmpty { craftApps = apps }
+        }
+    }
+
+    /// Installs or updates Craft apps from ArtCraft's downloads, then refreshes the list.
+    func installCraft(_ apps: [CraftApp]) {
+        let fresh = apps.filter { !craftBusy.contains($0.id) }
+        guard !fresh.isEmpty else { return }
+        for app in fresh { craftBusy.insert(app.id); craftErrors[app.id] = nil }
+        let engine = engine
+        Task {
+            let results = await Task.detached { engine.installCraft(fresh) }.value
+            for (app, result) in results {
+                craftBusy.remove(app.id)
+                if case .failure(let error) = result { craftErrors[app.id] = error.localizedDescription }
+            }
+            craftLoading = false
+            loadCraft()
+            syncNow()
+        }
+    }
+
     /// Apps to open once they are installed (ArtCraft Launcher, so it can install the rest).
     private var openAfter: [String: String] = [:]
 

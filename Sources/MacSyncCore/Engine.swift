@@ -202,7 +202,7 @@ public final class Engine {
 
     public init(env: MacSyncEnvironment, dock: DockStoring, locator: AppLocating, runner: CommandRunning,
                 prefs: PreferencesStoring = InMemoryPreferences(), proUnlocked: Bool = ProLicense.isUnlocked,
-                suites: [AppSuite] = AppSuite.all, now: @escaping () -> Date = Date.init) {
+                suites: [AppSuite] = [], now: @escaping () -> Date = Date.init) {
         self.suites = suites
         self.prefs = prefs
         self.proUnlocked = proUnlocked

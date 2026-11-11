@@ -14,7 +14,6 @@ public struct SelfUpdater {
         public var notes: String?
     }
 
-    public static let releasesAPI = "https://api.github.com/repos/onlymoein/macsync/releases/latest"
     public static let bundleID = "com.onlymehdi.macsync"
 
     let runner: CommandRunning
@@ -30,30 +29,27 @@ public struct SelfUpdater {
         self.currentVersion = currentVersion
     }
 
-    /// The latest release, when it is newer than this copy.
+    public static let releasesPage = "https://github.com/onlymoein/macsync/releases/latest"
+    static let downloadBase = "https://github.com/onlymoein/macsync/releases/download/"
+
+    /// The latest release, when it is newer than this copy. It reads where GitHub's "latest
+    /// release" page points rather than GitHub's API, which limits each network to 60 requests an
+    /// hour; the files follow the release's fixed names.
     public func check() -> Release? {
-        let result = runner.run("/usr/bin/curl", ["-fsSL", "--proto", "=https", "--max-time", "30",
-                                                  "-H", "Accept: application/vnd.github+json", Self.releasesAPI],
-                                input: nil, environment: [:])
-        guard result.status == 0, let release = Self.parse(result.stdout),
+        let result = runner.run("/usr/bin/curl", ["-sS", "--proto", "=https", "--max-time", "30", "-o", "/dev/null",
+                                                  "-w", "%{redirect_url}", Self.releasesPage], input: nil, environment: [:])
+        guard result.status == 0, let release = Self.release(fromRedirect: result.output),
               Self.isNewer(release.version, than: currentVersion) else { return nil }
         return release
     }
 
-    static func parse(_ data: Data) -> Release? {
-        guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              root["draft"] as? Bool != true, root["prerelease"] as? Bool != true,
-              let tag = root["tag_name"] as? String else { return nil }
+    static func release(fromRedirect url: String) -> Release? {
+        guard let range = url.range(of: "/releases/tag/") else { return nil }
+        let tag = url[range.upperBound...].trimmingCharacters(in: .whitespacesAndNewlines)
         let version = tag.hasPrefix("v") ? String(tag.dropFirst()) : tag
         guard version.range(of: "^[0-9]+(\\.[0-9]+){0,3}$", options: .regularExpression) != nil else { return nil }
-        let assets = (root["assets"] as? [[String: Any]] ?? []).compactMap { asset -> (String, String)? in
-            guard let name = asset["name"] as? String, let url = asset["browser_download_url"] as? String,
-                  url.hasPrefix("https://github.com/onlymoein/macsync/releases/download/") else { return nil }
-            return (name, url)
-        }
-        guard let zip = assets.first(where: { $0.0 == "MacSync-\(version).zip" })?.1 else { return nil }
-        let sum = assets.first(where: { $0.0 == "MacSync-\(version).zip.sha256" })?.1
-        return Release(version: version, zipURL: zip, checksumURL: sum, notes: root["body"] as? String)
+        let zip = Self.downloadBase + "v\(version)/MacSync-\(version).zip"
+        return Release(version: version, zipURL: zip, checksumURL: zip + ".sha256", notes: nil)
     }
 
     static func isNewer(_ a: String, than b: String) -> Bool {
