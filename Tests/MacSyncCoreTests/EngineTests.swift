@@ -664,7 +664,7 @@ final class EngineTests: XCTestCase {
         XCTAssertTrue(offered.contains("cask:wordcraft"))
         XCTAssertTrue(offered.contains("cask:artcraft-launcher"))
         XCTAssertFalse(offered.contains("cask:photocraft"))
-        XCTAssertEqual(offered.filter { $0.hasPrefix("cask:") }.count, 10)
+        XCTAssertEqual(offered.filter { $0.hasPrefix("cask:") }.count, AppSuite.all[0].members.count - 1)
     }
 
     func testOldICloudCopiesAreDeleted() throws {

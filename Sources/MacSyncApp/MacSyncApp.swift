@@ -38,6 +38,13 @@ final class ReviewWindow {
             window.contentMinSize = NSSize(width: 560, height: 460)
             window.isReleasedWhenClosed = false
             window.center()
+            // Closing the window lets an update that was waiting for it go in.
+            NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: window, queue: .main) { [weak model] _ in
+                Task { @MainActor in
+                    try? await Task.sleep(nanoseconds: 500_000_000)
+                    model?.syncWindowClosed()
+                }
+            }
             self.window = window
         }
         NSApp.activate(ignoringOtherApps: true)

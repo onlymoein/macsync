@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.6.4
+- ArtCraft has its own section, with the real Craft icons. Its apps install into Applications, where ArtCraft Launcher finds them, and CADCraft, FigCraft, SoundCraft and ArtCraft are now included.
+- An update that finds the sync window open installs as soon as you close it.
+
 ## 0.6.3
 - The ArtCraft suite is always offered as one row, even when none of your Macs has it. Get All installs the missing Craft apps with Homebrew into the folder you choose.
 

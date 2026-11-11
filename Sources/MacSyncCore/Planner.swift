@@ -271,10 +271,15 @@ public struct AppSuite {
     public struct Member { public let cask: String; public let bundleID: String; public let name: String }
     public let name: String
     public let members: [Member]
+    /// Its launcher only finds apps in Applications itself, so they are always installed there.
 
     public static let all: [AppSuite] = [
         AppSuite(name: "ArtCraft", members: [
             Member(cask: "artcraft-launcher", bundleID: "ai.storyteller.artcraft-launcher", name: "ArtCraft Launcher"),
+            Member(cask: "artcraft", bundleID: "ai.storyteller.artcraft", name: "ArtCraft"),
+            Member(cask: "cadcraft", bundleID: "ai.storyteller.cadcraft", name: "CADCraft"),
+            Member(cask: "figcraft", bundleID: "ai.storyteller.figcraft", name: "FigCraft"),
+            Member(cask: "soundcraft", bundleID: "ai.storyteller.soundcraft", name: "SoundCraft"),
             Member(cask: "deckcraft", bundleID: "ai.storyteller.deckcraft", name: "DeckCraft"),
             Member(cask: "designcraft", bundleID: "ai.storyteller.designcraft", name: "DesignCraft"),
             Member(cask: "effectcraft", bundleID: "ai.storyteller.effectcraft", name: "EffectCraft"),

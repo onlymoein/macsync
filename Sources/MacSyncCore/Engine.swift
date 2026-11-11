@@ -544,7 +544,9 @@ public final class Engine {
         let token = missing?.app.source == .cask ? missing?.app.name
             : (missing?.download?.cask ?? catalog?.cask(forApp: name + ".app")
                ?? [guess, guess + "-app"].first { catalog?.entries[$0] != nil })
-        if let token, let page = catalog?.entries[token]?.homepage, let base = URL(string: page), let host = base.host {
+        // A homepage on GitHub or GitLab would give that site's logo, not the app's.
+        if let token, let page = catalog?.entries[token]?.homepage, let base = URL(string: page), let host = base.host,
+           !["github.com", "www.github.com", "gitlab.com", "github.io"].contains(where: { host == $0 || host.hasSuffix("." + $0) }) {
             candidates += ["https://\(host)/apple-touch-icon.png"]
             // Icons the developer's page names, largest first: apple-touch-icon, then other icons.
             if DirectApp.isSafeURL(page), let html = fetch(page).map({ String(decoding: $0.prefix(400_000), as: UTF8.self) }) {

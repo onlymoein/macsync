@@ -311,6 +311,8 @@ final class AppModel: ObservableObject {
     func icon(for missing: MissingApp) -> NSImage? {
         if let id = missing.detail?.iconID, let image = cachedIcon(id) { return image }
         if let image = missing.detail?.bundleID.flatMap({ cachedIcon(IconStore.id(bundleID: $0)) }) { return image }
+        // The icon a Mac saved when it had the app as a download (the Craft apps, by bundle ID).
+        if let id = missing.detail?.bundleID, let image = cachedIcon(IconStore.id(for: AppRef(source: .direct, name: id))) { return image }
         guard missing.app.source != .formula else { return nil }
         return webIcon(bundleID: missing.detail?.bundleID, name: missing.displayName, missing: missing)
     }
@@ -439,7 +441,10 @@ final class AppModel: ObservableObject {
         let engine = engine
         progress = "Getting \(next.displayName)…"
         Task {
-            let folder = installFolders.removeValue(forKey: next.app.token)
+            // A suite's apps always go into Applications, where its launcher finds them.
+            let inSuite = AppSuite.all.contains { $0.member(for: next) != nil }
+            let chosen = installFolders.removeValue(forKey: next.app.token)
+            let folder = inSuite ? nil : chosen
             let result = await Task.detached { engine.getApp(next, into: folder) }.value
             getQueue.removeFirst()
             getting.remove(next.app.token)
@@ -667,6 +672,11 @@ final class AppModel: ObservableObject {
     /// A few seconds after the Mac comes back, once the network is up again.
     private func checkForUpdatesSoon() {
         DispatchQueue.main.asyncAfter(deadline: .now() + 8) { [weak self] in self?.checkForUpdates() }
+    }
+
+    /// The sync window closed: an update that waited for it can go in now.
+    func syncWindowClosed() {
+        if let update = availableUpdate, autoUpdate, !isUpdating, !isApplying { installUpdate(update) }
     }
 
     func checkForUpdates(manual: Bool = false) {

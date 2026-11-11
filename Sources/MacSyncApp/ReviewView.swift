@@ -61,6 +61,7 @@ struct ReviewView: View {
                         DockPanel(plan: plan, model: model, matches: model.overview?.dockPlan == nil)
                         if !plan.missing.isEmpty { NotInstalledPanel(items: plan.missing, model: model) }
                     }
+                    ForEach(AppSuite.all, id: \.name) { suite in SuitePanel(suite: suite, model: model) }
                     AppsPanel(kind: .apps, model: model)
                     AppsPanel(kind: .appStore, model: model)
                     AppsPanel(kind: .tools, model: model)
@@ -541,6 +542,64 @@ private struct DockIcon: View {
 
 // MARK: - Apps
 
+extension AppSuite {
+    public func member(for app: MissingApp) -> Member? {
+        members.first { m in app.app.name == m.cask || app.detail?.bundleID == m.bundleID || app.app.name == m.bundleID }
+    }
+    public static func contains(_ app: MissingApp) -> Bool { all.contains { $0.member(for: app) != nil } }
+}
+
+/// A suite MacSync always offers (ArtCraft), in a section of its own.
+private struct SuitePanel: View {
+    let suite: AppSuite
+    @ObservedObject var model: AppModel
+    @AppStorage private var open: Bool
+
+    init(suite: AppSuite, model: AppModel) {
+        self.suite = suite
+        self.model = model
+        _open = AppStorage(wrappedValue: true, "review.suite.\(suite.name).open")
+    }
+
+    private var missing: [MissingApp] {
+        (model.overview?.missingApps ?? []).filter { suite.member(for: $0) != nil }
+            .sorted { a, b in
+                (a.displayName.hasSuffix(" Launcher") ? 0 : 1, a.displayName) < (b.displayName.hasSuffix(" Launcher") ? 0 : 1, b.displayName)
+            }
+    }
+    private var skipped: Set<String> { Set(model.overview?.skippedApps ?? []) }
+    private var wanted: [MissingApp] { missing.filter { !skipped.contains($0.app.token) } }
+    private var left: [MissingApp] {
+        wanted.filter { $0.canInstall && model.gotten[$0.app.token] == nil && !model.getting.contains($0.app.token) }
+    }
+
+    var body: some View {
+        if !missing.isEmpty {
+            let onMac = suite.members.count - missing.count
+            VStack(alignment: .leading, spacing: 14) {
+                PanelHeader(symbol: "paintpalette.fill", title: suite.name,
+                            subtitle: "\(onMac) of \(suite.members.count) apps on this Mac · Homebrew installs the rest into Applications",
+                            isExpanded: $open) {
+                    HStack(spacing: 12) {
+                        // Straight into Applications: ArtCraft Launcher doesn't look in subfolders.
+                        Button(left.isEmpty ? "Get All" : "Get All \(left.count)") { model.get(left) }
+                            .glassButton().controlSize(.small).disabled(left.isEmpty)
+                            .help("Install them all into Applications with Homebrew, where ArtCraft Launcher finds them")
+                        AllSwitch(onCount: wanted.count, total: missing.count) { on in
+                            model.setSkipped(tokens: missing.map(\.app.token), !on)
+                        }
+                    }
+                }
+                if open {
+                    VStack(spacing: 2) { ForEach(missing) { AppRow(missing: $0, model: model) } }
+                }
+            }
+            .padding(18)
+            .glassPanel()
+        }
+    }
+}
+
 /// Several apps from one developer (the ArtCraft suite) shown as one row.
 struct AppFamily: Identifiable {
     let id: String
@@ -948,7 +1007,7 @@ private struct AppsPanel: View {
         (model.overview?.missingApps ?? [])
             .filter { app in
                 switch kind {
-                case .apps: return app.app.source == .cask || app.app.source == .direct
+                case .apps: return (app.app.source == .cask || app.app.source == .direct) && !AppSuite.contains(app)
                 case .appStore: return app.app.source == .appStore
                 case .tools: return app.app.source == .formula
                 }
