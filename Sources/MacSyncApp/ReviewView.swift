@@ -82,10 +82,13 @@ struct ReviewView: View {
                     }
                     if filter == nil {
                     UpdatesPanel(model: model)
-                    AdobePanel(model: model)
                     AIAppsPanel(model: model)
                     }
-                    if filter == nil || filter == .craft { ArtCraftPanel(model: model) }
+                    if filter == nil || filter == .craft {
+                        ArtCraftPanel(model: model)
+                        // Creative app suites together: Adobe's sits under ArtCraft.
+                        AdobePanel(model: model)
+                    }
                     if filter == nil || filter == .apps {
                     AppsPanel(kind: .apps, model: model)
                     AppsPanel(kind: .appStore, model: model)

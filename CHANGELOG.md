@@ -3,6 +3,7 @@
 ## 0.8.28
 
 - Every section of the sync window starts folded when the window opens. Developer setup and Adobe apps used to open expanded.
+- Adobe apps sit under ArtCraft in the sync window, with the other creative apps.
 
 ## 0.8.27
 

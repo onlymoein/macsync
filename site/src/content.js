@@ -46,7 +46,7 @@ export const features = [
   { icon: "mug", color: "#ff9f0a", title: "Homebrew, handled", text: "Every Homebrew app and tool stays current on every Mac, like Raycast does it.",
     points: ["Updates install on their own", "A list of what's out of date", "npm and uv tools too", "Open apps are never quit under you"] },
   { icon: "brush", color: "#ff3b30", title: "Adobe apps", text: "Photoshop, Illustrator, InDesign and the rest, kept tidy and current, on a personal plan or a company one.",
-    points: ["Every Adobe app and its version, in the sync window", "Remove uses Adobe's own installer and keeps your settings", "Company installs update with Adobe's updater", "Spots an older year left behind, like InDesign 2026 next to 2027"] },
+    points: ["Every Adobe app and its version, under ArtCraft in the sync window", "Remove uses Adobe's own installer and keeps your settings", "Company installs update with Adobe's updater", "Spots an older year left behind, like InDesign 2026 next to 2027"] },
   { icon: "sparkles", color: "#bf5af2", title: "AI apps", text: "Every well-known AI app in one list, installed and kept current on all your Macs.",
     points: ["ChatGPT, Claude, Gemini, Grok and more", "Install on all Macs or this one", "Update All in one click", "Apps you don't have are listed too"] },
   { icon: "doc", color: "#64d2ff", title: "Config files", text: "Your shell, Git, editors and terminals come with you.",
