@@ -211,3 +211,44 @@ final class TerminalInstallTests: XCTestCase {
         XCTAssertEqual(Packages.platformName("com.apple.platform.iphonesimulator".components(separatedBy: ".").last!), "iOS")
     }
 }
+
+final class PackageClashTests: XCTestCase {
+    func testNpmsRealReasonInsteadOfItsLogPath() {
+        let stderr = """
+        npm error code EEXIST
+        npm error path /opt/homebrew/bin/codex
+        npm error EEXIST: file already exists
+        npm error File exists: /opt/homebrew/bin/codex
+        npm error Remove the existing file and try again, or run npm
+        npm error A complete log of this run can be found in: /Users/x/.npm/_logs/2026-11-12T21_36_45_688Z-debug-0.log
+        """
+        let reason = Packages.reason(stderr, name: "@openai/codex") ?? ""
+        XCTAssertTrue(reason.hasPrefix("@openai/codex is already on this Mac"), reason)
+        XCTAssertFalse(reason.contains("debug-0.log"))
+        XCTAssertEqual(Packages.reason("npm error code E404\nnpm error 404 Not Found - GET https://registry.npmjs.org/nope\nnpm error A complete log of this run can be found in: /x-debug-0.log", name: "nope"),
+                       "404 Not Found - GET https://registry.npmjs.org/nope")
+    }
+
+    func testACommandFromHomebrewMeansThePackageIsntOffered() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("clash-\(UUID().uuidString.prefix(6))")
+        addTeardownBlock { try? FileManager.default.removeItem(at: root) }
+        let bin = root.appendingPathComponent("bin"), cellar = root.appendingPathComponent("Cellar/vercel/63/bin")
+        let modules = root.appendingPathComponent("lib/node_modules/thing/bin")
+        try FileManager.default.createDirectory(at: bin, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: cellar, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: modules, withIntermediateDirectories: true)
+        // Homebrew's vercel is built on npm: its own link goes on into a node_modules folder.
+        let inner = root.appendingPathComponent("Cellar/vercel/63/libexec/lib/node_modules/vercel/dist")
+        try FileManager.default.createDirectory(at: inner, withIntermediateDirectories: true)
+        FileManager.default.createFile(atPath: inner.appendingPathComponent("vc.js").path, contents: Data())
+        try FileManager.default.createSymbolicLink(atPath: cellar.appendingPathComponent("vercel").path, withDestinationPath: inner.appendingPathComponent("vc.js").path)
+        FileManager.default.createFile(atPath: modules.appendingPathComponent("thing").path, contents: Data())
+        try FileManager.default.createSymbolicLink(atPath: bin.appendingPathComponent("vercel").path, withDestinationPath: cellar.appendingPathComponent("vercel").path)
+        try FileManager.default.createSymbolicLink(atPath: bin.appendingPathComponent("thing").path, withDestinationPath: modules.appendingPathComponent("thing").path)
+        let env = MacSyncEnvironment(syncDirectory: root, dataDirectory: root, machineID: "t", machineName: "T", dockFile: nil,
+                                     brewPath: bin.appendingPathComponent("brew").path, applicationsDirectory: root, homeDirectory: root.path)
+        XCTAssertNotNil(Packages.commandFromElsewhere("npm:vercel", env: env), "Homebrew's vercel")
+        XCTAssertNil(Packages.commandFromElsewhere("npm:thing", env: env), "npm's own copy")
+        XCTAssertNil(Packages.commandFromElsewhere("npm:@scope/absent", env: env))
+    }
+}

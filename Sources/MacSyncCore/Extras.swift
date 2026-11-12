@@ -678,6 +678,9 @@ final class Extras {
         for machine in others {
             for token in machine.extras?.packages ?? [] where !have.contains(token) && Packages.isSafe(token) && !removed.contains(token) {
                 guard Packages.canInstall(token, env: env, locator: locator) else { continue }
+                // Already here another way (codex or vercel from Homebrew): npm would refuse to
+                // overwrite its command, and there's nothing to install.
+                if Packages.commandFromElsewhere(token, env: env) != nil { continue }
                 let kind = Packages.kind(token)
                 let name = machine.extras?.packageNames?[token] ?? String(token.dropFirst(kind.count + 1))
                 packages[token, default: PackageItem(token: token, kind: kind, name: name, fromMachines: [])].fromMachines.append(machine.machineName)
@@ -1121,6 +1124,43 @@ public enum Packages {
         }
     }
 
+    /// The command an npm or uv package puts on this Mac ("@openai/codex" gives codex), when it's
+    /// already there and came from somewhere else, like Homebrew. Its path, or nil.
+    static func commandFromElsewhere(_ token: String, env: MacSyncEnvironment) -> String? {
+        let kind = kind(token)
+        guard kind == "npm" || kind == "uv" else { return nil }
+        let name = String(token.dropFirst(kind.count + 1))
+        guard let command = name.split(separator: "/").last.map(String.init), !command.isEmpty else { return nil }
+        var folders = ["/opt/homebrew/bin", "/usr/local/bin", env.homeDirectory + "/.local/bin"]
+        if let brew = env.brewPath { folders.insert((brew as NSString).deletingLastPathComponent, at: 0) }
+        for folder in folders {
+            let path = folder + "/" + command
+            guard FileManager.default.fileExists(atPath: path) else { continue }
+            // Where the command's link points first: Homebrew's links go into its Cellar or
+            // Caskroom (even for tools built on npm, like vercel); npm's into lib/node_modules;
+            // uv's into its tools folder. A copy npm or uv put here is theirs, not another install.
+            let first = (try? FileManager.default.destinationOfSymbolicLink(atPath: path)) ?? path
+            if first.contains("/Cellar/") || first.contains("/Caskroom/") { return path }
+            if first.contains("/node_modules/") || first.contains("/uv/tools/") || first.contains("/.local/share/uv/") { return nil }
+            return path
+        }
+        return nil
+    }
+
+    /// The line of a tool's error output that says what went wrong, not where its log is.
+    static func reason(_ stderr: String, name: String) -> String? {
+        let lines = stderr.split(whereSeparator: \.isNewline).map { $0.trimmingCharacters(in: .whitespaces) }
+        if let exists = lines.first(where: { $0.contains("File exists:") }) {
+            let path = exists.components(separatedBy: "File exists:").last?.trimmingCharacters(in: .whitespaces) ?? ""
+            let real = (path as NSString).resolvingSymlinksInPath
+            let from = real.contains("/Caskroom/") || real.contains("/Cellar/") ? " from Homebrew" : ""
+            return "\(name) is already on this Mac\(from) (\(path)), so npm didn't replace it"
+        }
+        let useful = lines.filter { !$0.isEmpty && !$0.contains("A complete log of this run") && !$0.hasSuffix("-debug-0.log") }
+        let error = useful.first { $0.contains("ERR!") || $0.lowercased().contains("error") && !$0.contains("error code") } ?? useful.last
+        return error.map { $0.replacingOccurrences(of: "npm error ", with: "").replacingOccurrences(of: "npm ERR! ", with: "") }
+    }
+
     static func install(_ token: String, env: MacSyncEnvironment, runner: CommandRunning, marketplaces: [String: String],
                         localMarketplaces: [String: String]) -> Result<Void, EngineError> {
         let fm = FileManager.default
@@ -1128,7 +1168,7 @@ public enum Packages {
         func run(_ tools: [String], _ args: [String], env extra: [String: String] = toolEnv) -> Result<Void, EngineError> {
             guard let tool = tools.first(where: fm.isExecutableFile) else { return .failure(.refused("its tool isn't on this Mac")) }
             let result = runner.run(tool, args, input: nil, environment: extra)
-            return result.status == 0 ? .success(()) : .failure(.refused(result.stderr.split(whereSeparator: \.isNewline).last.map(String.init) ?? "it didn't install"))
+            return result.status == 0 ? .success(()) : .failure(.refused(reason(result.stderr, name: name) ?? "it didn't install"))
         }
         switch kind(token) {
         case "tap":
