@@ -54,11 +54,21 @@ if let symbol = NSImage(systemSymbolName: "arrow.triangle.2.circlepath", accessi
     NSGraphicsContext.restoreGraphicsState()
 }
 
-// A hairline edge so the tile holds its shape on light backgrounds.
-NSColor(white: 1, alpha: 0.18).setStroke()
-let edge = NSBezierPath(roundedRect: tile.insetBy(dx: size * 0.002, dy: size * 0.002), xRadius: corner, yRadius: corner)
-edge.lineWidth = size * 0.004
+// A darker blue edge, at least a pixel wide, so the tile keeps its shape on a blue selection
+// highlight in Finder and on light backgrounds; a faint light line just inside it.
+let edgeWidth = max(size * 0.014, 1)
+let edge = NSBezierPath(roundedRect: tile.insetBy(dx: edgeWidth / 2, dy: edgeWidth / 2),
+                        xRadius: corner - edgeWidth / 2, yRadius: corner - edgeWidth / 2)
+edge.lineWidth = edgeWidth
+color(0, 60, 165, 0.6).setStroke()
 edge.stroke()
+if size >= 64 {
+    let inner = NSBezierPath(roundedRect: tile.insetBy(dx: edgeWidth * 1.5, dy: edgeWidth * 1.5),
+                             xRadius: corner - edgeWidth * 1.5, yRadius: corner - edgeWidth * 1.5)
+    inner.lineWidth = size * 0.004
+    NSColor(white: 1, alpha: 0.16).setStroke()
+    inner.stroke()
+}
 
 NSGraphicsContext.current = nil
 try! rep.representation(using: .png, properties: [:])!.write(to: URL(fileURLWithPath: output))
