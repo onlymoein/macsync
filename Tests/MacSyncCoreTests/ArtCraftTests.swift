@@ -156,3 +156,24 @@ final class LiveCraftIconTests: XCTestCase {
         XCTAssertNotNil(file, "icon \(deck.iconURL ?? "-") sha \(deck.iconSHA256 ?? "-")")
     }
 }
+
+final class CraftFolderInventoryTests: XCTestCase {
+    func testCraftAppsInTheArtCraftFolderCountAsOnThisMac() throws {
+        let world = try TestWorld()
+        let apps = world.root.appendingPathComponent("Applications")
+        func app(_ path: String, _ id: String) throws {
+            let contents = apps.appendingPathComponent(path).appendingPathComponent("Contents")
+            try FileManager.default.createDirectory(at: contents, withIntermediateDirectories: true)
+            try PropertyListSerialization.data(fromPropertyList: ["CFBundleIdentifier": id, "CFBundleShortVersionString": "1.0"], format: .xml, options: 0)
+                .write(to: contents.appendingPathComponent("Info.plist"))
+        }
+        try app("Artcraft/PhotoCraft.app", "ai.storyteller.photocraft")
+        try app("Tools/Helper.app", "com.example.helper")
+        try app("Raycast.app", "com.raycast.macos")
+        let env = MacSyncEnvironment(syncDirectory: world.sync, dataDirectory: world.root.appendingPathComponent("data"), machineID: "a",
+                                     machineName: "A", dockFile: nil, brewPath: nil, applicationsDirectory: apps,
+                                     homeDirectory: world.root.path)
+        let ids = InventoryReader(runner: FakeRunner(), env: env).directApps(excluding: []).map(\.bundleID)
+        XCTAssertEqual(Set(ids), ["ai.storyteller.photocraft", "com.raycast.macos"], "ArtCraft's folder counts; other folders don't")
+    }
+}

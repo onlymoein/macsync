@@ -97,7 +97,7 @@ public struct InventoryReader {
         let direct = directApps(excluding: caskApps.union(inventory.appStore.map { $0.name + ".app" }))
         for app in direct {
             let ref = AppRef(source: .direct, name: app.bundleID)
-            let path = env.applicationsDirectory.appendingPathComponent(app.name + ".app").path
+            let path = appPath(app.name)
             inventory.details?[ref.token] = AppDetail(displayName: Self.displayName(at: path) ?? app.name,
                                                       iconID: icons.store(appAt: path, for: ref), bundleID: app.bundleID)
         }
@@ -146,8 +146,9 @@ public struct InventoryReader {
     func directApps(excluding managed: Set<String>) -> [DirectApp] {
         let fm = FileManager.default
         let names = (try? fm.contentsOfDirectory(atPath: env.applicationsDirectory.path)) ?? []
-        return names.filter { $0.hasSuffix(".app") && !managed.contains($0) }.sorted().compactMap { file in
-            let path = env.applicationsDirectory.appendingPathComponent(file).path
+        let top = names.filter { $0.hasSuffix(".app") && !managed.contains($0) }.sorted()
+        return (top + suiteApps(excluding: Set(top))).compactMap { file in
+            let path = appPath(String(file.dropLast(4)))
             guard !fm.fileExists(atPath: path + "/Contents/_MASReceipt/receipt"),
                   let info = NSDictionary(contentsOfFile: path + "/Contents/Info.plist") as? [String: Any],
                   let id = info["CFBundleIdentifier"] as? String, DirectApp.isSafeBundleID(id),
@@ -157,6 +158,38 @@ public struct InventoryReader {
             let feed = (info["SUFeedURL"] as? String).flatMap { DirectApp.isSafeFeed($0) ? $0 : nil }
             return DirectApp(bundleID: id, name: name, version: info["CFBundleShortVersionString"] as? String, feed: feed)
         }
+    }
+
+    /// ArtCraft keeps its apps in a folder of their own (Applications/Artcraft by default), so
+    /// they're listed too. Only ArtCraft's own apps count from such a folder.
+    func suiteApps(excluding seen: Set<String>) -> [String] {
+        suiteFolders().flatMap { folder -> [String] in
+            let files = (try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? []
+            return files.filter { file in
+                guard file.hasSuffix(".app"), !seen.contains(file),
+                      let id = NSDictionary(contentsOfFile: folder.appendingPathComponent(file).path + "/Contents/Info.plist")?["CFBundleIdentifier"] as? String
+                else { return false }
+                return id.hasPrefix("ai.storyteller.")
+            }
+        }.sorted()
+    }
+
+    /// Plain folders directly inside Applications, such as Artcraft.
+    func suiteFolders() -> [URL] {
+        let fm = FileManager.default
+        let names = (try? fm.contentsOfDirectory(atPath: env.applicationsDirectory.path)) ?? []
+        return names.filter { !$0.hasSuffix(".app") && !$0.hasPrefix(".") }.sorted().compactMap { name in
+            let url = env.applicationsDirectory.appendingPathComponent(name, isDirectory: true)
+            var dir: ObjCBool = false
+            return fm.fileExists(atPath: url.path, isDirectory: &dir) && dir.boolValue ? url : nil
+        }
+    }
+
+    /// Where an app of this name is: Applications itself, or one of those folders.
+    func appPath(_ name: String) -> String {
+        let top = env.applicationsDirectory.appendingPathComponent(name + ".app").path
+        if FileManager.default.fileExists(atPath: top) { return top }
+        return suiteFolders().map { $0.appendingPathComponent(name + ".app").path }.first(where: FileManager.default.fileExists) ?? top
     }
 
     /// Notes which Homebrew cask publishes each app, so other Macs can download it from its source.

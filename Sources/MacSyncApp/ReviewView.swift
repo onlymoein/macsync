@@ -183,9 +183,12 @@ struct ReviewView: View {
     private var chips: [(label: String, filter: ReviewFilter)] {
         var list: [(label: String, filter: ReviewFilter)] = []
         let wanted = (model.overview?.wantedApps ?? []).filter { model.gotten[$0.app.token] == nil }
-        // ArtCraft apps are listed in the ArtCraft section, so they get their own chip.
-        let craft = wanted.filter(AppSuite.contains).count
-        let apps = wanted.count - craft
+        // ArtCraft apps are listed in the ArtCraft section, so they get their own chip, counted as that
+        // section counts them: from this Mac's ArtCraft folder, not from the other Macs' lists.
+        let apps = wanted.filter { !AppSuite.contains($0) }.count
+        let skipped = Set(model.overview?.skippedApps ?? [])
+        let craft = model.craftApps.isEmpty ? wanted.filter(AppSuite.contains).count
+            : model.craftApps.filter { $0.availableOnMac && !$0.isInstalled && !skipped.contains($0.skipToken) && !model.craftBusy.contains($0.id) }.count
         if apps > 0 { list.append(("\(apps) app\(apps == 1 ? "" : "s") to get", .apps)) }
         if craft > 0 { list.append(("\(craft) ArtCraft app\(craft == 1 ? "" : "s")", .craft)) }
         if let plan = model.overview?.dockPlan {

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.8.16
+
+- ArtCraft apps in their own folder (Applications/Artcraft) now count as on this Mac, so they aren't offered again from your other Macs. The ArtCraft chip at the top counts the way the ArtCraft section does.
+
 ## 0.8.15
 
 - The chips at the top of the sync window are filters: click "12 apps to get" and only those sections show, opened, with Show Everything to go back. ArtCraft apps get their own chip, so the count matches what you see.
