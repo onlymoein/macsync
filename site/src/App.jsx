@@ -87,12 +87,12 @@ function Nav() {
         </a>
         <nav className="nav-links" aria-label="Sections">
           {c.nav.map((item) => <a key={item.id} href={`#${item.id}`}>{item.label}</a>)}
+          <a className="nav-glass" href="#glass"><Icon name="sparkles" size={15} />Made with glass</a>
         </nav>
         <div className="nav-actions">
           <a className="nav-icon" href={c.links.github} aria-label="MacSync on GitHub"><Icon name="github" size={20} /></a>
-          <Button className="nav-coffee" icon={<Icon name="coffee" size={17} />} onClick={() => window.open(c.links.support, "_blank", "noopener")}>
-            Buy me a coffee
-          </Button>
+          <Button className="nav-coffee" aria-label="Buy me a coffee" title="Buy me a coffee" icon={<Icon name="coffee" size={18} />}
+            onClick={() => window.open(c.links.support, "_blank", "noopener")} />
           <Button variant="filled" icon={<Icon name="download" size={17} />} onClick={() => { location.href = c.links.download; }}>
             Download
           </Button>
