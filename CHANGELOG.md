@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.8.29
+
+- Homebrew's list of Craft apps stays true. ArtCraft Launcher updates them by itself, hours before Homebrew catches up, so Homebrew and Raycast showed updates that were already installed. MacSync keeps the disk image the launcher downloads and, once Homebrew knows that version, hands it to Homebrew: its record matches the app again and nothing is downloaded twice. ArtCraft and your Homebrew settings aren't changed.
+- An npm or uv package that's already on this Mac another way (codex or vercel from Homebrew, say) isn't offered from your other Macs, and a failed npm install says what went wrong instead of where its log is.
+
 ## 0.8.28
 
 - Every section of the sync window starts folded when the window opens. Developer setup and Adobe apps used to open expanded.
