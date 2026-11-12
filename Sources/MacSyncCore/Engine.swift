@@ -813,8 +813,8 @@ public final class Engine {
             // In sync means it copied this exact layout (even if it lacks some apps) or looks identical.
             let copied = machine.dock?.basedOn == winner?.machineID && machine.dock?.changedAt == winner?.dock?.changedAt
             let target = mergedTarget ?? winner?.dock
-            let identical = keys(machine.dock) == keys(target) && machine.dock?.tileSize == target?.tileSize
-                && machine.dock?.orientation == target?.orientation
+            let identical = Planner.dockMatches(machine.dock, target: target,
+                                                notInstalled: Planner.bundlesNotOn(machine, among: everyone))
             let matches = isSource || copied || identical
             let inventory = machine.inventory
             return MachineSummary(

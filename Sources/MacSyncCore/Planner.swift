@@ -255,6 +255,31 @@ public enum Planner {
         return dedupedApps(all, localCasks: casks).sorted { $0.app < $1.app }
     }
 
+    /// Whether a Mac's Dock shows the same thing as the target, as a person would see it. Two
+    /// things don't count: Safari web apps (File > Add to Dock) get a new ID on every Mac, so they
+    /// match by name and place; and an app a Mac doesn't have can't be in its Dock, so it's left out.
+    public static func dockMatches(_ dock: DockSection?, target: DockSection?, notInstalled: Set<String> = []) -> Bool {
+        func keys(_ section: DockSection?) -> [String] {
+            ((section?.apps ?? []) + (section?.others ?? [])).compactMap { item in
+                // Web apps first: another Mac's copy of the same web app has an ID this Mac doesn't.
+                if let id = item.bundleID, id.hasPrefix("com.apple.Safari.WebApp.") { return "webapp:\(item.path ?? item.label)" }
+                if let id = item.bundleID, notInstalled.contains(id) { return nil }
+                return item.key
+            }
+        }
+        return keys(dock) == keys(target) && dock?.tileSize == target?.tileSize && dock?.orientation == target?.orientation
+    }
+
+    /// The apps a Mac lacks that another Mac has, by bundle ID, from what each one reports.
+    public static func bundlesNotOn(_ machine: MachineSnapshot, among everyone: [MachineSnapshot]) -> Set<String> {
+        func bundles(_ inventory: Inventory?) -> Set<String> {
+            Set((inventory?.directApps ?? []).map(\.bundleID) + (inventory?.details ?? [:]).values.compactMap(\.bundleID))
+        }
+        guard machine.inventory != nil else { return [] }
+        let elsewhere = everyone.filter { $0.machineID != machine.machineID }.reduce(into: Set<String>()) { $0.formUnion(bundles($1.inventory)) }
+        return elsewhere.subtracting(bundles(machine.inventory))
+    }
+
     /// One row per app. An app downloaded by hand on one Mac and installed with Homebrew on
     /// another (ArtCraft Launcher, Creative Cloud) shows once, as the Homebrew row, which installs
     /// by itself. It is left out entirely when this Mac already has that cask.

@@ -79,4 +79,33 @@ final class PlannerTests: XCTestCase {
         let row = Planner.missingApps(local: unlinked, others: [pro]).first { $0.app.token == "cask:tailscale-app" }
         XCTAssertEqual(row?.detail?.bundleID, "io.tailscale.ipn.macsys")
     }
+
+    /// Same Dock as people see it: a Safari web app with another ID, and an app this Mac doesn't have.
+    func testDockMatchesIgnoresWebAppIDsAndAppsNotInstalled() {
+        func app(_ id: String, _ label: String, _ path: String? = nil) -> DockItem { DockItem(kind: .app, label: label, bundleID: id, path: path) }
+        func dock(_ apps: [DockItem]) -> DockSection { DockSection(changedAt: Date(), apps: apps, others: []) }
+        let studio = dock([app("com.apple.Safari", "Safari"), app("com.apple.Safari.WebApp.AAA", "X", "~/Applications/X.app"),
+                           app("io.tailscale.ipn.macsys", "Tailscale")])
+        let pro = dock([app("com.apple.Safari", "Safari"), app("com.apple.Safari.WebApp.BBB", "X", "~/Applications/X.app"),
+                        app("io.tailscale.ipn.macsys", "Tailscale")])
+        XCTAssertTrue(Planner.dockMatches(pro, target: studio))
+        // The Studio's web app ID is one the Pro doesn't have: it still matches the Pro's own copy.
+        XCTAssertTrue(Planner.dockMatches(pro, target: studio, notInstalled: ["com.apple.Safari.WebApp.AAA"]))
+        let air = dock([app("com.apple.Safari", "Safari"), app("com.apple.Safari.WebApp.AAA", "X", "~/Applications/X.app")])
+        XCTAssertFalse(Planner.dockMatches(air, target: studio))
+        XCTAssertTrue(Planner.dockMatches(air, target: studio, notInstalled: ["io.tailscale.ipn.macsys"]))
+        // A different web app is still a difference.
+        let other = dock([app("com.apple.Safari", "Safari"), app("com.apple.Safari.WebApp.CCC", "YouTube", "~/Applications/YouTube.app"),
+                          app("io.tailscale.ipn.macsys", "Tailscale")])
+        XCTAssertFalse(Planner.dockMatches(other, target: studio))
+    }
+
+    func testBundlesNotOnAMacComeFromTheOthers() {
+        var studio = TestWorld.snapshot(id: "studio", apps: [], changedAt: Date())
+        studio.inventory = Inventory(directApps: [DirectApp(bundleID: "io.tailscale.ipn.macsys", name: "Tailscale")])
+        var air = TestWorld.snapshot(id: "air", apps: [], changedAt: Date())
+        air.inventory = Inventory()
+        XCTAssertEqual(Planner.bundlesNotOn(air, among: [studio, air]), ["io.tailscale.ipn.macsys"])
+        XCTAssertEqual(Planner.bundlesNotOn(studio, among: [studio, air]), [])
+    }
 }
