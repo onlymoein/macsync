@@ -352,8 +352,11 @@ private struct RefreshButton: View {
 
     var body: some View {
         Button(action: action) {
+            // The arrowhead makes the glyph taller at the top, so its ring sits 0.9 pt low:
+            // lifted by that, the ring is centred in the circle.
             Image(systemName: "arrow.clockwise")
                 .font(.system(size: 9.5, weight: .semibold))
+                .offset(y: -0.9)
                 .frame(width: 20, height: 20)
                 .background(Circle().fill(Color.primary.opacity(0.08)))
         }

@@ -108,4 +108,21 @@ final class PlannerTests: XCTestCase {
         XCTAssertEqual(Planner.bundlesNotOn(air, among: [studio, air]), ["io.tailscale.ipn.macsys"])
         XCTAssertEqual(Planner.bundlesNotOn(studio, among: [studio, air]), [])
     }
+
+    /// The X web app sits at the end on this Mac and near the start on the source Mac, with another ID there.
+    func testAWebAppMovesToTheSourceMacsPlaceAsThisMacsOwnCopy() {
+        func app(_ id: String, _ label: String, _ path: String? = nil) -> DockItem { DockItem(kind: .app, label: label, bundleID: id, path: path) }
+        let theirX = app("com.apple.Safari.WebApp.STUDIO", "X", "~/Applications/X.app")
+        let myX = app("com.apple.Safari.WebApp.PRO", "X", "~/Applications/X.app")
+        let safari = app("com.apple.Safari", "Safari"), notes = app("com.apple.Notes", "Notes")
+        let current = DockSection(changedAt: Date(), apps: [safari, notes, myX], others: [])
+        // The merged target holds both copies: the source Mac's near the start, this Mac's at the end.
+        let target = DockSection(changedAt: Date(), apps: [safari, theirX, notes, myX], others: [])
+        let plan = Planner.dockPlan(current: current, target: target, source: "Studio",
+                                    locator: TestLocator(apps: ["com.apple.Safari", "com.apple.Notes", "com.apple.Safari.WebApp.PRO"]))
+        XCTAssertEqual(plan.targetApps.map(\.bundleID), ["com.apple.Safari", "com.apple.Safari.WebApp.PRO", "com.apple.Notes"])
+        XCTAssertTrue(plan.added.isEmpty)
+        XCTAssertTrue(plan.removed.isEmpty)
+        XCTAssertFalse(plan.moved.isEmpty, "X moves")
+    }
 }

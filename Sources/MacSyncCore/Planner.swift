@@ -141,7 +141,35 @@ public enum Planner {
         }
     }
 
+    /// A Safari web app (File > Add to Dock) is the same app on every Mac by its name and place,
+    /// though Safari gives each Mac's copy its own ID.
+    static func webAppKey(_ item: DockItem) -> String? {
+        guard item.kind == .app, let id = item.bundleID, id.hasPrefix("com.apple.Safari.WebApp.") else { return nil }
+        return "webapp:" + (item.path ?? item.label)
+    }
+
+    /// The target with each web app turned into this Mac's own copy of it, and only once: the
+    /// first place the source Mac has it. Without this, another Mac's copy and this Mac's own both
+    /// sit in the target, and this Mac's stays where it was.
+    static func localizingWebApps(_ target: DockSection, current: DockSection) -> DockSection {
+        var local: [String: DockItem] = [:]
+        for item in current.apps + current.others { if let key = webAppKey(item), local[key] == nil { local[key] = item } }
+        var seen = Set<String>()
+        func fix(_ items: [DockItem]) -> [DockItem] {
+            items.compactMap { item in
+                guard let key = webAppKey(item) else { return item }
+                guard seen.insert(key).inserted else { return nil }
+                return local[key] ?? item
+            }
+        }
+        var copy = target
+        copy.apps = fix(target.apps)
+        copy.others = fix(target.others)
+        return copy
+    }
+
     public static func dockPlan(current: DockSection, target: DockSection, source: String, locator: AppLocating) -> DockPlan {
+        let target = localizingWebApps(target, current: current)
         let currentKeys = Set((current.apps + current.others).map(\.key))
         var missing: [DockItem] = []
         func available(_ items: [DockItem]) -> [DockItem] {
