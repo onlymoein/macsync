@@ -24,6 +24,7 @@ struct MenuView: View {
             }
             MenuSection(title: "Updates") {
                 HomebrewRow(model: model)
+                AdobeRow(model: model)
                 MacSyncUpdateRow(model: model)
             }
             Divider().padding(.top, 4)

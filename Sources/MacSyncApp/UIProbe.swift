@@ -35,6 +35,13 @@ enum UIProbe {
             if env["MACSYNC_UI_PROBE_SECTIONS"] != nil {
                 // A job in progress, to show the footer's bar.
                 model.work["get"] = WorkProgress(verb: "Getting apps", names: ["Ghostty", "Raycast", "btop", "ripgrep"], done: 1, current: "Raycast")
+                // Adobe's row, with an older InDesign next to the new one (a demo Mac has no Adobe apps).
+                func product(_ sap: String, _ version: String, _ label: String) -> AdobeProduct {
+                    AdobeProduct(sapCode: sap, version: version, label: label, folder: URL(fileURLWithPath: "/Applications/Adobe \(label)"),
+                                 uninstaller: URL(fileURLWithPath: "/tmp/x.app"))
+                }
+                model.adobeApps = [product("IDSN", "21.6", "InDesign 2026"), product("IDSN", "22.0", "InDesign 2027"), product("PHSP", "28.0", "Photoshop 2027")]
+                model.adobeOlder = [model.adobeApps[0]]
             }
             shoot(dir, "review-\(suffix)", "menu-\(suffix)", model, height)
             model.work = [:]

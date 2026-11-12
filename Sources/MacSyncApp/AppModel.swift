@@ -18,6 +18,12 @@ final class AppModel: ObservableObject {
     @Published var errorMessage: String?
     /// Fixes from the website: which apps are the same, notes, switches. Checked after syncs.
     @Published var cloudRules: CloudRules = .none
+    /// Adobe's apps here, the older yearly versions among them, and what Adobe is doing.
+    @Published var adobeApps: [AdobeProduct] = []
+    @Published var adobeOlder: [AdobeProduct] = []
+    @Published var adobeHasUpdater = false
+    @Published var adobeBusy: String?
+    @Published var adobeMessage: String?
     @Published var lastReport: ApplyReport?
     @Published var undoMessage: String?
     @Published var applyDock = true
@@ -122,6 +128,7 @@ final class AppModel: ObservableObject {
         defer {
             spinner.follow(self)
             cloudRules = engine.cloudRules.current()
+            refreshAdobe()
         }
         autoSync = UserDefaults.standard.object(forKey: "autoSync") as? Bool ?? true
         autoUpdate = UserDefaults.standard.object(forKey: "autoUpdate") as? Bool ?? true
@@ -921,6 +928,7 @@ final class AppModel: ObservableObject {
     /// Opening the menu looks again when it's been a couple of minutes, so a new release shows up there.
     func menuOpened() {
         if Date().timeIntervalSince(lastUpdateCheck) > 120 { checkForUpdates(manual: false, force: true) }
+        if adobeBusy == nil { refreshAdobe() }
     }
 
     func checkForUpdates(manual: Bool = false, force: Bool = false) {

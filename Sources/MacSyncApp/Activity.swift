@@ -9,6 +9,7 @@ extension AppModel {
     var isBusy: Bool {
         isSyncing || isApplying || upgrading || isUpdating || craftLoading || !work.isEmpty
             || !getting.isEmpty || !removing.isEmpty || !craftBusy.isEmpty || !extraBusy.isEmpty || !upgradeBusy.isEmpty
+            || adobeBusy != nil
     }
 
     /// One line on what's happening, for under the bar.
@@ -16,6 +17,7 @@ extension AppModel {
         guard isBusy else { return nil }
         if let job = activeWork { return job.line(at: Date()) }
         if let progress { return progress }
+        if let adobeBusy { return adobeBusy }
         if isApplying { return "Applying changes…" }
         if isUpdating { return updateMessage ?? "Updating MacSync…" }
         if !upgradeBusy.isEmpty { return "Updating with Homebrew…" }
