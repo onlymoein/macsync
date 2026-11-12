@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.8.20
+
+- While MacSync works, a bar at the bottom of the menu shows it: how far an install has got and what's next, or a moving bar for a sync or an update, with a line on what's happening. The menu bar icon turns until it's done (it stays still with Reduce Motion on).
+- An app downloaded on this Mac that another Mac installed with Homebrew (Tailscale from its website here, from Homebrew on the other Mac) counts as installed, so it isn't offered again.
+
 ## 0.8.19
 
 - A welcome window the first time MacSync opens. If it's running from Downloads or a disk image, it shows MacSync and Applications so you drag one onto the other, or Move to Applications does it for you. It also asks which versions you want.
