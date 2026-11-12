@@ -322,3 +322,18 @@ main, .footer { max-width: 1180px; margin: 0 auto; padding: 0 20px; }
 /* Segmented labels stay on one line */
 .lg-segmented button { white-space: nowrap; }
 .glass-tuner .lg-segmented { max-width: 100%; }
+
+/* Install */
+.install { align-items: start; }
+.install-steps { display: grid; gap: 14px; min-width: 0; }
+.steps-tight { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+.steps-tight .step { padding-top: 18px; padding-bottom: 18px; }
+.channels { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.channel h3 { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 0 0 6px; }
+.channel .chip { font-size: 12px; padding: 3px 9px; white-space: nowrap; }
+.channel p { margin: 0; font-size: 14.5px; }
+.install .hero-cta { margin: 6px 0 0; align-items: center; }
+.text-link { color: var(--ink-2); font-weight: 560; }
+.frame-welcome { max-width: 520px; justify-self: center; width: 100%; }
+.frame-welcome img { width: 100%; height: auto; display: block; }
+@media (max-width: 600px) { .channels { grid-template-columns: minmax(0, 1fr); } }

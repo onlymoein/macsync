@@ -70,6 +70,13 @@ final class AppModel: ObservableObject {
     @Published var autoUpdate: Bool {
         didSet { UserDefaults.standard.set(autoUpdate, forKey: "autoUpdate") }
     }
+    /// Stable (notarized) or New (each version as soon as it's out).
+    @Published var updateChannel: UpdateChannel = UpdateChannel.saved {
+        didSet {
+            UserDefaults.standard.set(updateChannel.rawValue, forKey: UpdateChannel.defaultsKey)
+            if updateChannel != oldValue { availableUpdate = nil; checkForUpdates(force: true) }
+        }
+    }
     private var lastUpdateCheck = Date.distantPast
     /// At most this often; checks also happen whenever the Mac wakes, unlocks or a login session
     /// becomes active, so a new version arrives soon after you sit down.
@@ -160,6 +167,10 @@ final class AppModel: ObservableObject {
         Blocking { reopen.reopenLauncherIfLeftClosed() }
         syncNow()
         checkForUpdates()
+        // First launch, or opened from outside Applications: the welcome window.
+        if Onboarding.isNeeded {
+            DispatchQueue.main.async { [self] in OnboardingWindow.shared.show(model: self) }
+        }
         if CommandLine.arguments.contains("--review") {
             // This init runs inside a SwiftUI update, and opening a window there aborts the app.
             DispatchQueue.main.async { [self] in ReviewWindow.shared.show(model: self) }
@@ -878,7 +889,8 @@ final class AppModel: ObservableObject {
     // MARK: Updates
 
     private var updater: SelfUpdater {
-        SelfUpdater(runner: SystemCommandRunner(), brewPath: MacSyncEnvironment.current().brewPath, appURL: Bundle.main.bundleURL)
+        SelfUpdater(runner: SystemCommandRunner(), brewPath: MacSyncEnvironment.current().brewPath, appURL: Bundle.main.bundleURL,
+                    channel: updateChannel)
     }
 
     /// Looks for a new release once a day, or now when asked. With automatic updates on, a

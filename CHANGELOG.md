@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.8.19
+
+- A welcome window the first time MacSync opens. If it's running from Downloads or a disk image, it shows MacSync and Applications so you drag one onto the other, or Move to Applications does it for you. It also asks which versions you want.
+- Two update channels. **Stable**, the default, only takes versions Apple has notarized. **New** takes each version as soon as it's out, before Apple has finished checking it. Every version is signed with MacSync's Developer ID either way. Change it in Settings, MacSync Versions.
+- MacSync now comes as a disk image as well, whose window shows where to drag it. The website's download button gives you the notarized image of the latest Stable version.
+
 ## 0.8.18
 
 - In the menu, checking for updates is a small refresh button, so it doesn't read like the Mac status labels above it.

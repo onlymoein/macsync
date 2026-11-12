@@ -493,6 +493,42 @@ function ArtCraft() {
 
 // MARK: How it works, privacy, keyboard
 
+function Install() {
+  return (
+    <Section id="install" eyebrow="Install" title="Download, drag, done"
+      lead="MacSync comes as a disk image. Drag it into Applications, open it, and the welcome window walks you through the rest.">
+      <div className="split install">
+        <div className="install-steps">
+          <ol className="steps steps-tight">
+            {c.install.map((s, i) => (
+              <li key={s.title}>
+                <Glass className="card step">
+                  <span className="step-n">{i + 1}</span>
+                  <h3>{s.title}</h3>
+                  <Checks items={s.points} />
+                </Glass>
+              </li>
+            ))}
+          </ol>
+          <div className="channels">
+            {c.channels.map((ch) => (
+              <Glass key={ch.name} className="card channel">
+                <h3><Icon name={ch.icon} /> {ch.name} <span className="chip">{ch.tag}</span></h3>
+                <p className="muted">{ch.text}</p>
+              </Glass>
+            ))}
+          </div>
+          <div className="hero-cta">
+            <Button variant="filled" size="large" icon={<Icon name="download" size={20} />} onClick={() => { location.href = c.links.download; }}>Download MacSync</Button>
+            <a className="text-link" href={c.links.releases}>Every release</a>
+          </div>
+        </div>
+        <Glass className="frame frame-welcome"><Shot name="welcome" alt="MacSync's welcome window: drag MacSync onto Applications, then choose Stable or New versions." /></Glass>
+      </div>
+    </Section>
+  );
+}
+
 function How() {
   return (
     <Section id="how" eyebrow="How it works" title="Three steps, all on your Macs">
@@ -669,6 +705,7 @@ export default function App() {
         <Progressing />
         <ArtCraft />
         <How />
+        <Install />
         <Privacy />
         <Keyboard />
         <Faq />

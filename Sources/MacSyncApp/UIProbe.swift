@@ -71,6 +71,7 @@ enum UIProbe {
                 if let view = ReviewView.probeSection(key, model: model) { write(view, dir, "section-\(key)-\(suffix)") }
             }
             write(MenuView(model: model).background(background), dir, "probe-menu-brew-\(suffix)")
+            write(OnboardingView(model: model, done: {}).background(background), dir, "welcome-\(suffix)")
         }
     }
 

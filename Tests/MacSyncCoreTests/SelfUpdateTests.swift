@@ -57,13 +57,32 @@ final class SelfUpdateTests: XCTestCase {
     }
 }
 
-final class FeedTests: XCTestCase {
-    func testTheFeedWinsWhenTheLatestLinkIsStale() {
+final class ChannelTests: XCTestCase {
+    /// The latest release is 0.8.0; 0.8.1 is a pre-release still waiting for Apple.
+    func runner() -> FakeRunner {
         let runner = FakeRunner()
         runner.web[SelfUpdater.releasesPage] = Data("https://github.com/onlymoein/macsync/releases/tag/v0.8.0".utf8)
         runner.web[SelfUpdater.releasesFeed] = Data("<feed><entry><link href=\"https://github.com/onlymoein/macsync/releases/tag/v0.8.1\"/></entry><entry><link href=\"https://github.com/onlymoein/macsync/releases/tag/v0.8.0\"/></entry></feed>".utf8)
-        let updater = SelfUpdater(runner: runner, brewPath: nil, appURL: URL(fileURLWithPath: "/tmp/x.app"), currentVersion: "0.8.0")
+        return runner
+    }
+    let app = URL(fileURLWithPath: "/tmp/x.app")
+
+    func testStableSkipsAPreRelease() {
+        let updater = SelfUpdater(runner: runner(), brewPath: nil, appURL: app, currentVersion: "0.7.9", channel: .stable)
+        XCTAssertEqual(updater.check()?.version, "0.8.0")
+        XCTAssertEqual(updater.check()?.isStable, true)
+        XCTAssertNil(SelfUpdater(runner: runner(), brewPath: nil, appURL: app, currentVersion: "0.8.0", channel: .stable).check())
+    }
+
+    func testNewTakesThePreRelease() {
+        let updater = SelfUpdater(runner: runner(), brewPath: nil, appURL: app, currentVersion: "0.8.0", channel: .new)
         XCTAssertEqual(updater.check()?.version, "0.8.1")
+        XCTAssertEqual(updater.check()?.isStable, false)
+    }
+
+    func testGoingBackToStableNeverGoesDown() {
+        // On 0.8.1 from New, Stable at 0.8.0 offers nothing until it passes 0.8.1.
+        XCTAssertNil(SelfUpdater(runner: runner(), brewPath: nil, appURL: app, currentVersion: "0.8.1", channel: .stable).check())
     }
 }
 

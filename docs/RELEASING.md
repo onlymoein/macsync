@@ -1,7 +1,8 @@
 # Releasing MacSync
 
-Nothing in this repo publishes anything for you. `scripts/release.sh` only creates files in
-`build/release/`. Pushing, tagging, uploading and updating the tap are manual steps below.
+`scripts/release.sh` only creates files in `build/release/`. Publishing the pre-release is a
+manual step, and `scripts/notarize.sh` publishes (it replaces release files, marks the release
+latest and pushes the cask), so run it only once the release is approved.
 
 ## One-time setup
 
@@ -33,37 +34,66 @@ xcrun notarytool store-credentials macsync-notary --apple-id you@example.com --t
 
 It prompts for the app-specific password. `macsync-notary` is your `NOTARY_PROFILE`.
 
+## Channels: Stable and New
+
+Every build that goes out is signed with the Developer ID. Unsigned and development builds never
+go out. A version passes through two channels:
+
+| Channel | What it gets | Where it comes from |
+| --- | --- | --- |
+| **New** | Each version as soon as it's out, before Apple has finished notarizing it | GitHub pre-releases, read from the releases feed |
+| **Stable** (the default) | Only versions Apple has notarized, which macOS opens without warnings | The latest GitHub release, which is never a pre-release |
+
+People choose in the welcome window or in Settings, MacSync Versions. Homebrew and the website's
+download button only ever get Stable. Switching from New back to Stable never goes down a
+version: MacSync waits until Stable passes the copy it has.
+
+A New build that's downloaded in a browser isn't notarized yet, so macOS warns about it. That's
+why New is only offered inside the app, where updates download without that warning.
+
 ## Cutting a release
 
-1. Set the version in `Sources/MacSyncCore/Environment.swift` (`appVersion`) and commit.
-2. Run the script:
+1. Set the version in `Sources/MacSyncCore/Environment.swift` (`appVersion`), add it to
+   `CHANGELOG.md`, and commit.
+2. Build the New-channel files:
 
 ```bash
-SIGN_IDENTITY="Developer ID Application: Your Name (ABCDE12345)" NOTARY_PROFILE=macsync-notary scripts/release.sh
+SIGN_IDENTITY="Developer ID Application: Your Name (ABCDE12345)" scripts/release.sh
 ```
 
-It runs the tests, builds, signs (hardened runtime, secure timestamp), submits to Apple and waits,
-staples the ticket, checks it with `spctl`, zips the app, and writes the checksum and a filled-in
-`macsync.rb`. It stops at the first error, and refuses to run with the wrong kind of certificate.
+It runs the tests, builds and signs (hardened runtime, secure timestamp), then writes to
+`build/release/`: the zip that updates use, a disk image whose window says to drag MacSync into
+Applications, `MacSync.dmg` (the same image without the version, for the website's link) and
+checksums. It refuses to run with anything but a Developer ID Application certificate.
 
-3. Publish, by hand, once you're happy with `build/release/`:
+3. Push, and publish it as a pre-release. Only the New channel takes it:
 
 ```bash
-git tag v0.2.0 && git push origin v0.2.0
+gh release create v0.2.0 build/release/MacSync-0.2.0.zip build/release/MacSync-0.2.0.zip.sha256 build/release/MacSync-0.2.0.dmg build/release/MacSync.dmg --prerelease --title "MacSync 0.2.0" --notes "Release notes here"
 ```
+
+4. Make it Stable:
 
 ```bash
-gh release create v0.2.0 build/release/MacSync-0.2.0.zip --title "MacSync 0.2.0" --notes "Release notes here"
+SIGN_IDENTITY="Developer ID Application: Your Name (ABCDE12345)" scripts/notarize.sh 0.2.0 ~/path/to/homebrew-tap
 ```
 
-4. Update the tap. Copy `build/release/macsync.rb` to `Casks/macsync.rb` in
-   `onlymoein/homebrew-tap`, replacing the old Python formula if it is still there, then commit
-   and push.
+It submits the app to Apple and waits, staples the ticket, packs and notarizes the disk image,
+replaces the release's files with the notarized ones, marks the release as the latest one (which
+is what Stable reads), and commits the cask with the new version and checksum to the tap. It
+stops at the first error, so a version Apple refuses stays on New.
+
 5. On a Mac that has never had MacSync, check the whole path:
 
 ```bash
 brew tap onlymoein/tap && brew trust onlymoein/tap && brew install --cask macsync
 ```
+
+### The disk image
+
+`scripts/make-dmg.sh <app> <dmg>` builds it with `hdiutil`. Finder lays out the window (icons, the
+background from `scripts/make-dmg-background.swift`), so the first run may ask to let Terminal
+control Finder.
 
 ## Checks worth doing before the first public release
 

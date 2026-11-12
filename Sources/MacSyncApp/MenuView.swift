@@ -117,6 +117,7 @@ struct MenuView: View {
         Menu {
             Button { ReviewWindow.shared.show(model: model) } label: { Label("Open Sync Window…", systemImage: "macwindow") }
             Button { model.chooseSharedSetup() } label: { Label("Open a Shared Setup…", systemImage: "tray.and.arrow.down") }
+            Button { OnboardingWindow.shared.show(model: model) } label: { Label("Welcome and Install…", systemImage: "hand.wave") }
             Section("Sync") {
                 Toggle("Sync Automatically", isOn: $model.autoSync)
                 Toggle("Apply Dock Changes When I Open the Lid", isOn: $model.autoApplyDock)
@@ -124,6 +125,9 @@ struct MenuView: View {
             Section("Updates") {
                 Toggle("Update Apps and Tools Automatically", isOn: $model.autoUpgrade)
                 Toggle("Update MacSync Automatically", isOn: $model.autoUpdate)
+                Picker("MacSync Versions", selection: $model.updateChannel) {
+                    ForEach(UpdateChannel.allCases) { Text($0 == .stable ? "Stable (Notarized by Apple)" : "New (Before Apple Checks)").tag($0) }
+                }
             }
             Section("MacSync \(MacSyncEnvironment.appVersion)") {
                 Toggle("Open at Login", isOn: Binding(get: { model.openAtLogin }, set: { model.setOpenAtLogin($0) }))
@@ -200,8 +204,11 @@ private struct MacSyncUpdateRow: View {
                 .foregroundStyle(model.availableUpdate != nil ? Color.accentColor : .secondary)
                 .frame(width: 28)
             VStack(alignment: .leading, spacing: 1) {
-                Text(model.availableUpdate.map { "MacSync \($0.version) is ready" } ?? "MacSync \(MacSyncEnvironment.appVersion)")
-                    .lineLimit(1)
+                HStack(spacing: 5) {
+                    Text(model.availableUpdate.map { "MacSync \($0.version) is ready" } ?? "MacSync \(MacSyncEnvironment.appVersion)")
+                        .lineLimit(1)
+                    if model.updateChannel == .new { ChannelTag() }
+                }
                 Text(detail).font(.caption).foregroundStyle(.secondary).lineLimit(1).help(detail)
             }
             Spacer(minLength: 6)
@@ -235,6 +242,18 @@ private struct MacSyncUpdateRow: View {
         if let message = model.updateMessage { return message }
         if model.availableUpdate != nil { return model.autoUpdate ? "Installs on its own when MacSync is idle" : "You're on \(MacSyncEnvironment.appVersion)" }
         return "Up to date"
+    }
+}
+
+/// Marks the New channel: versions that may not be notarized yet.
+struct ChannelTag: View {
+    var body: some View {
+        Text("NEW CHANNEL")
+            .font(.system(size: 8.5, weight: .bold))
+            .padding(.horizontal, 5).padding(.vertical, 1.5)
+            .foregroundStyle(Color.orange)
+            .background(Capsule().fill(Color.orange.opacity(0.15)))
+            .help("You get each MacSync version as soon as it's out, before Apple has finished checking it. Change this in Settings.")
     }
 }
 

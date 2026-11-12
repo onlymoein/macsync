@@ -1,37 +1,33 @@
 #!/bin/bash
-# Builds, signs, notarizes and packages MacSync, then writes the Homebrew cask.
+# Builds, signs and packages MacSync for the New channel: a zip, a disk image and checksums.
 #
-#   SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" \
-#   NOTARY_PROFILE=macsync-notary \
-#   scripts/release.sh
+#   SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" scripts/release.sh
 #
 # This script only produces files in build/release/. It never pushes, tags, uploads or
-# publishes anything. Those steps are listed at the end for you to run yourself.
-# See docs/RELEASING.md for the one-time setup.
+# publishes anything. The steps after it are listed at the end; see docs/RELEASING.md.
+#
+# Channels: a version goes out first as a GitHub pre-release, which only the New channel takes.
+# scripts/notarize.sh then has Apple notarize it and makes the same release the latest one,
+# which is Stable, and points Homebrew at it.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-# Optional: SIGN_KEYCHAIN, a signing-only keychain holding the Developer ID and the notarization
-# login, unlocked with the password in SIGN_KEYCHAIN_PASSWORD_FILE, so nothing asks for the
-# login password.
+# Optional: SIGN_KEYCHAIN, a signing-only keychain holding the Developer ID, unlocked with the
+# password in SIGN_KEYCHAIN_PASSWORD_FILE, so nothing asks for the login password.
 if [ -n "${SIGN_KEYCHAIN:-}" ] && [ -n "${SIGN_KEYCHAIN_PASSWORD_FILE:-}" ]; then
   security unlock-keychain -p "$(cat "$SIGN_KEYCHAIN_PASSWORD_FILE")" "$SIGN_KEYCHAIN"
 fi
 
 : "${SIGN_IDENTITY:?Set SIGN_IDENTITY to your 'Developer ID Application: ...' certificate name}"
-: "${NOTARY_PROFILE:?Set NOTARY_PROFILE to a keychain profile made with 'xcrun notarytool store-credentials'}"
 case "$SIGN_IDENTITY" in
   "Developer ID Application:"*) ;;
-  *) echo "SIGN_IDENTITY must be a Developer ID Application certificate. Apple Development and Apple Distribution certificates cannot be notarized for outside distribution." >&2; exit 1 ;;
+  *) echo "SIGN_IDENTITY must be a Developer ID Application certificate. Unsigned and development builds never go out, on either channel." >&2; exit 1 ;;
 esac
 security find-identity -v -p codesigning ${SIGN_KEYCHAIN:+"$SIGN_KEYCHAIN"} | grep -qF "$SIGN_IDENTITY" \
   || { echo "No signing identity matching '$SIGN_IDENTITY' in your keychain." >&2; exit 1; }
-xcrun notarytool history --keychain-profile "$NOTARY_PROFILE" ${SIGN_KEYCHAIN:+--keychain "$SIGN_KEYCHAIN"} >/dev/null 2>&1 \
-  || { echo "Notary profile '$NOTARY_PROFILE' not found or not working. Run: xcrun notarytool store-credentials $NOTARY_PROFILE" >&2; exit 1; }
 
 VERSION=$(sed -n 's/.*appVersion = "\(.*\)"/\1/p' Sources/MacSyncCore/Environment.swift)
 OUT=build/release
-ZIP="MacSync-$VERSION.zip"
 rm -rf "$OUT"; mkdir -p "$OUT"
 
 echo "==> Tests"
@@ -41,34 +37,18 @@ echo "==> Build and sign $VERSION"
 SIGN_IDENTITY="$SIGN_IDENTITY" SIGN_KEYCHAIN="${SIGN_KEYCHAIN:-}" scripts/build-app.sh
 codesign --verify --strict --deep --verbose=2 build/MacSync.app
 
-echo "==> Notarize (this waits for Apple, usually a few minutes)"
-ditto -c -k --keepParent build/MacSync.app "$OUT/notarize.zip"
-xcrun notarytool submit "$OUT/notarize.zip" --keychain-profile "$NOTARY_PROFILE" ${SIGN_KEYCHAIN:+--keychain "$SIGN_KEYCHAIN"} --wait
-rm "$OUT/notarize.zip"
-
-echo "==> Staple and verify"
-xcrun stapler staple build/MacSync.app
-xcrun stapler validate build/MacSync.app
-spctl --assess --type execute --verbose=2 build/MacSync.app
-
 echo "==> Package"
-ditto -c -k --keepParent build/MacSync.app "$OUT/$ZIP"
-SHA=$(shasum -a 256 "$OUT/$ZIP" | awk '{print $1}')
-echo "$SHA  $ZIP" > "$OUT/$ZIP.sha256"
-
-echo "==> Cask"
-sed -e "s/@VERSION@/$VERSION/g" -e "s/@SHA256@/$SHA/g" packaging/macsync.rb.template > "$OUT/macsync.rb"
+scripts/package.sh build/MacSync.app "$OUT" "$VERSION"
 
 cat <<EOF
 
-Done. Files in $OUT/:
-  $ZIP            the notarized, stapled app
-  $ZIP.sha256     checksum
-  macsync.rb      the cask, with the version and checksum filled in
+Done. Files in $OUT/: MacSync-$VERSION.zip, MacSync-$VERSION.dmg, MacSync.dmg, checksums.
+Signed, not notarized yet: this is a New-channel build.
 
 Next, by hand (nothing was published):
-  1. git tag v$VERSION && git push origin v$VERSION
-  2. gh release create v$VERSION $OUT/$ZIP --title "MacSync $VERSION" --notes-file <your notes>
-  3. cp $OUT/macsync.rb <homebrew-tap>/Casks/macsync.rb, commit, push
-  4. On a clean Mac: brew tap onlymoein/tap && brew trust onlymoein/tap && brew install --cask macsync
+  1. git push, then publish it as a pre-release (New channel only):
+     gh release create v$VERSION $OUT/MacSync-$VERSION.zip $OUT/MacSync-$VERSION.zip.sha256 \\
+       $OUT/MacSync-$VERSION.dmg $OUT/MacSync.dmg --prerelease --title "MacSync $VERSION" --notes "..."
+  2. scripts/notarize.sh $VERSION <homebrew-tap folder>
+     Waits for Apple, swaps in the notarized files, makes the release Stable and updates the cask.
 EOF

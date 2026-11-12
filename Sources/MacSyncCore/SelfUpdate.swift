@@ -6,12 +6,35 @@ import Foundation
 /// in charge of the app it installed. Otherwise it downloads the release zip, checks it against
 /// the release's published SHA-256, checks it is MacSync signed by the same developer as the copy
 /// that is running, and swaps it in.
+///
+/// Releases come in two channels. A new version goes out first as a GitHub pre-release: signed
+/// with MacSync's Developer ID, but Apple may still be checking it. Once Apple has notarized it,
+/// the same release becomes the latest one, which is Stable. GitHub's "latest release" address
+/// skips pre-releases, and the releases feed lists every release.
+public enum UpdateChannel: String, CaseIterable, Identifiable, Sendable {
+    case stable, new
+    public var id: String { rawValue }
+    public var title: String { self == .stable ? "Stable" : "New" }
+    public var summary: String {
+        switch self {
+        case .stable: return "Only versions Apple has checked and notarized. macOS opens them without warnings."
+        case .new: return "Each version as soon as it's out, before Apple has finished checking it."
+        }
+    }
+    public static let defaultsKey = "updateChannel"
+    public static var saved: UpdateChannel {
+        UserDefaults.standard.string(forKey: defaultsKey).flatMap(UpdateChannel.init(rawValue:)) ?? .stable
+    }
+}
+
 public struct SelfUpdater {
     public struct Release: Equatable {
         public var version: String
         public var zipURL: String
         public var checksumURL: String?
         public var notes: String?
+        /// Notarized and marked latest. A pre-release on the New channel is not.
+        public var isStable = true
     }
 
     public static let bundleID = "com.onlymehdi.macsync"
@@ -21,30 +44,45 @@ public struct SelfUpdater {
     /// The running app's bundle, e.g. /Applications/MacSync.app.
     let appURL: URL
     let currentVersion: String
+    let channel: UpdateChannel
 
-    public init(runner: CommandRunning, brewPath: String?, appURL: URL, currentVersion: String = MacSyncEnvironment.appVersion) {
+    public init(runner: CommandRunning, brewPath: String?, appURL: URL, currentVersion: String = MacSyncEnvironment.appVersion,
+                channel: UpdateChannel = .stable) {
         self.runner = runner
         self.brewPath = brewPath
         self.appURL = appURL
         self.currentVersion = currentVersion
+        self.channel = channel
     }
 
     public static let releasesPage = "https://github.com/onlymoein/macsync/releases/latest"
     static let downloadBase = "https://github.com/onlymoein/macsync/releases/download/"
 
-    /// The latest release, when it is newer than this copy. It reads where GitHub's "latest
-    /// release" page points rather than GitHub's API, which limits each network to 60 requests an
-    /// hour; the files follow the release's fixed names.
+    /// The newest release on this copy's channel, when it is newer than this copy. It reads where
+    /// GitHub's "latest release" page points rather than GitHub's API, which limits each network to
+    /// 60 requests an hour; the files follow the release's fixed names.
+    ///
+    /// Stable reads only the latest release, which is never a pre-release. New also reads the
+    /// releases feed, which lists pre-releases too. Switching from New back to Stable never goes
+    /// down a version: it waits until Stable passes the copy you have.
     public func check() -> Release? {
-        var found: [Release] = []
+        var stable: Release?
         let result = runner.run("/usr/bin/curl", ["-sS", "--proto", "=https", "--max-time", "30", "-o", "/dev/null",
                                                   "-w", "%{redirect_url}", Self.releasesPage], input: nil, environment: [:])
-        if result.status == 0, let release = Self.release(fromRedirect: result.output) { found.append(release) }
-        // GitHub's "latest" address is cached and can point at the previous release for a while;
-        // the releases feed has the new one straight away.
-        let feed = runner.run("/usr/bin/curl", ["-sS", "--proto", "=https", "--max-time", "30", Self.releasesFeed],
-                              input: nil, environment: [:])
-        if feed.status == 0 { found += Self.releases(fromFeed: feed.output) }
+        if result.status == 0 { stable = Self.release(fromRedirect: result.output) }
+        var found = stable.map { [$0] } ?? []
+        if channel == .new {
+            let feed = runner.run("/usr/bin/curl", ["-sS", "--proto", "=https", "--max-time", "30", Self.releasesFeed],
+                                  input: nil, environment: [:])
+            if feed.status == 0 {
+                // A feed release that isn't the latest one may still be waiting for Apple.
+                found += Self.releases(fromFeed: feed.output).map { release in
+                    var release = release
+                    release.isStable = release.version == stable?.version
+                    return release
+                }
+            }
+        }
         guard let newest = found.max(by: { Self.isNewer($1.version, than: $0.version) }),
               Self.isNewer(newest.version, than: currentVersion) else { return nil }
         return newest

@@ -1,7 +1,9 @@
 // Everything the site says, in one place.
 
 export const links = {
-  download: "https://github.com/onlymoein/macsync/releases/latest",
+  // The notarized disk image of the latest release, which is always Stable.
+  download: "https://github.com/onlymoein/macsync/releases/latest/download/MacSync.dmg",
+  releases: "https://github.com/onlymoein/macsync/releases",
   github: "https://github.com/onlymoein/macsync",
   changelog: "https://github.com/onlymoein/macsync/blob/main/CHANGELOG.md",
   support: "https://buymeacoffee.com/onlymoein",
@@ -25,6 +27,7 @@ export const nav = [
 
 // The rest, in the phone menu only.
 export const navMore = [
+  { id: "install", label: "Install" },
   { id: "homebrew", label: "Homebrew" },
   { id: "developers", label: "Developers" },
   { id: "share", label: "Share" },
@@ -205,6 +208,17 @@ export const developer = [
 export const craftApps = ["photocraft", "vectorcraft", "pdfcraft", "wordcraft", "gridcraft", "deckcraft", "designcraft", "filmcraft", "effectcraft",
   "lightcraft", "anicraft", "cadcraft", "solidcraft", "soundcraft", "texturecraft", "materialcraft", "mailcraft", "figcraft", "craft-anything"];
 
+export const install = [
+  { title: "Download", points: ["A disk image, notarized by Apple", "Or install with Homebrew", "Free, for macOS 13 and later"] },
+  { title: "Drag into Applications", points: ["The window shows where it goes", "Opened from Downloads? The welcome window moves it", "So it stays put and updates itself"] },
+  { title: "Pick your versions", points: ["Stable: only versions Apple has notarized", "New: each version as soon as it's out", "Change it any time in Settings"] },
+];
+
+export const channels = [
+  { name: "Stable", icon: "shield", tag: "Recommended", text: "Only versions Apple has checked and notarized. macOS opens them without warnings. The download button and Homebrew always give you Stable." },
+  { name: "New", icon: "sparkles", tag: "Early", text: "Each version as soon as it's out, signed with MacSync's Developer ID, before Apple has finished checking it. Only offered inside the app." },
+];
+
 export const steps = [
   { title: "Each Mac saves its setup", points: ["A small file per Mac in your iCloud Drive", "Dock, apps, chosen settings and files", "Updated seconds after a change"] },
   { title: "The others see what's new", points: ["Apps to add, Dock changes, settings", "All in one window, grouped", "The menu bar icon tells you"] },
@@ -236,7 +250,8 @@ macsync upgrade
 macsync files`;
 
 export const faq = [
-  ["macOS says it can't verify MacSync", "That happens for a little while after a release, while Apple finishes checking it. Open System Settings → Privacy & Security and click Open Anyway, then open MacSync again."],
+  ["macOS says it can't verify MacSync", "The download button gives you a version Apple has already notarized, so this shouldn't happen. If it does, open System Settings → Privacy & Security and click Open Anyway, then open MacSync again."],
+  ["What are Stable and New?", "Two ways to get updates. Stable waits until Apple has notarized a version. New gets it as soon as it's out, before Apple has finished checking it. Every version is signed with MacSync's Developer ID either way. Pick one in the welcome window or in Settings."],
   ["Do I need an account or a server?", "No. MacSync only uses your own iCloud Drive. Turn on iCloud Drive on each Mac, signed in to the same Apple Account."],
   ["Will it delete my apps?", "Only when you ask. Remove from All Macs uninstalls an app after you confirm, and each other Mac asks before removing it there. Homebrew uninstalls its own apps; anything else goes to the Trash."],
   ["Why does an app say Install in Terminal?", "Some installers, like Docker Desktop or Adobe's, need your Mac password. MacSync never types a password, so it opens Terminal with the install ready and you type it there. Several at once share one window."],
