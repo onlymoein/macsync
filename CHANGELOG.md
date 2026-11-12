@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.8.26
+
+- Adobe apps get a row in the menu's Updates. When an app has an older yearly version next to a newer one (InDesign 2026 and 2027, say), Remove Old takes it away with Adobe's own installer, keeping your settings; macOS asks for your password. Updates go through Adobe's updater on company installs and through Creative Cloud on personal plans.
+- A Safari web app in the Dock (File > Add to Dock, like X) now moves with the rest of the Dock. Safari gives each Mac's copy its own ID, so MacSync matches web apps by name and place.
+- The icon's arrows are bigger, and a darker edge keeps it full size on Finder's blue selection.
+- The refresh buttons' arrow is centred in its circle.
+
 ## 0.8.25
 
 - ArtCraft apps install the way they did before 0.8.24, from ArtCraft's own downloads. The change in 0.8.24 is undone.
