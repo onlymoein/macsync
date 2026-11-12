@@ -10,6 +10,8 @@ struct ShareSheet: View {
     @State private var chosen: Set<ShareSection> = ShareSheet.savedSections()
     @State private var working = false
     @State private var error: String?
+    /// How big the file is with the sections chosen now.
+    @State private var size: Int?
     /// For the website's picture only.
     var demoName: String? = nil
 
@@ -54,6 +56,19 @@ struct ShareSheet: View {
                 }
             }
             .glassPanel(cornerRadius: 14)
+            HStack(spacing: 6) {
+                Image(systemName: "doc.zipper").foregroundStyle(.secondary)
+                if let size {
+                    Text("The file is about \(ByteCountFormatter.string(fromByteCount: Int64(size), countStyle: .file))" +
+                         (size < 20_000_000 ? ", small enough for Messages or Mail." : ". Send it with AirDrop or Messages; it may be too big for email. AI setup is usually the biggest part."))
+                } else {
+                    Text("Working out the file's size…")
+                }
+            }
+            .font(.caption)
+            Label("To open it, your friend double-clicks the file, with MacSync installed. Or in MacSync: the menu's Settings → Open a Shared Setup…, or Share ▾ → Open a Shared Setup… in this window.",
+                  systemImage: "tray.and.arrow.down")
+                .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             Label("Never in it: passwords, keys, tokens or any file with one in it, your fonts, app data, your Dock and your history.",
                   systemImage: "lock.shield")
                 .font(.caption).foregroundStyle(.secondary)
@@ -68,6 +83,13 @@ struct ShareSheet: View {
         }
         .padding(22)
         .frame(width: 520)
+        .task(id: chosen) {
+            size = nil
+            guard !chosen.isEmpty, demoName == nil else { return }
+            try? await Task.sleep(nanoseconds: 400_000_000)
+            guard !Task.isCancelled, case .success(let url) = await model.makeSetupFile(name: name, sections: chosen) else { return }
+            if !Task.isCancelled { size = (try? url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize }
+        }
     }
 
     private func make(send: Bool) {

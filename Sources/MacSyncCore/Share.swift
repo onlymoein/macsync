@@ -49,6 +49,21 @@ public enum ShareSection: String, Codable, CaseIterable, Identifiable {
 
 public struct SharedSetup: Codable {
     public static let format = "macsync-setup"
+    /// The start of a compressed setup file. Older files are plain JSON and still open.
+    static let packedMagic = Data("MSZ1".utf8)
+
+    /// The file as written: zlib-compressed, about a third of the JSON's size.
+    public static func pack(_ json: Data) -> Data {
+        guard let small = try? (json as NSData).compressed(using: .zlib) as Data else { return json }
+        return packedMagic + small
+    }
+
+    /// The JSON inside a setup file, compressed or not.
+    public static func unpack(_ file: Data) -> Data {
+        guard file.starts(with: packedMagic),
+              let json = try? (file.dropFirst(packedMagic.count) as NSData).decompressed(using: .zlib) as Data else { return file }
+        return json
+    }
     public var format = SharedSetup.format
     public var version = 1
     public var name: String
@@ -127,13 +142,14 @@ extension Engine {
                                 snapshot: shared, blobs: blobs)
         let encoder = JSONEncoder.iso
         encoder.outputFormatting = [.sortedKeys]
-        return try encoder.encode(setup)
+        return SharedSetup.pack(try encoder.encode(setup))
     }
 
     /// Reads a .macsync file. What it holds is offered here like another Mac's setup, under its name.
     @discardableResult
     public func importSetup(_ data: Data) throws -> ImportedSetup {
-        guard let setup = try? JSONDecoder.iso.decode(SharedSetup.self, from: data), setup.format == SharedSetup.format else {
+        guard data.count < 200_000_000,
+              let setup = try? JSONDecoder.iso.decode(SharedSetup.self, from: SharedSetup.unpack(data)), setup.format == SharedSetup.format else {
             throw EngineError.refused("That isn't a MacSync setup file.")
         }
         guard setup.version <= 1 else { throw EngineError.refused("That setup was made by a newer MacSync. Update MacSync first.") }

@@ -87,9 +87,6 @@ struct MenuView: View {
             ToolbarButton(title: model.isSyncing ? "Syncing" : "Sync", symbol: "arrow.triangle.2.circlepath",
                           help: "Save this Mac and check your other Macs now") { model.syncNow() }
                 .disabled(model.isSyncing || model.isApplying)
-            ToolbarButton(title: "Undo", symbol: "arrow.uturn.backward",
-                          help: model.overview?.lastRestorePoint.map { "Undo \($0.summary) from \($0.sourceMachine)" } ?? "Nothing to undo yet") { model.undo() }
-                .disabled(model.overview?.lastRestorePoint == nil || model.isApplying)
             ToolbarButton(title: "History", symbol: "clock.arrow.circlepath", help: "What changed and when") {
                 model.showHistory = true
                 ReviewWindow.shared.show(model: model)
@@ -97,6 +94,9 @@ struct MenuView: View {
             ToolbarButton(title: "Share", symbol: "square.and.arrow.up", help: "Share your setup with a friend") {
                 ReviewWindow.shared.show(model: model)
                 model.requestShare = true
+            }
+            ToolbarButton(title: "Coffee", symbol: "cup.and.saucer", help: "Buy me a coffee: MacSync is free") {
+                NSWorkspace.shared.open(URL(string: "https://buymeacoffee.com/onlymoein")!)
             }
             // A menu's label is drawn in one line, so the word sits under it separately.
             VStack(spacing: 3) {
@@ -124,9 +124,6 @@ struct MenuView: View {
             }
             Section("MacSync \(MacSyncEnvironment.appVersion)") {
                 Toggle("Open at Login", isOn: Binding(get: { model.openAtLogin }, set: { model.setOpenAtLogin($0) }))
-                Button { NSWorkspace.shared.open(URL(string: "https://buymeacoffee.com/onlymoein")!) } label: {
-                    Label("Support MacSync…", systemImage: "cup.and.saucer")
-                }
             }
             Divider()
             Button("Quit MacSync") { NSApp.terminate(nil) }.keyboardShortcut("q")

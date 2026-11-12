@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.8.15
+
+- The chips at the top of the sync window are filters: click "12 apps to get" and only those sections show, opened, with Show Everything to go back. ArtCraft apps get their own chip, so the count matches what you see.
+- Share shows how big the file is as you choose sections, and how your friend opens it. Files are compressed, about a third of the size; older files still open.
+- The menu's toolbar has Coffee in place of Undo (Undo is still in History).
+
 ## 0.8.14
 
 - **Developer setup**: Xcode themes, key bindings, snippets and templates, and Android Studio keymaps, code styles, colors and templates sync like config files. Provisioning profiles, signing files and adb keys never leave the Mac.

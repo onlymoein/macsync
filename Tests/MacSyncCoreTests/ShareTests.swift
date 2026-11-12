@@ -14,7 +14,8 @@ final class ShareTests: XCTestCase {
         try me.engine.sync()
 
         let file = try me.engine.exportSetup(name: "Mehdi", sections: [.apps, .config, .ai])
-        let text = String(decoding: file, as: UTF8.self)
+        XCTAssertTrue(file.starts(with: Data("MSZ1".utf8)), "the file is compressed")
+        let text = String(decoding: SharedSetup.unpack(file), as: UTF8.self)
         XCTAssertFalse(text.contains("fc-0123456789abcdef"), "a file with a secret is never shared")
         XCTAssertFalse(text.contains("\"jq\""), "command-line tools weren't chosen")
 
@@ -33,5 +34,6 @@ final class ShareTests: XCTestCase {
         try friend.engine.removeImportedSetup(info.id)
         XCTAssertTrue(try friend.engine.sync().missingApps.isEmpty)
         XCTAssertThrowsError(try friend.engine.importSetup(Data("{}".utf8)))
+        XCTAssertEqual(try friend.engine.importSetup(SharedSetup.unpack(file)).name, "Mehdi's setup", "an older, uncompressed file still opens")
     }
 }

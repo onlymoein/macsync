@@ -55,6 +55,8 @@ private struct Backdrop: View {
 struct ReviewView: View {
     @ObservedObject var model: AppModel
     @State private var sharing = false
+    /// A header chip that was clicked: only its sections show, opened.
+    @State private var filter: ReviewFilter?
 
     var body: some View {
         ZStack(alignment: .bottom) {
@@ -68,19 +70,27 @@ struct ReviewView: View {
                         Label(message, systemImage: "arrow.uturn.backward.circle.fill")
                             .foregroundStyle(.green).padding(14).frame(maxWidth: .infinity, alignment: .leading).glassPanel()
                     }
+                    if let filter { FilterBar(filter: filter) { self.filter = nil } }
+                    if filter == nil {
                     SharedSetupsPanel(model: model)
                     ToRemovePanel(model: model)
                     ExtrasRemovedPanel(model: model)
-                    if let plan = model.overview?.dockPlan ?? model.overview?.dockPreview {
+                    }
+                    if filter == nil || filter == .dock, let plan = model.overview?.dockPlan ?? model.overview?.dockPreview {
                         DockPanel(plan: plan, model: model, matches: model.overview?.dockPlan == nil)
                         if !plan.missing.isEmpty { NotInstalledPanel(items: plan.missing, model: model) }
                     }
+                    if filter == nil {
                     UpdatesPanel(model: model)
                     AIAppsPanel(model: model)
-                    ArtCraftPanel(model: model)
+                    }
+                    if filter == nil || filter == .craft { ArtCraftPanel(model: model) }
+                    if filter == nil || filter == .apps {
                     AppsPanel(kind: .apps, model: model)
                     AppsPanel(kind: .appStore, model: model)
                     AppsPanel(kind: .tools, model: model)
+                    }
+                    if filter == nil {
                     ThisMacPanel(kind: .apps, model: model)
                     ThisMacPanel(kind: .tools, model: model)
                     PackagesPanel(model: model)
@@ -89,17 +99,20 @@ struct ReviewView: View {
                     FilesPanel(area: .appData, model: model)
                     FilesPanel(area: .dev, model: model)
                     LoginItemsPanel(model: model)
+                    }
                     // Settings sit lower down: Dock and apps first, then settings, then history.
-                    if let plan = model.overview?.settingsPlan {
+                    if filter == nil || filter == .settings, let plan = model.overview?.settingsPlan {
                         SettingsPanel(plan: plan, model: model)
-                    } else if model.proEnabled {
+                    } else if filter == nil, model.proEnabled {
                         // Always there, like the Dock, so it's clear what's in sync.
                         SettingsMatchPanel(model: model)
                     }
+                    if filter == nil {
                     if model.proEnabled { AppSettingsPanel(model: model) }
                     SignInPanel(model: model)
                     HistoryPanel(model: model).id("history")
-                    if let overview = model.overview, !overview.hasPendingChanges, !model.canApply, model.lastReport == nil {
+                    }
+                    if filter == nil, let overview = model.overview, !overview.hasPendingChanges, !model.canApply, model.lastReport == nil {
                         VStack(spacing: 8) {
                             Image(systemName: "checkmark.seal.fill").font(.system(size: 34)).foregroundStyle(.green)
                             Text("Your Macs match").font(.title3.weight(.semibold))
@@ -139,10 +152,20 @@ struct ReviewView: View {
             }
             if !chips.isEmpty {
                 HStack(spacing: 8) {
-                    ForEach(chips, id: \.self) { chip in
-                        Text(chip).font(.callout.weight(.medium))
-                            .padding(.horizontal, 10).padding(.vertical, 4)
-                            .glassPanel(cornerRadius: 12)
+                    ForEach(chips, id: \.label) { chip in
+                        Button {
+                            withAnimation(.snappy) { filter = filter == chip.filter ? nil : chip.filter }
+                            if filter != nil { chip.filter.open() }
+                        } label: {
+                            Text(chip.label).font(.callout.weight(.medium))
+                                .padding(.horizontal, 10).padding(.vertical, 4)
+                                .foregroundStyle(filter == chip.filter ? Color.white : Color.primary)
+                                .background(filter == chip.filter ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.clear),
+                                            in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                .glassPanel(cornerRadius: 12)
+                        }
+                        .buttonStyle(.plain)
+                        .help(filter == chip.filter ? "Show everything again" : "Show only these")
                     }
                 }
             }
@@ -158,16 +181,20 @@ struct ReviewView: View {
         }
     }
 
-    private var chips: [String] {
-        var list: [String] = []
-        let apps = (model.overview?.wantedApps ?? []).filter { model.gotten[$0.app.token] == nil }.count
-        if apps > 0 { list.append("\(apps) app\(apps == 1 ? "" : "s") to get") }
+    private var chips: [(label: String, filter: ReviewFilter)] {
+        var list: [(label: String, filter: ReviewFilter)] = []
+        let wanted = (model.overview?.wantedApps ?? []).filter { model.gotten[$0.app.token] == nil }
+        // ArtCraft apps are listed in the ArtCraft section, so they get their own chip.
+        let craft = wanted.filter(AppSuite.contains).count
+        let apps = wanted.count - craft
+        if apps > 0 { list.append(("\(apps) app\(apps == 1 ? "" : "s") to get", .apps)) }
+        if craft > 0 { list.append(("\(craft) ArtCraft app\(craft == 1 ? "" : "s")", .craft)) }
         if let plan = model.overview?.dockPlan {
             let changes = plan.added.count + plan.removed.count
-            list.append(changes == 0 ? "Dock order" : "\(changes) Dock change\(changes == 1 ? "" : "s")")
+            list.append((changes == 0 ? "Dock order" : "\(changes) Dock change\(changes == 1 ? "" : "s")", .dock))
         }
         if let plan = model.overview?.settingsPlan {
-            list.append("\(plan.changes.count) setting\(plan.changes.count == 1 ? "" : "s")")
+            list.append(("\(plan.changes.count) setting\(plan.changes.count == 1 ? "" : "s")", .settings))
         }
         return list
     }
@@ -1601,3 +1628,45 @@ extension ReviewView {
     }
 }
 #endif
+
+
+/// What a header chip narrows the window to.
+enum ReviewFilter: Equatable {
+    case apps, craft, dock, settings
+
+    var title: String {
+        switch self {
+        case .apps: return "Showing only apps to get"
+        case .craft: return "Showing only ArtCraft"
+        case .dock: return "Showing only the Dock"
+        case .settings: return "Showing only settings"
+        }
+    }
+
+    /// Opens the sections it shows, so nothing it counts is folded away.
+    func open() {
+        let keys: [String]
+        switch self {
+        case .apps: keys = ["review.apps.open", "review.appStore.open", "review.tools.open"]
+        case .craft: keys = ["review.artcraft.open"]
+        case .dock: keys = ["review.dock.open", "review.notInstalled.open"]
+        case .settings: keys = ["review.settings.open"]
+        }
+        for key in keys { UserDefaults.standard.set(true, forKey: key) }
+    }
+}
+
+private struct FilterBar: View {
+    let filter: ReviewFilter
+    let clear: () -> Void
+
+    var body: some View {
+        HStack {
+            Label(filter.title, systemImage: "line.3.horizontal.decrease.circle.fill").font(.callout.weight(.medium))
+            Spacer()
+            Button("Show Everything", action: clear).glassButton().controlSize(.small)
+        }
+        .padding(.horizontal, 14).padding(.vertical, 10)
+        .glassPanel()
+    }
+}
