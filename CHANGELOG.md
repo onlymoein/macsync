@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.8.23
+
+- A new icon: white sync arrows on a blue tile, the same mark as in the menu.
+- The menu keeps its height while MacSync works. The progress bar is a thin line along its bottom edge, and the line under "MacSync" says what's happening. Before, the bar coming and going could leave empty glass above and below the menu.
+
 ## 0.8.22
 
 - The two update channels are now **Stable** and **Beta** (Beta was called New). Your choice is kept. Pick one in Settings, MacSync Versions.
