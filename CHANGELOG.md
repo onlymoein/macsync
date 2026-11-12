@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.8.21
+
+- Fixes can now reach MacSync without a new version. MacSync reads a small rules file from its website: which apps are the same under different names or sources, Homebrew renames, apps not to offer, a note in the menu, and switches that pause an automatic action everywhere. It's signed, and MacSync ignores any file that isn't, so it can't be used to change what MacSync does. It's data only: anything that changes how MacSync works still comes as an update.
+- "Behind" next to a Mac now means its Dock really differs. A Safari web app (File > Add to Dock) gets a new ID on each Mac, so it matches by name and place, and an app that Mac doesn't have installed doesn't count against it.
+- The Homebrew row in the menu has a refresh button, like MacSync's. It looks for newer versions; nothing is installed until you press Update All.
+
 ## 0.8.20
 
 - While MacSync works, a bar at the bottom of the menu shows it: how far an install has got and what's next, or a moving bar for a sync or an update, with a line on what's happening. The menu bar icon turns until it's done (it stays still with Reduce Motion on).
