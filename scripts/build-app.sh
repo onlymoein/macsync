@@ -28,6 +28,19 @@ for s in 16 32 128 256 512; do
 done
 iconutil -c icns "$ICONSET" -o "$APP/Contents/Resources/AppIcon.icns"
 rm -rf "$ICONSET" build/make-icon
+# macOS 26 and later draw an app's icon from Assets.car. With only the .icns, they shrink it onto a
+# pale tile in lists and thumbnails. Xcode's actool compiles Resources/AppIcon.icon into it;
+# macOS 13 to 15 keep using the .icns above.
+if xcrun --find actool >/dev/null 2>&1; then
+  ICONOUT=build/icon-compile
+  rm -rf "$ICONOUT"; mkdir -p "$ICONOUT"
+  xcrun actool Resources/AppIcon.icon --compile "$ICONOUT" --platform macosx --minimum-deployment-target 13.0 \
+    --app-icon AppIcon --output-partial-info-plist "$ICONOUT/partial.plist" >/dev/null
+  cp "$ICONOUT/Assets.car" "$APP/Contents/Resources/Assets.car"
+  rm -rf "$ICONOUT"
+else
+  echo "actool not found (install Xcode): the icon will look small on macOS 26 and later" >&2
+fi
 
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -38,6 +51,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>CFBundleExecutable</key><string>MacSync</string>
   <key>CFBundleIdentifier</key><string>com.onlymehdi.macsync</string>
   <key>CFBundleIconFile</key><string>AppIcon</string>
+  <key>CFBundleIconName</key><string>AppIcon</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>$VERSION</string>
   <key>CFBundleVersion</key><string>$VERSION</string>

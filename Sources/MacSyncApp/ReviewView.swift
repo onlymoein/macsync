@@ -82,6 +82,7 @@ struct ReviewView: View {
                     }
                     if filter == nil {
                     UpdatesPanel(model: model)
+                    AdobePanel(model: model)
                     AIAppsPanel(model: model)
                     }
                     if filter == nil || filter == .craft { ArtCraftPanel(model: model) }
@@ -1609,7 +1610,7 @@ private struct SettingsPanel: View {
 /// Test builds only: one section of the sync window on its own, for the website's pictures.
 extension ReviewView {
     static let probeSections = ["dock", "notInstalled", "artcraft", "apps", "appStore", "tools", "toRemove", "settings", "history",
-                                "config", "ai", "signin", "updates", "share", "artcraftBusy", "ai-apps"]
+                                "config", "ai", "signin", "updates", "share", "artcraftBusy", "ai-apps", "adobe"]
 
     @MainActor static func probeSection(_ key: String, model: AppModel) -> AnyView? {
         let o = model.overview
@@ -1622,6 +1623,7 @@ extension ReviewView {
             guard let plan = o?.dockPlan ?? o?.dockPreview, !plan.missing.isEmpty else { return nil }
             panel = AnyView(NotInstalledPanel(items: plan.missing, model: model))
         case "artcraft": panel = AnyView(ArtCraftPanel(model: model))
+        case "adobe": panel = AnyView(AdobePanel(model: model))
         case "artcraftBusy":
             let names = Array(model.craftApps.prefix(4))
             model.craftBusy = Set(names.dropFirst().map(\.id))

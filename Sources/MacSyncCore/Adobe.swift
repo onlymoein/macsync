@@ -119,6 +119,7 @@ public struct AdobeApps {
         let command = [Self.setup, "--uninstall=1", "--sapCode=\(product.sapCode)", "--baseVersion=\(product.version)",
                        "--platform=\(product.platform)", "--deleteUserPreferences=false"]
         let result = askPassword(command, "MacSync wants to remove \(product.label) with Adobe's installer.")
+        Self.log("remove \(product.label) (\(product.sapCode) \(product.version) \(product.platform)): exit \(result.status) \(String((result.output + " " + result.stderr).suffix(600)))")
         if result.status == 0, !FileManager.default.fileExists(atPath: product.folder.path) { return .success(.removed) }
         // Cancelled at the password prompt: nothing else happens.
         if result.stderr.contains("-128") || result.stderr.lowercased().contains("user canceled") {
@@ -134,11 +135,21 @@ public struct AdobeApps {
         -> Result<String, EngineError> {
         guard hasUpdater else { return .failure(.refused("Adobe's updater isn't on this Mac.")) }
         let result = askPassword([Self.updater], "MacSync wants to install Adobe's updates.")
+        Self.log("update: exit \(result.status) \(String((result.output + " " + result.stderr).suffix(600)))")
         if result.stderr.contains("-128") { return .failure(.refused("Not updated: the password was cancelled.")) }
         // "RemoteUpdateManager exiting with Return Code (0)" is success; 2 means some didn't go in.
         let text = result.output + result.stderr
         if result.status == 0, text.contains("Return Code (0)") || !text.contains("Return Code") { return .success("Adobe apps are up to date") }
         return .failure(.refused("Some Adobe updates didn't go in. Close the Adobe apps and try again, or update in Creative Cloud."))
+    }
+
+    /// ~/Library/Logs/MacSync/adobe.log: what Adobe's installer and updater said.
+    static func log(_ line: String) {
+        let url = URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Library/Logs/MacSync/adobe.log")
+        try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let text = ISO8601DateFormatter().string(from: Date()) + " " + line + "\n"
+        if let handle = try? FileHandle(forWritingTo: url) { handle.seekToEndOfFile(); handle.write(Data(text.utf8)); try? handle.close() }
+        else { try? text.write(to: url, atomically: true, encoding: .utf8) }
     }
 
     public static func openCreativeCloud() {
