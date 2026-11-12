@@ -80,6 +80,15 @@ final class ChannelTests: XCTestCase {
         XCTAssertEqual(updater.check()?.isStable, false)
     }
 
+    func testStableSaysWhenABetaIsWaitingForApple() {
+        let onStable = SelfUpdater(runner: runner(), brewPath: nil, appURL: app, currentVersion: "0.8.0", channel: .stable).checkChannels()
+        XCTAssertNil(onStable.update)
+        XCTAssertEqual(onStable.betaWaiting, "0.8.1")
+        // On Beta it's the update itself, not a note; and a copy already on 0.8.1 has nothing waiting.
+        XCTAssertNil(SelfUpdater(runner: runner(), brewPath: nil, appURL: app, currentVersion: "0.8.0", channel: .new).checkChannels().betaWaiting)
+        XCTAssertNil(SelfUpdater(runner: runner(), brewPath: nil, appURL: app, currentVersion: "0.8.1", channel: .stable).checkChannels().betaWaiting)
+    }
+
     func testGoingBackToStableNeverGoesDown() {
         // On 0.8.1 from New, Stable at 0.8.0 offers nothing until it passes 0.8.1.
         XCTAssertNil(SelfUpdater(runner: runner(), brewPath: nil, appURL: app, currentVersion: "0.8.1", channel: .stable).check())

@@ -1,3 +1,4 @@
+import AppKit
 import MacSyncCore
 import SwiftUI
 
@@ -35,6 +36,9 @@ struct MenuView: View {
         .frame(width: 340)
         // The menu's window follows the content's height, so no empty glass is left above it.
         .fixedSize(horizontal: false, vertical: true)
+        // macOS grows the menu's window but doesn't always shrink it back (the bar going away, a
+        // notice clearing), which leaves empty glass at the top and bottom. This fits it again.
+        .background(MenuWindowFitter())
         .onAppear { model.menuOpened() }
     }
 
@@ -118,7 +122,7 @@ struct MenuView: View {
                 Toggle("Update Apps and Tools Automatically", isOn: $model.autoUpgrade)
                 Toggle("Update MacSync Automatically", isOn: $model.autoUpdate)
                 Picker("MacSync Versions", selection: $model.updateChannel) {
-                    ForEach(UpdateChannel.allCases) { Text($0 == .stable ? "Stable (Notarized by Apple)" : "New (Before Apple Checks)").tag($0) }
+                    ForEach(UpdateChannel.allCases) { Text($0.menuTitle).tag($0) }
                 }
             }
             Section("MacSync \(MacSyncEnvironment.appVersion)") {
@@ -199,7 +203,6 @@ private struct MacSyncUpdateRow: View {
                 HStack(spacing: 5) {
                     Text(model.availableUpdate.map { "MacSync \($0.version) is ready" } ?? "MacSync \(MacSyncEnvironment.appVersion)")
                         .lineLimit(1)
-                    if model.updateChannel == .new { ChannelTag() }
                 }
                 Text(detail).font(.caption).foregroundStyle(.secondary).lineLimit(1).help(detail)
             }
@@ -224,19 +227,8 @@ private struct MacSyncUpdateRow: View {
     private var detail: String {
         if let message = model.updateMessage { return message }
         if model.availableUpdate != nil { return model.autoUpdate ? "Installs on its own when MacSync is idle" : "You're on \(MacSyncEnvironment.appVersion)" }
+        if model.updateChannel == .stable, let beta = model.betaWaiting { return "\(beta) is in beta, waiting for Apple's check" }
         return "Up to date"
-    }
-}
-
-/// Marks the New channel: versions that may not be notarized yet.
-struct ChannelTag: View {
-    var body: some View {
-        Text("NEW CHANNEL")
-            .font(.system(size: 8.5, weight: .bold))
-            .padding(.horizontal, 5).padding(.vertical, 1.5)
-            .foregroundStyle(Color.orange)
-            .background(Capsule().fill(Color.orange.opacity(0.15)))
-            .help("You get each MacSync version as soon as it's out, before Apple has finished checking it. Change this in Settings.")
     }
 }
 
@@ -355,13 +347,47 @@ private struct RefreshButton: View {
     var body: some View {
         Button(action: action) {
             Image(systemName: "arrow.clockwise")
-                .font(.system(size: 12, weight: .semibold))
-                .frame(width: 26, height: 26)
+                .font(.system(size: 9.5, weight: .semibold))
+                .frame(width: 20, height: 20)
                 .background(Circle().fill(Color.primary.opacity(0.08)))
         }
         .buttonStyle(.plain)
         .foregroundStyle(.secondary)
         .help(help)
         .accessibilityLabel("Check for Updates")
+    }
+}
+
+/// Keeps the menu's window exactly as tall as what's in it, its top edge where it is.
+private struct MenuWindowFitter: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView { Fitter() }
+    func updateNSView(_ view: NSView, context: Context) { (view as? Fitter)?.fitSoon() }
+
+    final class Fitter: NSView {
+        private var pending = false
+        override func viewDidMoveToWindow() { super.viewDidMoveToWindow(); fitSoon() }
+        override func layout() { super.layout(); fitSoon() }
+
+        /// After this layout pass, so resizing the window doesn't run inside it.
+        func fitSoon() {
+            guard !pending else { return }
+            pending = true
+            DispatchQueue.main.async { [weak self] in
+                self?.pending = false
+                self?.fit()
+            }
+        }
+
+        private func fit() {
+            guard let window, let content = window.contentView else { return }
+            let height = content.fittingSize.height
+            let current = window.contentRect(forFrameRect: window.frame).height
+            guard height > 40, abs(current - height) > 0.5 else { return }
+            var frame = window.frame
+            let newFrame = window.frameRect(forContentRect: NSRect(x: 0, y: 0, width: frame.width, height: height))
+            frame.origin.y += frame.height - newFrame.height
+            frame.size.height = newFrame.height
+            window.setFrame(frame, display: true, animate: false)
+        }
     }
 }

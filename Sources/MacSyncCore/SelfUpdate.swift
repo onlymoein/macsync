@@ -11,10 +11,15 @@ import Foundation
 /// with MacSync's Developer ID, but Apple may still be checking it. Once Apple has notarized it,
 /// the same release becomes the latest one, which is Stable. GitHub's "latest release" address
 /// skips pre-releases, and the releases feed lists every release.
+///
+/// The second channel is called Beta. It's stored as "new", its first name, so a choice made
+/// before the rename is kept.
 public enum UpdateChannel: String, CaseIterable, Identifiable, Sendable {
     case stable, new
     public var id: String { rawValue }
-    public var title: String { self == .stable ? "Stable" : "New" }
+    public var title: String { self == .stable ? "Stable" : "Beta" }
+    /// How the choice reads in a menu.
+    public var menuTitle: String { self == .stable ? "Stable (Notarized by Apple)" : "Beta (Before Apple Checks)" }
     public var summary: String {
         switch self {
         case .stable: return "Only versions Apple has checked and notarized. macOS opens them without warnings."
@@ -33,7 +38,7 @@ public struct SelfUpdater {
         public var zipURL: String
         public var checksumURL: String?
         public var notes: String?
-        /// Notarized and marked latest. A pre-release on the New channel is not.
+        /// Notarized and marked latest. A pre-release on the Beta channel is not.
         public var isStable = true
     }
 
@@ -65,27 +70,44 @@ public struct SelfUpdater {
     /// Stable reads only the latest release, which is never a pre-release. New also reads the
     /// releases feed, which lists pre-releases too. Switching from New back to Stable never goes
     /// down a version: it waits until Stable passes the copy you have.
-    public func check() -> Release? {
+    public func check() -> Release? { checkChannels().update }
+
+    public struct Check: Equatable {
+        /// The release to install on this copy's channel, if there is a newer one.
+        public var update: Release?
+        /// On Stable: a newer version that's out in beta, still waiting for Apple.
+        public var betaWaiting: String?
+    }
+
+    /// Both channels at once: what to install, and on Stable, whether a beta is waiting for Apple.
+    public func checkChannels() -> Check {
         var stable: Release?
         let result = runner.run("/usr/bin/curl", ["-sS", "--proto", "=https", "--max-time", "30", "-o", "/dev/null",
                                                   "-w", "%{redirect_url}", Self.releasesPage], input: nil, environment: [:])
         if result.status == 0 { stable = Self.release(fromRedirect: result.output) }
-        var found = stable.map { [$0] } ?? []
-        if channel == .new {
-            let feed = runner.run("/usr/bin/curl", ["-sS", "--proto", "=https", "--max-time", "30", Self.releasesFeed],
-                                  input: nil, environment: [:])
-            if feed.status == 0 {
-                // A feed release that isn't the latest one may still be waiting for Apple.
-                found += Self.releases(fromFeed: feed.output).map { release in
-                    var release = release
-                    release.isStable = release.version == stable?.version
-                    return release
-                }
+        var feedReleases: [Release] = []
+        let feed = runner.run("/usr/bin/curl", ["-sS", "--proto", "=https", "--max-time", "30", Self.releasesFeed],
+                              input: nil, environment: [:])
+        if feed.status == 0 {
+            // A feed release that isn't the latest one may still be waiting for Apple.
+            feedReleases = Self.releases(fromFeed: feed.output).map { release in
+                var release = release
+                release.isStable = release.version == stable?.version
+                return release
             }
         }
-        guard let newest = found.max(by: { Self.isNewer($1.version, than: $0.version) }),
-              Self.isNewer(newest.version, than: currentVersion) else { return nil }
-        return newest
+        func newest(_ list: [Release], over floor: String) -> Release? {
+            guard let top = list.max(by: { Self.isNewer($1.version, than: $0.version) }), Self.isNewer(top.version, than: floor) else { return nil }
+            return top
+        }
+        let found = (stable.map { [$0] } ?? []) + (channel == .new ? feedReleases : [])
+        let update = newest(found, over: currentVersion)
+        var beta: String?
+        if channel == .stable {
+            let floor = [currentVersion, stable?.version].compactMap { $0 }.max { Self.isNewer($1, than: $0) } ?? currentVersion
+            beta = newest(feedReleases.filter { !$0.isStable }, over: floor)?.version
+        }
+        return Check(update: update, betaWaiting: beta)
     }
 
     static let releasesFeed = "https://github.com/onlymoein/macsync/releases.atom"

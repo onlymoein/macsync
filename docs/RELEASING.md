@@ -34,28 +34,30 @@ xcrun notarytool store-credentials macsync-notary --apple-id you@example.com --t
 
 It prompts for the app-specific password. `macsync-notary` is your `NOTARY_PROFILE`.
 
-## Channels: Stable and New
+## Channels: Stable and Beta
+
+Beta was called New until 0.8.22. It's still stored as `new` in the settings, so nobody's choice changed.
 
 Every build that goes out is signed with the Developer ID. Unsigned and development builds never
 go out. A version passes through two channels:
 
 | Channel | What it gets | Where it comes from |
 | --- | --- | --- |
-| **New** | Each version as soon as it's out, before Apple has finished notarizing it | GitHub pre-releases, read from the releases feed |
+| **Beta** | Each version as soon as it's out, before Apple has finished notarizing it | GitHub pre-releases, read from the releases feed |
 | **Stable** (the default) | Only versions Apple has notarized, which macOS opens without warnings | The latest GitHub release, which is never a pre-release |
 
 People choose in the welcome window or in Settings, MacSync Versions. Homebrew and the website's
-download button only ever get Stable. Switching from New back to Stable never goes down a
+download button only ever get Stable. Switching from Beta back to Stable never goes down a
 version: MacSync waits until Stable passes the copy it has.
 
-A New build that's downloaded in a browser isn't notarized yet, so macOS warns about it. That's
-why New is only offered inside the app, where updates download without that warning.
+A Beta build that's downloaded in a browser isn't notarized yet, so macOS warns about it. That's
+why Beta is only offered inside the app, where updates download without that warning.
 
 ## Cutting a release
 
 1. Set the version in `Sources/MacSyncCore/Environment.swift` (`appVersion`), add it to
    `CHANGELOG.md`, and commit.
-2. Build the New-channel files:
+2. Build the Beta-channel files:
 
 ```bash
 SIGN_IDENTITY="Developer ID Application: Your Name (ABCDE12345)" scripts/release.sh
@@ -66,7 +68,7 @@ It runs the tests, builds and signs (hardened runtime, secure timestamp), then w
 Applications, `MacSync.dmg` (the same image without the version, for the website's link) and
 checksums. It refuses to run with anything but a Developer ID Application certificate.
 
-3. Push, and publish it as a pre-release. Only the New channel takes it:
+3. Push, and publish it as a pre-release. Only the Beta channel takes it:
 
 ```bash
 gh release create v0.2.0 build/release/MacSync-0.2.0.zip build/release/MacSync-0.2.0.zip.sha256 build/release/MacSync-0.2.0.dmg build/release/MacSync.dmg --prerelease --title "MacSync 0.2.0" --notes "Release notes here"
@@ -81,7 +83,7 @@ SIGN_IDENTITY="Developer ID Application: Your Name (ABCDE12345)" scripts/notariz
 It submits the app to Apple and waits, staples the ticket, packs and notarizes the disk image,
 replaces the release's files with the notarized ones, marks the release as the latest one (which
 is what Stable reads), and commits the cask with the new version and checksum to the tap. It
-stops at the first error, so a version Apple refuses stays on New.
+stops at the first error, so a version Apple refuses stays on Beta.
 
 5. On a Mac that has never had MacSync, check the whole path:
 

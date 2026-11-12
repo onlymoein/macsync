@@ -211,12 +211,12 @@ export const craftApps = ["photocraft", "vectorcraft", "pdfcraft", "wordcraft", 
 export const install = [
   { title: "Download", points: ["A disk image, notarized by Apple", "Or install with Homebrew", "Free, for macOS 13 and later"] },
   { title: "Drag into Applications", points: ["The window shows where it goes", "Opened from Downloads? The welcome window moves it", "So it stays put and updates itself"] },
-  { title: "Pick your versions", points: ["Stable: only versions Apple has notarized", "New: each version as soon as it's out", "Change it any time in Settings"] },
+  { title: "Pick your versions", points: ["Stable: only versions Apple has notarized", "Beta: each version as soon as it's out", "Change it any time in Settings"] },
 ];
 
 export const channels = [
   { name: "Stable", icon: "shield", tag: "Recommended", text: "Only versions Apple has checked and notarized. macOS opens them without warnings. The download button and Homebrew always give you Stable." },
-  { name: "New", icon: "sparkles", tag: "Early", text: "Each version as soon as it's out, signed with MacSync's Developer ID, before Apple has finished checking it. Only offered inside the app." },
+  { name: "Beta", icon: "sparkles", tag: "Early", text: "Each version as soon as it's out, signed with MacSync's Developer ID, before Apple has finished checking it. Only offered inside the app." },
 ];
 
 export const steps = [
@@ -251,7 +251,7 @@ macsync files`;
 
 export const faq = [
   ["macOS says it can't verify MacSync", "The download button gives you a version Apple has already notarized, so this shouldn't happen. If it does, open System Settings → Privacy & Security and click Open Anyway, then open MacSync again."],
-  ["What are Stable and New?", "Two ways to get updates. Stable waits until Apple has notarized a version. New gets it as soon as it's out, before Apple has finished checking it. Every version is signed with MacSync's Developer ID either way. Pick one in the welcome window or in Settings."],
+  ["What are Stable and Beta?", "Two ways to get updates. Stable waits until Apple has notarized a version. Beta gets it as soon as it's out, before Apple has finished checking it. Every version is signed with MacSync's Developer ID either way. Pick one in the welcome window or in Settings, MacSync Versions."],
   ["Do I need an account or a server?", "No. MacSync only uses your own iCloud Drive. Turn on iCloud Drive on each Mac, signed in to the same Apple Account."],
   ["Will it delete my apps?", "Only when you ask. Remove from All Macs uninstalls an app after you confirm, and each other Mac asks before removing it there. Homebrew uninstalls its own apps; anything else goes to the Trash."],
   ["Why does an app say Install in Terminal?", "Some installers, like Docker Desktop or Adobe's, need your Mac password. MacSync never types a password, so it opens Terminal with the install ready and you type it there. Several at once share one window."],

@@ -49,6 +49,8 @@ final class AppModel: ObservableObject {
     @Published var availableUpdate: SelfUpdater.Release?
     @Published var updateMessage: String?
     @Published var isUpdating = false
+    /// On Stable: a newer version out in beta, still waiting for Apple's check.
+    @Published var betaWaiting: String?
     /// On by default: opening the lid applies Dock changes from the other Macs without
     /// asking. A restore point is saved first, and Undo is in the menu.
     @Published var autoApplyDock: Bool {
@@ -74,7 +76,7 @@ final class AppModel: ObservableObject {
     @Published var autoUpdate: Bool {
         didSet { UserDefaults.standard.set(autoUpdate, forKey: "autoUpdate") }
     }
-    /// Stable (notarized) or New (each version as soon as it's out).
+    /// Stable (notarized) or Beta (each version as soon as it's out).
     @Published var updateChannel: UpdateChannel = UpdateChannel.saved {
         didSet {
             UserDefaults.standard.set(updateChannel.rawValue, forKey: UpdateChannel.defaultsKey)
@@ -928,9 +930,11 @@ final class AppModel: ObservableObject {
         lastUpdateCheck = Date()
         let updater = updater
         Task { @MainActor in
-            let release = await Blocking { updater.check() }.value
+            let check = await Blocking { updater.checkChannels() }.value
+            let release = check.update
             do {
                 self.availableUpdate = release
+                self.betaWaiting = check.betaWaiting
                 if manual {
                     self.updateMessage = release == nil ? "Up to date (\(MacSyncEnvironment.appVersion))" : nil
                     // A note, not a notice: it goes away on its own.

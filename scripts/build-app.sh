@@ -11,7 +11,9 @@ for a in ${ARCHS:-arm64 x86_64}; do ARCH_FLAGS+=(--arch "$a"); done
 swift build -c release "${ARCH_FLAGS[@]}" --product MacSyncApp ${FLAGS[@]+"${FLAGS[@]}"}
 swift build -c release "${ARCH_FLAGS[@]}" --product macsync ${FLAGS[@]+"${FLAGS[@]}"}
 BIN=$(swift build -c release "${ARCH_FLAGS[@]}" --show-bin-path)
-APP=build/MacSync.app
+# APP_OUT builds somewhere else, leaving a signed build/MacSync.app alone (the screenshots do this).
+APP=${APP_OUT:-build/MacSync.app}
+mkdir -p "$(dirname "$APP")"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Helpers" "$APP/Contents/Resources"
 cp "$BIN/MacSyncApp" "$APP/Contents/MacOS/MacSync"
