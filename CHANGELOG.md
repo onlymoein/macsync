@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.8.27
+
+- The icon is in Apple's new format, so macOS 26 and later show it full size in Finder, Spotlight and thumbnails instead of shrinking it onto a pale tile.
+- Adobe apps move out of the menu into their own section of the sync window: every Adobe app with its version, Remove on an older yearly version, and Update All (Adobe's updater on company installs, Creative Cloud on personal plans).
+
 ## 0.8.26
 
 - Adobe apps get a row in the menu's Updates. When an app has an older yearly version next to a newer one (InDesign 2026 and 2027, say), Remove Old takes it away with Adobe's own installer, keeping your settings; macOS asks for your password. Updates go through Adobe's updater on company installs and through Creative Cloud on personal plans.
