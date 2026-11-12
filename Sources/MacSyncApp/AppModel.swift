@@ -129,6 +129,7 @@ final class AppModel: ObservableObject {
             spinner.follow(self)
             cloudRules = engine.cloudRules.current()
             refreshAdobe()
+            CraftRecordsWatch.shared.start(env: MacSyncEnvironment.current())
         }
         autoSync = UserDefaults.standard.object(forKey: "autoSync") as? Bool ?? true
         autoUpdate = UserDefaults.standard.object(forKey: "autoUpdate") as? Bool ?? true

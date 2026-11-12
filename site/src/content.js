@@ -139,7 +139,7 @@ export const sections = [
     points: ["Install on All Macs, or This Mac Only", "Your version next to the newest", "Update All", "The ones you don't have fold away"] },
   { id: "artcraft", label: "ArtCraft", shot: "artcraft", title: "ArtCraft",
     text: "Every app in ArtCraft Launcher's catalog.",
-    points: ["Install All, Update All or Remove All", "Checked against checksums and the signature", "Installed in the launcher's folder", "A bar with each step and its percent"] },
+    points: ["Install All, Update All or Remove All", "Checked against checksums and the signature", "Installed in the launcher's folder", "A bar with each step and its percent", "Homebrew's list kept true, nothing downloaded twice"] },
   { id: "toRemove", label: "Removed", shot: "toRemove", title: "Removed on your other Macs",
     text: "Apps you deleted somewhere else.",
     points: ["Uninstall here, or Keep Here", "Homebrew uninstalls; the rest go to the Trash", "Nothing is lost"] },
