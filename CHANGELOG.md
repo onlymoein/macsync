@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.8.18
+
+- In the menu, checking for updates is a small refresh button, so it doesn't read like the Mac status labels above it.
+
 ## 0.8.17
 
 - After Apply, the result says what went wrong when a file, package or login item didn't apply; before, it only said "Some changes didn't apply". It also lists the files, login items and packages that did.

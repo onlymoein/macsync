@@ -212,13 +212,20 @@ private struct MacSyncUpdateRow: View {
                     .buttonStyle(.borderedProminent).controlSize(.small)
                     .help("Installs MacSync \(update.version) and reopens it")
             } else {
-                Button("Check") {
+                Button {
                     model.checkForUpdates(manual: true)
                     if model.autoUpgrade { model.upgradeAll() } else { model.checkUpgrades() }
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(size: 12, weight: .semibold))
+                        .frame(width: 26, height: 26)
+                        .background(Circle().fill(Color.primary.opacity(0.08)))
                 }
-                .buttonStyle(.borderless).font(.caption.weight(.semibold)).foregroundStyle(Color.accentColor)
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
                 .disabled(model.upgrading)
                 .help("Check for updates to MacSync, apps and tools")
+                .accessibilityLabel("Check for Updates")
             }
         }
         .padding(.horizontal, 8).padding(.vertical, 5)
