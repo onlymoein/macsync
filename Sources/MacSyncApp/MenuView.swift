@@ -95,6 +95,9 @@ struct MenuView: View {
                 ReviewWindow.shared.show(model: model)
                 model.requestShare = true
             }
+            ToolbarButton(title: "Import", symbol: "square.and.arrow.down", help: "Open a setup a friend shared with you") {
+                model.chooseSharedSetup()
+            }
             ToolbarButton(title: "Coffee", symbol: "cup.and.saucer", help: "Buy me a coffee: MacSync is free") {
                 NSWorkspace.shared.open(URL(string: "https://buymeacoffee.com/onlymoein")!)
             }

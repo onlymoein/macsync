@@ -66,7 +66,7 @@ struct ShareSheet: View {
                 }
             }
             .font(.caption)
-            Label("To open it, your friend double-clicks the file, with MacSync installed. Or in MacSync: the menu's Settings → Open a Shared Setup…, or Share ▾ → Open a Shared Setup… in this window.",
+            Label("To open it, your friend double-clicks the file, with MacSync installed. Or in MacSync: Import, in the menu or at the top of this window.",
                   systemImage: "tray.and.arrow.down")
                 .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             Label("Never in it: passwords, keys, tokens or any file with one in it, your fonts, app data, your Dock and your history.",

@@ -140,15 +140,14 @@ struct ReviewView: View {
             HStack(alignment: .firstTextBaseline) {
                 Text("Sync your Macs").font(.system(size: 26, weight: .bold, design: .rounded))
                 Spacer()
-                Menu {
-                    Button { sharing = true } label: { Label("Share My Setup…", systemImage: "square.and.arrow.up") }
-                    Button { model.chooseSharedSetup() } label: { Label("Open a Shared Setup…", systemImage: "tray.and.arrow.down") }
-                } label: {
-                    Label("Share", systemImage: "square.and.arrow.up")
-                } primaryAction: { sharing = true }
-                .menuStyle(.button)
+                HStack(spacing: 8) {
+                    Button { model.chooseSharedSetup() } label: { Label("Import", systemImage: "square.and.arrow.down") }
+                        .help("Open a setup a friend shared with you (a .macsync file)")
+                    Button { sharing = true } label: { Label("Share", systemImage: "square.and.arrow.up") }
+                        .help("Share your setup with a friend")
+                }
+                .controlSize(.large)
                 .fixedSize()
-                .help("Share your setup with a friend, or open one they shared")
             }
             if !chips.isEmpty {
                 HStack(spacing: 8) {

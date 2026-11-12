@@ -4,6 +4,7 @@
 
 - The chips at the top of the sync window are filters: click "12 apps to get" and only those sections show, opened, with Show Everything to go back. ArtCraft apps get their own chip, so the count matches what you see.
 - Share shows how big the file is as you choose sections, and how your friend opens it. Files are compressed, about a third of the size; older files still open.
+- An Import button, next to Share in the sync window and in the menu, opens a setup a friend shared.
 - The menu's toolbar has Coffee in place of Undo (Undo is still in History).
 
 ## 0.8.14
