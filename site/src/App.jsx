@@ -128,12 +128,34 @@ function CopyCommand() {
   );
 }
 
+/** The newest version: the one this page was built with, or a newer release on GitHub. */
+function useLatestVersion() {
+  const [version, setVersion] = useState(c.version);
+  useEffect(() => {
+    const newer = (a, b) => {
+      const x = a.split(".").map(Number), y = b.split(".").map(Number);
+      for (let i = 0; i < Math.max(x.length, y.length); i++) if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0);
+      return false;
+    };
+    // The Homebrew cask is updated with every release, and any page may read it.
+    fetch("https://raw.githubusercontent.com/onlymoein/homebrew-tap/main/Casks/macsync.rb", { cache: "no-cache" })
+      .then((r) => (r.ok ? r.text() : ""))
+      .then((cask) => {
+        const tag = cask.match(/version "([0-9.]+)"/)?.[1];
+        if (tag && (!c.version || newer(tag, c.version))) setVersion(tag);
+      })
+      .catch(() => {});
+  }, []);
+  return version;
+}
+
 function Hero() {
+  const version = useLatestVersion();
   return (
     <section className="hero" id="top">
       <div className="hero-copy">
-        <a className="pill-link" href="#developers">
-          <Glass className="pill"><span className="pill-dot" />New in 0.8.14: Developer setup and a fresh menu <span aria-hidden="true">→</span></Glass>
+        <a className="pill-link" href={version ? c.releaseNotes(version) : c.links.changelog}>
+          <Glass className="pill"><span className="pill-dot" />{version ? `MacSync ${version} is out: see what's new` : "See what's new"} <span aria-hidden="true">→</span></Glass>
         </a>
         <h1>Every Mac,<br /><span className="grad">set up the same.</span></h1>
         <p className="hero-lead">
@@ -324,7 +346,7 @@ function AIApps() {
       lead="One list of the AI apps people use, whether you have them yet or not. Install one or all, and Update All when a newer one is out.">
       <div className="ai-bar">
         <SegmentedControl aria-label="Where to install" value={where} onValueChange={setWhere}
-          items={[{ value: "all", label: "Install on All Macs" }, { value: "here", label: "This Mac Only" }]} />
+          items={[{ value: "all", label: "All Macs" }, { value: "here", label: "This Mac" }]} />
         <span className="muted">{where === "all" ? "Each of your Macs installs it, and keeps it current." : "Only this Mac gets it; the others leave it switched off."}</span>
       </div>
       <GlassGroup spacing={6} className="ai-grid">

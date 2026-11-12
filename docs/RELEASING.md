@@ -77,3 +77,10 @@ brew tap onlymoein/tap && brew trust onlymoein/tap && brew install --cask macsyn
 `ProLicense.enforced` in `Sources/MacSyncCore/Pro.swift` is `false`, so Pro is on for everyone.
 Turning it on needs a real `licenseIsValid()`. The landing page says Pro pricing is "to be
 announced", so update `docs/index.html` when you decide.
+
+## The website
+
+The site in `site/` builds into `docs/` with `cd site && npm run build`. It takes the version
+from `Sources/MacSyncCore/Environment.swift`, so rebuild it after a version bump. If a release
+goes out without a rebuild, the page still shows the newest version: it reads it from the
+Homebrew cask when it opens.

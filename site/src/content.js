@@ -9,6 +9,10 @@ export const links = {
   liquidglass: "https://github.com/onlymoein/liquidglass",
 };
 
+/** Filled in at build time from the app's source; the page also checks GitHub for a newer one. */
+export const version = typeof __MACSYNC_VERSION__ === "string" ? __MACSYNC_VERSION__ : "";
+export const releaseNotes = (v) => `https://github.com/onlymoein/macsync/releases/tag/v${v}`;
+
 export const brew = "brew tap onlymoein/tap\nbrew trust onlymoein/tap\nbrew install --cask macsync";
 
 export const nav = [
@@ -92,8 +96,8 @@ export const optionGroups = [
 ];
 
 export const dockOrder = [
-  { value: "latest", label: "Whoever changed last" },
-  { value: "one", label: "One Mac I choose" },
+  { value: "latest", label: "Last changed" },
+  { value: "one", label: "One Mac" },
 ];
 
 export const rowActions = [
