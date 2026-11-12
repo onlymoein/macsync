@@ -29,25 +29,26 @@ extension AppModel {
 
 // MARK: The bar at the bottom of the menu
 
+/// A thin bar along the menu's bottom edge while anything runs: it fills for an install with a
+/// known number of items, and keeps moving for a sync or a check. Drawn over the menu, so it
+/// never changes the menu's height.
 struct ActivityBar: View {
     @ObservedObject var model: AppModel
 
     var body: some View {
         if model.isBusy {
-            VStack(alignment: .leading, spacing: 5) {
+            Group {
                 if let job = model.activeWork {
                     ProgressView(value: Double(min(job.done, job.total)), total: Double(max(job.total, 1)))
-                        .progressViewStyle(.linear)
                 } else {
-                    // How long a sync or a Homebrew check takes isn't known: a bar that keeps moving.
-                    ProgressView().progressViewStyle(.linear)
-                }
-                TimelineView(.periodic(from: .now, by: 5)) { _ in
-                    Text(model.busyLine ?? "").font(.caption).foregroundStyle(.secondary).lineLimit(2)
+                    ProgressView()
                 }
             }
-            .padding(.horizontal, 14).padding(.top, 8).padding(.bottom, 10)
+            .progressViewStyle(.linear)
+            .controlSize(.mini)
+            .padding(.horizontal, 10).padding(.bottom, 3)
             .transition(.opacity)
+            .accessibilityLabel(model.busyLine ?? "Working")
         }
     }
 }

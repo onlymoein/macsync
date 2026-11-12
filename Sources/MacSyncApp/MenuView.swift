@@ -28,12 +28,12 @@ struct MenuView: View {
             }
             Divider().padding(.top, 4)
             toolbar
-            // What's running, at the very bottom: a bar, and a line on what it's doing.
-            if model.isBusy { Divider() }
-            ActivityBar(model: model)
         }
-        .animation(.easeInOut(duration: 0.2), value: model.isBusy)
         .frame(width: 340)
+        // What's running: a thin bar along the bottom edge, drawn over the menu so it takes no room.
+        // The menu's height never changes when work starts or stops (macOS doesn't always shrink
+        // the window back, which left empty glass); the header's line says what's happening.
+        .overlay(alignment: .bottom) { ActivityBar(model: model) }
         // The menu's window follows the content's height, so no empty glass is left above it.
         .fixedSize(horizontal: false, vertical: true)
         // macOS grows the menu's window but doesn't always shrink it back (the bar going away, a
@@ -51,11 +51,16 @@ struct MenuView: View {
                 .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Color.accentColor.gradient))
             VStack(alignment: .leading, spacing: 1) {
                 Text("MacSync").font(.headline)
-                Text(model.statusLine)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
-                    .fixedSize(horizontal: false, vertical: true)
+                // One line, always: a longer one would change the menu's height.
+                TimelineView(.periodic(from: .now, by: 5)) { _ in
+                    let line = model.busyLine ?? model.statusLine
+                    Text(line)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                        .help(line)
+                }
             }
             Spacer()
         }
@@ -367,6 +372,7 @@ private struct MenuWindowFitter: NSViewRepresentable {
         private var pending = false
         override func viewDidMoveToWindow() { super.viewDidMoveToWindow(); fitSoon() }
         override func layout() { super.layout(); fitSoon() }
+        override func setFrameSize(_ size: NSSize) { super.setFrameSize(size); fitSoon() }
 
         /// After this layout pass, so resizing the window doesn't run inside it.
         func fitSoon() {
@@ -378,15 +384,17 @@ private struct MenuWindowFitter: NSViewRepresentable {
             }
         }
 
+        /// This view sits behind the menu's content, so its height is the content's real height;
+        /// the window's own views only report the size they already have.
         private func fit() {
-            guard let window, let content = window.contentView else { return }
-            let height = content.fittingSize.height
+            guard let window else { return }
+            let height = bounds.height
             let current = window.contentRect(forFrameRect: window.frame).height
             guard height > 40, abs(current - height) > 0.5 else { return }
             var frame = window.frame
-            let newFrame = window.frameRect(forContentRect: NSRect(x: 0, y: 0, width: frame.width, height: height))
-            frame.origin.y += frame.height - newFrame.height
-            frame.size.height = newFrame.height
+            let fitted = window.frameRect(forContentRect: NSRect(x: 0, y: 0, width: frame.width, height: height))
+            frame.origin.y += frame.height - fitted.height   // the top edge stays under the menu bar
+            frame.size.height = fitted.height
             window.setFrame(frame, display: true, animate: false)
         }
     }
