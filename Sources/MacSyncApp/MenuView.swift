@@ -7,24 +7,12 @@ struct MenuView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             header
-            if model.overview?.hasPendingChanges == true || model.activeWork != nil {
-                VStack(alignment: .leading, spacing: 10) {
-                    if model.overview?.hasPendingChanges == true {
-                        Button { ReviewWindow.shared.show(model: model) } label: {
-                            Text("Review Changes…").frame(maxWidth: .infinity)
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .controlSize(.large)
-                    }
-                    if let job = model.activeWork {
-                        VStack(alignment: .leading, spacing: 4) {
-                            ProgressView(value: Double(min(job.done, job.total)), total: Double(max(job.total, 1))).progressViewStyle(.linear)
-                            TimelineView(.periodic(from: .now, by: 5)) { time in
-                                Text(job.line(at: time.date)).font(.caption).foregroundStyle(.secondary).lineLimit(2)
-                            }
-                        }
-                    }
+            if model.overview?.hasPendingChanges == true {
+                Button { ReviewWindow.shared.show(model: model) } label: {
+                    Text("Review Changes…").frame(maxWidth: .infinity)
                 }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
                 .padding(.horizontal, 14).padding(.bottom, 12)
             }
             notices
@@ -39,7 +27,11 @@ struct MenuView: View {
             }
             Divider().padding(.top, 4)
             toolbar
+            // What's running, at the very bottom: a bar, and a line on what it's doing.
+            if model.isBusy { Divider() }
+            ActivityBar(model: model)
         }
+        .animation(.easeInOut(duration: 0.2), value: model.isBusy)
         .frame(width: 340)
         // The menu's window follows the content's height, so no empty glass is left above it.
         .fixedSize(horizontal: false, vertical: true)
@@ -62,7 +54,6 @@ struct MenuView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             Spacer()
-            if model.isSyncing || model.isApplying { ProgressView().controlSize(.small) }
         }
         .padding(14)
     }

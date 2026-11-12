@@ -208,8 +208,9 @@ public enum Planner {
         var found: [AppRef: Set<String>] = [:]
         var details: [String: AppDetail] = [:]
         var downloads: [String: DirectApp] = [:]
-        // A formula that moved to a cask (vercel) is the same tool under either kind.
-        let casks = Set(local.casks + local.formulae + (local.allFormulae ?? []))
+        // A formula that moved to a cask (vercel) is the same tool under either kind. An app
+        // downloaded here that Homebrew also publishes (Tailscale) is that cask, already installed.
+        let casks = Set(local.casks + local.formulae + (local.allFormulae ?? []) + (local.directApps ?? []).compactMap(\.cask))
         let formulae = Set(local.formulae + (local.allFormulae ?? []) + local.casks)
         let store = Set(local.appStore.map(\.id))
         let direct = Set((local.directApps ?? []).map(\.bundleID))
@@ -233,6 +234,18 @@ public enum Planner {
                     details[AppRef(source: .direct, name: app.bundleID).token] = AppDetail(displayName: app.name, bundleID: app.bundleID)
                 }
             }
+        }
+        // A Homebrew app's bundle ID, from any Mac that has it downloaded: lets this Mac check its
+        // Applications folder for it, however it got there.
+        var caskBundles: [String: String] = [:]
+        for machine in others {
+            for app in machine.inventory?.directApps ?? [] { if let cask = app.cask { caskBundles[cask] = app.bundleID } }
+        }
+        for (ref, _) in found where ref.source == .cask && details[ref.token]?.bundleID == nil {
+            guard let bundle = caskBundles[ref.name] else { continue }
+            var detail = details[ref.token] ?? AppDetail()
+            detail.bundleID = bundle
+            details[ref.token] = detail
         }
         let all = found.map { ref, machines in
             MissingApp(app: ref, fromMachines: machines.sorted(), detail: details[ref.token],

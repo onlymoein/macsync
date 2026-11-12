@@ -13,8 +13,7 @@ struct MacSyncApp: App {
         MenuBarExtra(isInserted: $inMenuBar) {
             MenuView(model: model)
         } label: {
-            Image(systemName: model.menuBarSymbol)
-                .accessibilityLabel("MacSync")
+            MenuBarLabel(model: model, spinner: model.spinner)
         }
         .menuBarExtraStyle(.window)
     }

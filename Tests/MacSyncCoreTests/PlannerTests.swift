@@ -66,4 +66,17 @@ final class PlannerTests: XCTestCase {
         other.inventory = Inventory(casks: ["--force", "a;rm -rf ~", "ok-cask"], appStore: [AppStoreApp(id: "1 && x", name: "Bad")])
         XCTAssertEqual(Planner.missingApps(local: Inventory(), others: [other]).map(\.app.token), ["cask:ok-cask"])
     }
+
+    /// Tailscale from Homebrew on one Mac and downloaded from its website on this one is installed here.
+    func testAppDownloadedHereIsNotNeededFromHomebrew() {
+        let tailscale = DirectApp(bundleID: "io.tailscale.ipn.macsys", name: "Tailscale", cask: "tailscale-app")
+        var pro = TestWorld.snapshot(id: "pro", apps: [], changedAt: Date())
+        pro.inventory = Inventory(brewAvailable: true, casks: ["tailscale-app"], directApps: [tailscale])
+        let studio = Inventory(brewAvailable: true, directApps: [tailscale])
+        XCTAssertTrue(Planner.missingApps(local: studio, others: [pro]).isEmpty)
+        // Without the cask link here, the row still carries the bundle ID, so the Applications check can find it.
+        let unlinked = Inventory(brewAvailable: true)
+        let row = Planner.missingApps(local: unlinked, others: [pro]).first { $0.app.token == "cask:tailscale-app" }
+        XCTAssertEqual(row?.detail?.bundleID, "io.tailscale.ipn.macsys")
+    }
 }

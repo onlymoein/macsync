@@ -11,6 +11,8 @@ final class AppModel: ObservableObject {
     @Published var progress: String?
     /// Long jobs (installing, removing, updating), so the window can show a bar and what's next.
     @Published var work: [String: WorkProgress] = [:]
+    /// Turns the menu bar icon while anything runs. Not @Published: its frames redraw only the icon.
+    let spinner = MenuBarSpinner()
     /// The one item each job is working on right now, by job.
     @Published var workCurrent: [String: String] = [:]
     @Published var errorMessage: String?
@@ -113,6 +115,7 @@ final class AppModel: ObservableObject {
     private static let inventoryInterval: TimeInterval = 30 * 60
 
     init() {
+        defer { spinner.follow(self) }
         autoSync = UserDefaults.standard.object(forKey: "autoSync") as? Bool ?? true
         autoUpdate = UserDefaults.standard.object(forKey: "autoUpdate") as? Bool ?? true
         autoApplyDock = UserDefaults.standard.object(forKey: "autoApplyDock") as? Bool ?? true

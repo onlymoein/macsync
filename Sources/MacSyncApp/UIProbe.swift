@@ -72,6 +72,18 @@ enum UIProbe {
             }
             write(MenuView(model: model).background(background), dir, "probe-menu-brew-\(suffix)")
             write(OnboardingView(model: model, done: {}).background(background), dir, "welcome-\(suffix)")
+            // The menu bar icon mid-turn, and the menu while a sync runs (a bar with no end).
+            write(HStack(spacing: 8) {
+                ForEach([0, -30, -60, -90], id: \.self) { angle in
+                    Image(nsImage: MenuBarSpinner.image(symbol: "arrow.triangle.2.circlepath", angle: CGFloat(angle)))
+                }
+            }.padding(8).background(background), dir, "probe-spinner-\(suffix)")
+            let jobs = model.work
+            model.work = [:]
+            model.isSyncing = true
+            write(MenuView(model: model).background(background), dir, "probe-menu-syncing-\(suffix)")
+            model.isSyncing = false
+            model.work = jobs
         }
     }
 
