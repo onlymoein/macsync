@@ -46,6 +46,7 @@ gh release edit "v$V" --repo onlymoein/macsync --prerelease=false --latest
 
 echo "==> Point Homebrew at it"
 SHA=$(awk '{print $1}' "$W/out/MacSync-$V.zip.sha256")
+(cd "$TAP" && git pull -q --rebase)
 sed -e "s/@VERSION@/$V/g" -e "s/@SHA256@/$SHA/g" packaging/macsync.rb.template > "$TAP/Casks/macsync.rb"
-(cd "$TAP" && git pull -q --rebase && git add Casks/macsync.rb && git commit -qm "macsync $V (stable, notarized)" && git push -q)
+(cd "$TAP" && git add Casks/macsync.rb && git commit -qm "macsync $V (stable, notarized)" && git push -q)
 echo "Done: $V is Stable and notarized, $SHA"
