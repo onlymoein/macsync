@@ -39,7 +39,7 @@ NSGradient(colors: [NSColor(white: 1, alpha: 0.22), NSColor(white: 1, alpha: 0)]
 NSGraphicsContext.restoreGraphicsState()
 
 // The arrows: the SF Symbol the menu uses, in white.
-let config = NSImage.SymbolConfiguration(pointSize: tile.width * 0.46, weight: .semibold)
+let config = NSImage.SymbolConfiguration(pointSize: tile.width * 0.6, weight: .bold)
     .applying(NSImage.SymbolConfiguration(paletteColors: [.white]))
 if let symbol = NSImage(systemSymbolName: "arrow.triangle.2.circlepath", accessibilityDescription: nil)?.withSymbolConfiguration(config) {
     let s = symbol.size

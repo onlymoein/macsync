@@ -45,6 +45,8 @@ export const features = [
     points: ["Old value shown next to new", "Keep any setting to one Mac", "The settings of apps you pick", "Passwords and keys never read"] },
   { icon: "mug", color: "#ff9f0a", title: "Homebrew, handled", text: "Every Homebrew app and tool stays current on every Mac, like Raycast does it.",
     points: ["Updates install on their own", "A list of what's out of date", "npm and uv tools too", "Open apps are never quit under you"] },
+  { icon: "brush", color: "#ff3b30", title: "Adobe apps", text: "Photoshop, Illustrator, InDesign and the rest, kept tidy and current, on a personal plan or a company one.",
+    points: ["Spots an older year left behind, like InDesign 2026 next to 2027", "Remove Old uses Adobe's own installer and keeps your settings", "Company installs update with Adobe's updater", "Personal plans update through Creative Cloud"] },
   { icon: "sparkles", color: "#bf5af2", title: "AI apps", text: "Every well-known AI app in one list, installed and kept current on all your Macs.",
     points: ["ChatGPT, Claude, Gemini, Grok and more", "Install on all Macs or this one", "Update All in one click", "Apps you don't have are listed too"] },
   { icon: "doc", color: "#64d2ff", title: "Config files", text: "Your shell, Git, editors and terminals come with you.",
@@ -116,7 +118,7 @@ export const rowActions = [
 export const sections = [
   { id: "menu", label: "Menu bar", shot: "menu", wide: false, title: "The menu bar menu",
     text: "Click the MacSync icon at the top of your screen.",
-    points: ["Each Mac, when it last saved, and which has the latest changes", "Warns when a Mac needs a MacSync update", "Updates for apps, tools and MacSync in one place", "Sync, History, Share, Import, Coffee and Settings along the bottom"] },
+    points: ["Each Mac, when it last saved, and which has the latest changes", "Warns when a Mac needs a MacSync update", "Updates for apps, tools, Adobe and MacSync in one place", "Sync, History, Share, Import, Coffee and Settings along the bottom"] },
   { id: "dock", label: "Dock", shot: "dock", title: "One Dock for all your Macs",
     text: "The combined Dock every Mac will get.",
     points: ["Drag icons to change the order", "Click one, or its ×, to take it off every Dock", "Pick whose order wins", "Changes on another Mac show up live"] },
