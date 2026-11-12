@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.8.28
+
+- Every section of the sync window starts folded when the window opens. Developer setup and Adobe apps used to open expanded.
+
 ## 0.8.27
 
 - The icon is in Apple's new format, so macOS 26 and later show it full size in Finder, Spotlight and thumbnails instead of shrinking it onto a pale tile.
