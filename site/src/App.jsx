@@ -91,7 +91,7 @@ function Nav() {
         <div className="nav-actions">
           <a className="nav-icon" href={c.links.github} aria-label="MacSync on GitHub"><Icon name="github" size={20} /></a>
           <Button className="nav-coffee" icon={<Icon name="coffee" size={17} />} onClick={() => window.open(c.links.support, "_blank", "noopener")}>
-            Support
+            Buy me a coffee
           </Button>
           <Button variant="filled" icon={<Icon name="download" size={17} />} onClick={() => { location.href = c.links.download; }}>
             Download
@@ -102,7 +102,7 @@ function Nav() {
             icon={<Icon name="menu" size={18} />}
             align="end"
             chevron={false}
-            items={[...c.nav.map((item) => ({ label: item.label, href: `#${item.id}` })), "separator",
+            items={[...[...c.nav, ...c.navMore].map((item) => ({ label: item.label, href: `#${item.id}` })), "separator",
               { label: "Buy me a coffee", href: c.links.support }, { label: "GitHub", href: c.links.github }]}
           />
         </div>

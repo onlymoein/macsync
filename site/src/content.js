@@ -15,11 +15,15 @@ export const nav = [
   { id: "features", label: "Features" },
   { id: "options", label: "Options" },
   { id: "inside", label: "Inside" },
-  { id: "homebrew", label: "Homebrew" },
   { id: "ai", label: "AI apps" },
+  { id: "faq", label: "FAQ" },
+];
+
+// The rest, in the phone menu only.
+export const navMore = [
+  { id: "homebrew", label: "Homebrew" },
   { id: "developers", label: "Developers" },
   { id: "share", label: "Share" },
-  { id: "faq", label: "Questions" },
   { id: "glass", label: "Glass" },
 ];
 
