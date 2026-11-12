@@ -48,7 +48,7 @@ export const features = [
     points: ["zsh, fish, bash, Starship", "VS Code, Cursor, Zed, Neovim, Ghostty", "The fonts you installed", "A file with a key in it stays home"] },
   { icon: "brain", color: "#ff375f", title: "AI setup", text: "Skills, rules and MCP servers for Claude, Codex and Cursor, on every Mac.",
     points: ["CLAUDE.md, AGENTS.md, agents, commands", "MCP servers with keys taken out", "Claude Code plugins", "Checked again for secrets before it leaves"] },
-  { icon: "hammer", color: "#32d74b", title: "Developer setup", text: "Xcode and Android Studio set up the way you like them, new in 0.8.14.",
+  { icon: "hammer", color: "#32d74b", title: "Developer setup", text: "Xcode and Android Studio set up the way you like them, on every Mac.",
     points: ["Xcode themes, key bindings, snippets", "Simulators each Mac has", "Android SDK platforms and images", "Signing files never leave the Mac"] },
   { icon: "share", color: "#ffd60a", title: "Share my setup", text: "Give a friend your whole setup in one file, with only the parts you choose.",
     points: ["Pick sections with switches", "Send with AirDrop, Messages or Mail", "They pick what to take", "Secrets left out"] },

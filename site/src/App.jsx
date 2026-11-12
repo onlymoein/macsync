@@ -366,7 +366,7 @@ function AIApps() {
 
 function Developers() {
   return (
-    <Section id="developers" eyebrow="New in 0.8.14" title="Your developer setup, on every Mac"
+    <Section id="developers" eyebrow="Developer setup" title="Your developer setup, on every Mac"
       lead="Xcode and Android Studio feel like home on any Mac: the same themes, keys and templates, and the same simulators and SDKs ready to install.">
       <div className="dev">
         {c.developer.map((d) => (
