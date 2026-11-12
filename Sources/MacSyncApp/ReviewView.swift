@@ -65,7 +65,7 @@ struct ReviewView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     header
-                    if let report = model.lastReport { ResultPanel(report: report) }
+                    if let report = model.lastReport { ResultPanel(report: report, model: model) }
                     if let message = model.undoMessage {
                         Label(message, systemImage: "arrow.uturn.backward.circle.fill")
                             .foregroundStyle(.green).padding(14).frame(maxWidth: .infinity, alignment: .leading).glassPanel()
@@ -1440,6 +1440,11 @@ private struct AppIcon: View {
 
 private struct ResultPanel: View {
     let report: ApplyReport
+    @ObservedObject var model: AppModel
+
+    /// Dock apps still waiting to be installed here, leaving out the ones switched off.
+    private var waiting: [DockItem] { report.skippedDockItems.filter { !model.isSkipped($0) } }
+    private var extras: ExtrasReport { report.extras ?? ExtrasReport() }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -1458,14 +1463,36 @@ private struct ResultPanel: View {
                 }
             }
             if let error = report.settingsError { Text(error).font(.callout).foregroundStyle(.secondary) }
-            if !report.skippedDockItems.isEmpty {
-                Text("Added to this Dock once installed: \(report.skippedDockItems.map(\.label).joined(separator: ", "))")
-                    .font(.callout).foregroundStyle(.secondary)
+            list("Files updated", extras.filesChanged.map { ($0 as NSString).lastPathComponent })
+            list("Opens at login now", extras.loginItemsAdded)
+            list("Installed packages", extras.packagesInstalled.map { $0.components(separatedBy: ":").dropFirst().joined(separator: ":") })
+            if !extras.failures.isEmpty {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Didn't apply:").font(.callout.weight(.medium))
+                    ForEach(extras.failures, id: \.self) { failure in
+                        Text(failure).font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
+                    }
+                }
+            }
+            if !waiting.isEmpty {
+                // Not a failure: these join the Dock by themselves once they're on this Mac.
+                Label("\(waiting.map(\.label).joined(separator: ", ")) \(waiting.count == 1 ? "joins" : "join") this Dock once installed. Get \(waiting.count == 1 ? "it" : "them") under Dock apps to install, or switch \(waiting.count == 1 ? "it" : "them") off there.",
+                      systemImage: "info.circle")
+                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
         }
         .padding(18)
         .frame(maxWidth: .infinity, alignment: .leading)
         .glassPanel()
+    }
+
+    @ViewBuilder private func list(_ title: String, _ names: [String]) -> some View {
+        if !names.isEmpty {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("\(title):").font(.callout.weight(.medium))
+                Text(names.joined(separator: ", ")).font(.callout).foregroundStyle(.secondary).lineLimit(3)
+            }
+        }
     }
 
     @ViewBuilder private func line(_ title: String, _ outcome: InstallResult.Outcome) -> some View {
@@ -1480,7 +1507,9 @@ private struct ResultPanel: View {
 
     private var headline: String {
         if report.hasFailures { return "Some changes didn't apply" }
-        return report.dockChanged || report.settingsChanged || !report.results.isEmpty ? "Changes applied" : "Done"
+        let applied = report.dockChanged || report.settingsChanged || !report.results.isEmpty || !extras.filesChanged.isEmpty
+            || !extras.loginItemsAdded.isEmpty || !extras.packagesInstalled.isEmpty
+        return applied ? "Changes applied" : "Done"
     }
 }
 

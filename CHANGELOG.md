@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.8.17
+
+- After Apply, the result says what went wrong when a file, package or login item didn't apply; before, it only said "Some changes didn't apply". It also lists the files, login items and packages that did.
+- A Dock app that isn't installed here yet is a calm note, not a failure, and apps you switched off aren't mentioned.
+
 ## 0.8.16
 
 - ArtCraft apps in their own folder (Applications/Artcraft) now count as on this Mac, so they aren't offered again from your other Macs. The ArtCraft chip at the top counts the way the ArtCraft section does.

@@ -446,6 +446,7 @@ public struct ExtrasReport: Codable, Equatable {
     public var loginItemsAdded: [String] = []
     public var packagesInstalled: [String] = []
     public var failures: [String] = []
+    public init() {}
 }
 
 // MARK: Engine part
