@@ -121,6 +121,15 @@ struct ReviewView: View {
                             Image(systemName: "checkmark.seal.fill").font(.system(size: 34)).foregroundStyle(.green)
                             Text("Your Macs match").font(.title3.weight(.semibold))
                             Text("Every Mac has the same Dock and apps.").foregroundStyle(.secondary)
+                            // A quiet thank-you link, like the menu's Coffee button.
+                            Button {
+                                NSWorkspace.shared.open(URL(string: "https://buymeacoffee.com/onlymoein")!)
+                            } label: {
+                                Label("MacSync is free. Buy me a coffee", systemImage: "cup.and.saucer")
+                            }
+                            .glassButton().controlSize(.small)
+                            .padding(.top, 6)
+                            .help("Opens buymeacoffee.com/onlymoein in your browser")
                         }
                         .frame(maxWidth: .infinity, minHeight: 220)
                     }

@@ -85,8 +85,10 @@ struct AdobePanel: View {
                         if model.adobeOlder.count > 1 {
                             Button("Remove Older (\(model.adobeOlder.count))") { model.removeOlderAdobe() }.glassButton().controlSize(.small)
                         }
-                        Button(model.adobeHasUpdater ? "Update All" : "Update in Creative Cloud") { model.updateAdobe() }
-                            .primaryGlassButton().controlSize(.small)
+                        // MacSync can't see whether Adobe has updates (only Creative Cloud can), so this
+                        // is a plain button, never the blue one that means "something to do".
+                        Button(model.adobeHasUpdater ? "Install Adobe Updates" : "Open Creative Cloud") { model.updateAdobe() }
+                            .glassButton().controlSize(.small)
                             .help(model.adobeHasUpdater ? "Install every Adobe update with Adobe's updater; macOS asks for your password once"
                                                         : "On a personal plan, Creative Cloud installs Adobe's updates. Turn on Auto-update in its settings to keep them current.")
                     }
