@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.8.24
+
+- ArtCraft apps install and update with Homebrew, straight into the ArtCraft folder, so there's no disk image to open and close. MacSync still checks each app's signature and adds it to ArtCraft Launcher's list. ArtCraft's own download is used only when Homebrew isn't installed, doesn't have the app yet, or fails.
+
 ## 0.8.23
 
 - A new icon: white sync arrows on a blue tile, the same mark as in the menu.
