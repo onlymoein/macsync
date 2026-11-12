@@ -204,20 +204,23 @@ public enum Planner {
     }
 
     /// Apps on any other Mac that this one lacks. Additive only: MacSync never uninstalls.
-    public static func missingApps(local: Inventory, others: [MachineSnapshot]) -> [MissingApp] {
+    public static func missingApps(local: Inventory, others: [MachineSnapshot], rules: CloudRules = .none) -> [MissingApp] {
         var found: [AppRef: Set<String>] = [:]
         var details: [String: AppDetail] = [:]
         var downloads: [String: DirectApp] = [:]
         // A formula that moved to a cask (vercel) is the same tool under either kind. An app
         // downloaded here that Homebrew also publishes (Tailscale) is that cask, already installed.
-        let casks = Set(local.casks + local.formulae + (local.allFormulae ?? []) + (local.directApps ?? []).compactMap(\.cask))
+        // The rules file can say more: a renamed cask, or bundle IDs that are a cask's app.
+        let localBundles = (local.directApps ?? []).map(\.bundleID) + (local.details ?? [:]).values.compactMap(\.bundleID)
+        let casks = Set((local.casks + local.formulae + (local.allFormulae ?? []) + (local.directApps ?? []).compactMap(\.cask)).map(rules.cask)
+                        + localBundles.compactMap(rules.cask(forBundleID:)))
         let formulae = Set(local.formulae + (local.allFormulae ?? []) + local.casks)
         let store = Set(local.appStore.map(\.id))
         let direct = Set((local.directApps ?? []).map(\.bundleID))
         for machine in others {
             guard let inventory = machine.inventory else { continue }
             for (token, detail) in inventory.details ?? [:] where details[token] == nil { details[token] = detail.sanitized }
-            for name in inventory.casks where !casks.contains(name) {
+            for name in inventory.casks.map(rules.cask) where !casks.contains(name) {
                 found[AppRef(source: .cask, name: name), default: []].insert(machine.machineName)
             }
             for name in inventory.formulae where !formulae.contains(name) {
@@ -242,7 +245,7 @@ public enum Planner {
             for app in machine.inventory?.directApps ?? [] { if let cask = app.cask { caskBundles[cask] = app.bundleID } }
         }
         for (ref, _) in found where ref.source == .cask && details[ref.token]?.bundleID == nil {
-            guard let bundle = caskBundles[ref.name] else { continue }
+            guard let bundle = caskBundles[ref.name] ?? rules.bundleIDs(forCask: ref.name).first else { continue }
             var detail = details[ref.token] ?? AppDetail()
             detail.bundleID = bundle
             details[ref.token] = detail
@@ -251,7 +254,7 @@ public enum Planner {
             MissingApp(app: ref, fromMachines: machines.sorted(), detail: details[ref.token],
                        download: ref.source == .direct ? downloads[ref.name] : nil)
         }
-            .filter { $0.app.isSafe }
+            .filter { $0.app.isSafe && !(rules.neverOffer ?? []).contains($0.app.token) }
         return dedupedApps(all, localCasks: casks).sorted { $0.app < $1.app }
     }
 

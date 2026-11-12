@@ -114,3 +114,31 @@ The site in `site/` builds into `docs/` with `cd site && npm run build`. It take
 from `Sources/MacSyncCore/Environment.swift`, so rebuild it after a version bump. If a release
 goes out without a rebuild, the page still shows the newest version: it reads it from the
 Homebrew cask when it opens.
+
+## Fixes without a release: the rules file
+
+`docs/rules.json` is published with the website (https://onlymoein.github.io/macsync/rules.json).
+Every MacSync downloads it at most every six hours, after a sync, and uses it straight away. It's
+data only, never code, so it can't change how MacSync works or looks; that still needs a release.
+
+What it can do:
+
+| Field | What it's for | Example |
+| --- | --- | --- |
+| `sameApps` | A Homebrew cask and the bundle IDs its app has when installed another way | `{"cask": "tailscale-app", "bundleIDs": ["io.tailscale.ipn.macsys"]}` |
+| `caskRenames` | A cask Homebrew renamed: old name to new one | `{"old-name": "new-name"}` |
+| `neverOffer` | Apps never offered from other Macs, by token | `["cask:some-app"]` |
+| `notices` | A note in the menu, optionally for some versions only (at most 3, 200 characters each) | `{"id": "x", "text": "…", "below": "0.8.21"}` |
+| `off` | Automatic actions to stop everywhere until a fix ships: `autoApplyDock`, `autoUpgrade` | `["autoUpgrade"]` |
+
+To change it:
+
+1. Edit `docs/rules.json` and raise `version` by one. MacSync refuses a file with a lower version
+   than one it already has, so an old file can't be served again to undo a fix.
+2. Sign it: `swift scripts/sign-rules.swift`. This writes `docs/rules.json.sig` with the private key
+   in `~/.macsync-signing/rules-key`. That key never goes in the repository; MacSync has only its
+   public half (`CloudRulesStore.publicKey`) and ignores any file it didn't sign.
+3. Commit both files and push. GitHub Pages serves them within a minute or two.
+
+If the private key is lost, make a new one, put its public half in `CloudRulesStore.publicKey`
+and release: copies that have the old key keep their last good rules until they update.

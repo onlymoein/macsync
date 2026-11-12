@@ -60,6 +60,7 @@ struct MenuView: View {
 
     @ViewBuilder private var notices: some View {
         let messages = [model.actionError, model.errorMessage, model.autoApplyMessage, model.undoMessage].compactMap { $0 } + (model.overview?.issues ?? [])
+            + model.cloudRules.notices(forVersion: MacSyncEnvironment.appVersion)
         if !messages.isEmpty {
             VStack(alignment: .leading, spacing: 6) {
                 ForEach(messages, id: \.self) { message in
@@ -210,20 +211,11 @@ private struct MacSyncUpdateRow: View {
                     .buttonStyle(.borderedProminent).controlSize(.small)
                     .help("Installs MacSync \(update.version) and reopens it")
             } else {
-                Button {
+                RefreshButton(help: "Check for updates to MacSync, apps and tools") {
                     model.checkForUpdates(manual: true)
-                    if model.autoUpgrade { model.upgradeAll() } else { model.checkUpgrades() }
-                } label: {
-                    Image(systemName: "arrow.clockwise")
-                        .font(.system(size: 12, weight: .semibold))
-                        .frame(width: 26, height: 26)
-                        .background(Circle().fill(Color.primary.opacity(0.08)))
+                    if model.autoUpgrade && !model.cloudRules.isOff(.autoUpgrade) { model.upgradeAll() } else { model.checkUpgrades() }
                 }
-                .buttonStyle(.plain)
-                .foregroundStyle(.secondary)
                 .disabled(model.upgrading)
-                .help("Check for updates to MacSync, apps and tools")
-                .accessibilityLabel("Check for Updates")
             }
         }
         .padding(.horizontal, 8).padding(.vertical, 5)
@@ -325,6 +317,9 @@ private struct HomebrewRow: View {
                 else if !outdated.isEmpty {
                     Button("Update All") { model.upgrade(outdated) }.buttonStyle(.borderless).font(.caption.weight(.semibold))
                         .foregroundStyle(Color.accentColor)
+                } else {
+                    // Looks for newer versions only; nothing is installed until you press Update All.
+                    RefreshButton(help: "Check Homebrew for newer versions of your apps and tools") { model.checkUpgrades() }
                 }
             }
             .padding(.horizontal, 8).padding(.vertical, 5)
@@ -349,5 +344,24 @@ private struct HomebrewRow: View {
         if !report.failures.isEmpty { parts.append("\(report.failures.count) failed") }
         if names.isEmpty { parts.append("checked \(report.ranAt.formatted(.relative(presentation: .named)))") }
         return parts.joined(separator: " · ")
+    }
+}
+
+/// The round refresh button in the Updates rows.
+private struct RefreshButton: View {
+    let help: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: "arrow.clockwise")
+                .font(.system(size: 12, weight: .semibold))
+                .frame(width: 26, height: 26)
+                .background(Circle().fill(Color.primary.opacity(0.08)))
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(.secondary)
+        .help(help)
+        .accessibilityLabel("Check for Updates")
     }
 }

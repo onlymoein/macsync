@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "issued": "2026-11-12T00:00:00Z",
+  "sameApps": [
+    { "cask": "tailscale-app", "bundleIDs": ["io.tailscale.ipn.macsys", "io.tailscale.ipn.macos"] },
+    { "cask": "anydesk", "bundleIDs": ["com.philandro.anydesk"] }
+  ],
+  "caskRenames": {},
+  "neverOffer": [],
+  "notices": [],
+  "off": []
+}

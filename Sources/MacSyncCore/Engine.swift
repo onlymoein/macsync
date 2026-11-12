@@ -223,6 +223,8 @@ public final class Engine {
     /// Suites always offered (ArtCraft). Tests pass none.
     let suites: [AppSuite]
     let extras: Extras
+    /// Fixes from the website, signed (see CloudRules).
+    public let cloudRules: CloudRulesStore
     private var lastExtras: ExtrasSection?
 
     public init(env: MacSyncEnvironment, dock: DockStoring, locator: AppLocating, runner: CommandRunning,
@@ -238,6 +240,7 @@ public final class Engine {
         self.store = SyncStore(env: env)
         self.now = now
         self.extras = Extras(env: env, runner: runner, locator: locator, now: now)
+        self.cloudRules = CloudRulesStore(folder: env.dataDirectory, runner: runner, now: now)
     }
 
     public static func live(env: MacSyncEnvironment = .current()) -> Engine {
@@ -854,7 +857,8 @@ public final class Engine {
     /// Apps on other Macs that this one lacks, leaving out any this Mac already has under another
     /// name or source (AnyDesk from Homebrew on one Mac, downloaded on another).
     private func missingApps(_ state: LocalState, others: [MachineSnapshot]) -> [MissingApp] {
-        var found = Planner.missingApps(local: state.inventory ?? Inventory(), others: others)
+        let rules = cloudRules.current()
+        var found = Planner.missingApps(local: state.inventory ?? Inventory(), others: others, rules: rules)
         // Suites MacSync always offers (ArtCraft): any member this Mac lacks, from Homebrew.
         let inventory = state.inventory ?? Inventory()
         let have = Set(inventory.casks)
@@ -888,9 +892,11 @@ public final class Engine {
             }
             if (state.installedOtherwise ?? []).contains(missing.app.token) { return false }
             // A simulated Mac (its Dock lives in a file) has only its own Applications folder, not this Mac's apps.
-            guard env.dockFile == nil,
-                  let bundle = missing.detail?.bundleID ?? (missing.app.source == .direct ? missing.app.name : nil) else { return true }
-            return locator.path(forBundleID: bundle) == nil
+            guard env.dockFile == nil else { return true }
+            let bundles = [missing.detail?.bundleID ?? (missing.app.source == .direct ? missing.app.name : nil)].compactMap { $0 }
+                + (missing.app.source == .cask ? rules.bundleIDs(forCask: missing.app.name) : [])
+            guard !bundles.isEmpty else { return true }
+            return bundles.allSatisfy { locator.path(forBundleID: $0) == nil }
         }
     }
 

@@ -58,7 +58,21 @@ extension AppModel {
         if upgradeReport == nil { upgradeReport = engine.upgrader.lastReport() }
         // Not while apps install: both need Homebrew, which does one job at a time.
         guard !upgrading, !isApplying, getting.isEmpty, craftBusy.isEmpty, engine.upgrader.isDue() else { return }
-        if autoUpgrade { upgradeAll() } else { checkUpgrades() }
+        if autoUpgrade && !cloudRules.isOff(.autoUpgrade) { upgradeAll() } else { checkUpgrades() }
+    }
+
+    /// Fetches the rules file (at most every six hours). A new one can change which apps count as
+    /// missing, so the overview is worked out again once.
+    func refreshCloudRules() {
+        let store = engine.cloudRules
+        Task {
+            _ = await Blocking { store.refresh() }.value
+            let rules = store.current()
+            guard rules != cloudRules else { return }
+            let first = cloudRules.version == 0 && rules.version == 0
+            cloudRules = rules
+            if !first { runSync(refreshInventory: false) }
+        }
     }
 
     /// Looks for newer versions and lists them, without installing anything.

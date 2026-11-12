@@ -16,6 +16,8 @@ final class AppModel: ObservableObject {
     /// The one item each job is working on right now, by job.
     @Published var workCurrent: [String: String] = [:]
     @Published var errorMessage: String?
+    /// Fixes from the website: which apps are the same, notes, switches. Checked after syncs.
+    @Published var cloudRules: CloudRules = .none
     @Published var lastReport: ApplyReport?
     @Published var undoMessage: String?
     @Published var applyDock = true
@@ -115,7 +117,10 @@ final class AppModel: ObservableObject {
     private static let inventoryInterval: TimeInterval = 30 * 60
 
     init() {
-        defer { spinner.follow(self) }
+        defer {
+            spinner.follow(self)
+            cloudRules = engine.cloudRules.current()
+        }
         autoSync = UserDefaults.standard.object(forKey: "autoSync") as? Bool ?? true
         autoUpdate = UserDefaults.standard.object(forKey: "autoUpdate") as? Bool ?? true
         autoApplyDock = UserDefaults.standard.object(forKey: "autoApplyDock") as? Bool ?? true
@@ -259,6 +264,7 @@ final class AppModel: ObservableObject {
                     gotten[app.app.token] = nil
                 }
                 upgradeIfDue()
+                refreshCloudRules()
                 self.errorMessage = nil
                 if refreshInventory { lastInventoryRefresh = Date() }
                 trimDockEdits(overview)
@@ -279,7 +285,7 @@ final class AppModel: ObservableObject {
     /// Only the Dock. Settings and apps still wait for the person, and so does anything they
     /// were arranging in the sync window.
     private func applyDockAfterWakeIfWanted(_ overview: SyncOverview) {
-        guard autoApplyDock, let until = applyDockUntil, Date() < until, let plan = overview.dockPlan,
+        guard autoApplyDock, !cloudRules.isOff(.autoApplyDock), let until = applyDockUntil, Date() < until, let plan = overview.dockPlan,
               !isApplying, dockArrangement == nil, dockRemovals.isEmpty, getting.isEmpty, removing.isEmpty else { return }
         applyDockUntil = nil
         isApplying = true
