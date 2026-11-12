@@ -65,5 +65,5 @@ final class ReviewWindow {
 
     static let sectionKeys = ["dock", "notInstalled", "artcraft", "apps", "appStore", "tools", "thisMac", "thisMacTools", "toRemove",
                               "extrasRemoved", "settings", "appSettings", "history", "homebrew", "signIn", "loginItems", "packages",
-                              "files.config", "files.ai", "files.appData"].map { "review.\($0).open" }
+                              "files.config", "files.ai", "files.appData", "files.dev", "adobe", "ai"].map { "review.\($0).open" }
 }

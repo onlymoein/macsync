@@ -93,14 +93,14 @@ run() { # extra env for this run; each run starts from a fresh copy of the demo 
     build/probe/MacSync.app/Contents/MacOS/MacSync
 }
 UIPROBE=1 APP_OUT=build/probe/MacSync.app scripts/build-app.sh >/dev/null
-for k in dock notInstalled artcraft apps appStore tools toRemove settings history files.config files.ai signIn homebrew ai; do
+for k in dock notInstalled artcraft apps appStore tools toRemove settings history files.config files.ai files.dev signIn homebrew ai adobe; do
   defaults write com.onlymehdi.macsync "review.$k.open" -bool true
 done
 rm -f "$OUT"/section-*.png "$OUT"/review-*.png "$OUT"/menu-*.png "$OUT"/applied-*.png "$OUT"/menu-applied-*.png
 run MACSYNC_UI_PROBE_DUMMY=1
 cp "$WORK/air/dock.start" "$WORK/air/dock.plist"
 run MACSYNC_UI_PROBE_DARK=1
-for k in dock notInstalled artcraft apps appStore tools toRemove settings history files.config files.ai signIn homebrew ai; do
+for k in dock notInstalled artcraft apps appStore tools toRemove settings history files.config files.ai files.dev signIn homebrew ai adobe; do
   defaults delete com.onlymehdi.macsync "review.$k.open" 2>/dev/null || true
 done
 rm -rf build/probe   # the probe build is only for pictures

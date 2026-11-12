@@ -307,7 +307,7 @@ private struct DockPanel: View {
     @ObservedObject var model: AppModel
     /// Nothing to change: this Mac's Dock already is the combined one.
     var matches = false
-    @AppStorage("review.dock.open") private var open = true
+    @AppStorage("review.dock.open") private var open = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -510,7 +510,7 @@ private struct IconRow: View {
 struct NotInstalledPanel: View {
     let items: [DockItem]
     @ObservedObject var model: AppModel
-    @AppStorage("review.notInstalled.open") private var open = true
+    @AppStorage("review.notInstalled.open") private var open = false
 
     private var needed: Int { items.filter { !model.isSkipped($0) }.count }
 
@@ -640,7 +640,7 @@ extension AppSuite {
 /// the launcher's list, so the launcher keeps them up to date too.
 private struct ArtCraftPanel: View {
     @ObservedObject var model: AppModel
-    @AppStorage("review.artcraft.open") private var open = true
+    @AppStorage("review.artcraft.open") private var open = false
     @State private var confirmRemove: [CraftApp] = []
     @State private var confirmInstall: [CraftApp] = []
 
@@ -919,7 +919,7 @@ private struct FamilyRow: View {
 /// Apps removed on another Mac that are still here: uninstall them in one click, or keep them.
 private struct ToRemovePanel: View {
     @ObservedObject var model: AppModel
-    @AppStorage("review.toRemove.open") private var open = true
+    @AppStorage("review.toRemove.open") private var open = false
     @State private var confirmAll = false
 
     private var list: [MissingApp] { model.overview?.toRemove ?? [] }
@@ -1128,7 +1128,7 @@ private struct HistoryPanel: View {
 /// Which apps' own settings match on every Mac. Passwords, tokens and keys never sync.
 private struct AppSettingsPanel: View {
     @ObservedObject var model: AppModel
-    @AppStorage("review.appSettings.open") private var open = true
+    @AppStorage("review.appSettings.open") private var open = false
     @State private var chosen: Set<String> = []
     @State private var apps: [PrefApp] = []
     @State private var search = ""
@@ -1517,7 +1517,7 @@ private struct ResultPanel: View {
 /// The settings that match on every Mac, with their values here, when nothing needs applying.
 private struct SettingsMatchPanel: View {
     @ObservedObject var model: AppModel
-    @AppStorage("review.settings.open") private var open = true
+    @AppStorage("review.settings.open") private var open = false
     @State private var settings: [SettingsChange] = []
 
     private var grouped: [(String, [SettingsChange])] {
@@ -1567,7 +1567,7 @@ private struct SettingsMatchPanel: View {
 private struct SettingsPanel: View {
     let plan: SettingsPlan
     @ObservedObject var model: AppModel
-    @AppStorage("review.settings.open") private var open = true
+    @AppStorage("review.settings.open") private var open = false
 
     private var grouped: [(String, [SettingsChange])] {
         Dictionary(grouping: plan.changes, by: \.category).sorted { $0.key < $1.key }

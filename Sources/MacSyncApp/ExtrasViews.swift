@@ -66,7 +66,7 @@ struct FilesPanel: View {
     init(area: FileArea, model: AppModel) {
         self.area = area
         self.model = model
-        _open = AppStorage(wrappedValue: true, "review.files.\(area.rawValue).open")
+        _open = AppStorage(wrappedValue: false, "review.files.\(area.rawValue).open")
     }
 
     private var title: String { ["config": "Config files", "ai": "AI setup", "appData": "App data", "dev": "Developer setup"][area.rawValue] ?? "" }
@@ -267,7 +267,7 @@ struct FilesPanel: View {
 
 struct ExtrasRemovedPanel: View {
     @ObservedObject var model: AppModel
-    @AppStorage("review.extrasRemoved.open") private var open = true
+    @AppStorage("review.extrasRemoved.open") private var open = false
 
     private var list: [AppRemoval] { model.overview?.extras.toRemove ?? [] }
 
@@ -306,7 +306,7 @@ struct ExtrasRemovedPanel: View {
 
 struct LoginItemsPanel: View {
     @ObservedObject var model: AppModel
-    @AppStorage("review.loginItems.open") private var open = true
+    @AppStorage("review.loginItems.open") private var open = false
     @State private var remove: RemoveTarget?
 
     private var missing: [LoginItem] { model.overview?.extras.loginItems ?? [] }
@@ -395,7 +395,7 @@ struct LoginItemsPanel: View {
 
 struct PackagesPanel: View {
     @ObservedObject var model: AppModel
-    @AppStorage("review.packages.open") private var open = true
+    @AppStorage("review.packages.open") private var open = false
     @State private var shownKinds: Set<String> = []
     @State private var remove: RemoveTarget?
 
@@ -492,7 +492,7 @@ struct PackagesPanel: View {
 
 struct SignInPanel: View {
     @ObservedObject var model: AppModel
-    @AppStorage("review.signIn.open") private var open = true
+    @AppStorage("review.signIn.open") private var open = false
 
     var body: some View {
         if !model.signInQueue.isEmpty {
@@ -549,7 +549,7 @@ struct UpdatesPanel: View {
         default: return ""
         }
     }
-    @AppStorage("review.homebrew.open") private var open = true
+    @AppStorage("review.homebrew.open") private var open = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -632,7 +632,7 @@ struct UpdatesPanel: View {
 
 struct AIAppsPanel: View {
     @ObservedObject var model: AppModel
-    @AppStorage("review.ai.open") private var open = true
+    @AppStorage("review.ai.open") private var open = false
     @AppStorage("review.ai.missing.open") private var showMissing = false
 
     private var missing: [AIAppStatus] { model.aiApps.filter { !$0.isInstalled } }

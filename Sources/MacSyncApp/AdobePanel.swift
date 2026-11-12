@@ -73,7 +73,7 @@ extension AppModel {
 /// version, and Update (Adobe's updater on company installs, Creative Cloud on personal plans).
 struct AdobePanel: View {
     @ObservedObject var model: AppModel
-    @AppStorage("review.adobe.open") private var open = true
+    @AppStorage("review.adobe.open") private var open = false
 
     var body: some View {
         if !model.adobeApps.isEmpty {
