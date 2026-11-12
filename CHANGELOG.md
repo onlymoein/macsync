@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.8.22
+
+- The two update channels are now **Stable** and **Beta** (Beta was called New). Your choice is kept. Pick one in Settings, MacSync Versions.
+- On Stable, the MacSync row says when a newer version is out in beta and waiting for Apple's check, instead of "Up to date".
+- The menu no longer keeps empty glass above and below it after its content gets shorter.
+- Smaller refresh buttons in the Updates rows.
+
 ## 0.8.21
 
 - Fixes can now reach MacSync without a new version. MacSync reads a small rules file from its website: which apps are the same under different names or sources, Homebrew renames, apps not to offer, a note in the menu, and switches that pause an automatic action everywhere. It's signed, and MacSync ignores any file that isn't, so it can't be used to change what MacSync does. It's data only: anything that changes how MacSync works still comes as an update.
