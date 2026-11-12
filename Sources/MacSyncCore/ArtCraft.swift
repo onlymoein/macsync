@@ -382,6 +382,85 @@ public struct ArtCraft {
     }
 
     private func installOne(_ app: CraftApp, into folder: URL, progress: @escaping (String) -> Void = { _ in }) -> Result<String, EngineError> {
+        // Homebrew first: it downloads, checks the checksum and installs, with nothing to mount.
+        // ArtCraft's own disk image is the fallback, for when Homebrew can't.
+        if let done = installWithHomebrew(app, into: folder, progress: progress) { return done }
+        return installFromDiskImage(app, into: folder, progress: progress)
+    }
+
+    /// Installs or updates the app with `brew install --cask`, into the ArtCraft folder. Nil when
+    /// Homebrew can't do it here (not installed, no cask, its cask is behind ArtCraft's catalog, or
+    /// it failed), so the disk image is used instead.
+    func installWithHomebrew(_ app: CraftApp, into folder: URL, progress: @escaping (String) -> Void) -> Result<String, EngineError>? {
+        let fm = FileManager.default
+        guard env.dockFile == nil, let brew = env.brewPath, DirectApp.isSafeCask(app.id) else { return nil }
+        let brewEnv = InventoryReader.brewEnvironment(brew)
+        let info = runner.run(brew, ["info", "--cask", "--json=v2", app.id], input: nil, environment: brewEnv)
+        guard info.status == 0,
+              let root = try? JSONSerialization.jsonObject(with: info.stdout) as? [String: Any],
+              let cask = (root["casks"] as? [[String: Any]])?.first, let version = cask["version"] as? String else {
+            log("\(app.name): no Homebrew cask, using ArtCraft's disk image")
+            return nil
+        }
+        // Homebrew's cask can trail a release by a few hours: then the disk image has the newer one.
+        let caskVersion = version.split(separator: ",").first.map(String.init) ?? version
+        if SelfUpdater.isNewer(app.version, than: caskVersion) {
+            log("\(app.name): Homebrew has \(caskVersion), ArtCraft has \(app.version); using the disk image")
+            return nil
+        }
+        let managed = runner.run(brew, ["list", "--cask", app.id], input: nil, environment: brewEnv).status == 0
+        // A copy put here without Homebrew goes to the Trash first, where it can be put back, and
+        // comes back from there if Homebrew fails.
+        var trashed: (from: URL, to: URL)?
+        if !managed, let path = app.installedPath, fm.fileExists(atPath: path) {
+            var result: NSURL?
+            guard (try? fm.trashItem(at: URL(fileURLWithPath: path), resultingItemURL: &result)) != nil, let to = result as URL? else {
+                log("\(app.name): the copy at \(path) couldn't be moved aside; using the disk image")
+                return nil
+            }
+            trashed = (URL(fileURLWithPath: path), to)
+        }
+        try? fm.createDirectory(at: folder, withIntermediateDirectories: true)
+        let args = managed ? ["upgrade", "--cask", app.id] : ["install", "--cask", "--appdir=\(folder.path)", app.id]
+        progress("\(managed ? "Updating" : "Installing") \(app.name) with Homebrew…")
+        let run = runner.stream(brew, args, input: nil, environment: brewEnv, idleTimeout: 300) { line in
+            if line.contains("Downloading") { progress("Downloading \(app.name) with Homebrew…") }
+            else if line.contains("Verifying") || line.contains("checksum") { progress("Verifying \(app.name)…") }
+            else if line.contains("Moving App") || line.contains("Installing") { progress("Installing \(app.name)…") }
+        }
+        let installed = Self.findApp(app, in: [folder, URL(fileURLWithPath: "/Applications"), home.appendingPathComponent("Applications")])
+        guard run.status == 0, let installed else {
+            log("\(app.name): Homebrew \(args[0]) failed (\(run.status)): \(run.stderr.suffix(300)); using the disk image")
+            if let trashed, !fm.fileExists(atPath: trashed.from.path) { try? fm.moveItem(at: trashed.to, to: trashed.from) }
+            return nil
+        }
+        if let team = app.team {
+            let sig = runner.run("/usr/bin/codesign", ["-dv", "--verbose=2", installed.path], input: nil, environment: [:])
+            let line = (sig.stderr + sig.output).split(whereSeparator: \.isNewline).first { $0.hasPrefix("TeamIdentifier=") }
+            if let line, String(line.dropFirst("TeamIdentifier=".count)) != team {
+                _ = runner.run(brew, ["uninstall", "--cask", app.id], input: nil, environment: brewEnv)
+                return .failure(.refused("\(app.name) from Homebrew isn't signed by its developer as ArtCraft's catalog says, so it was removed."))
+            }
+        }
+        return .success(installed.path)
+    }
+
+    /// Where the app is after Homebrew put it in place: by its bundle ID, else its name.
+    static func findApp(_ app: CraftApp, in folders: [URL]) -> URL? {
+        let fm = FileManager.default
+        for folder in folders {
+            let names = ((try? fm.contentsOfDirectory(atPath: folder.path)) ?? []).filter { $0.hasSuffix(".app") }
+            if let id = app.bundleID,
+               let match = names.first(where: { Bundle(url: folder.appendingPathComponent($0))?.bundleIdentifier == id }) {
+                return folder.appendingPathComponent(match)
+            }
+            let wanted = (app.bundleName ?? app.name) + ".app"
+            if names.contains(wanted), app.bundleID == nil { return folder.appendingPathComponent(wanted) }
+        }
+        return nil
+    }
+
+    private func installFromDiskImage(_ app: CraftApp, into folder: URL, progress: @escaping (String) -> Void) -> Result<String, EngineError> {
         let fm = FileManager.default
         let work = fm.temporaryDirectory.appendingPathComponent("macsync-craft-\(UUID().uuidString.prefix(8))")
         defer { try? fm.removeItem(at: work) }
