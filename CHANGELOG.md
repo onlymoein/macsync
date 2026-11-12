@@ -5,7 +5,8 @@
 - **Developer setup**: Xcode themes, key bindings, snippets and templates, and Android Studio keymaps, code styles, colors and templates sync like config files. Provisioning profiles, signing files and adb keys never leave the Mac.
 - Xcode simulators and Android SDK packages (platforms, build tools, system images) are listed per Mac, with Install for the missing ones through Xcode and Google's sdkmanager. Android licenses are never accepted for you.
 - Apps whose installer needs your Mac password now say so calmly, by name, and Install in Terminal works for developer apps Homebrew publishes too (Tailscale). Several at once get one "Install N in Terminal" button, and rows show Check while Terminal works.
-- The menu has History, Share and Update buttons next to the settings gear.
+- **A new menu layout**: Review Changes at the top, then Your Macs, then one Updates group for apps, tools and MacSync itself, and a toolbar with Sync, Undo, History, Share and Settings. Quit is in Settings. The menu no longer leaves an empty box above itself.
+- MacSync's own update now installs while the sync window is open (it waits only while MacSync is busy). That window being open is what kept other Macs on an old version. A manual check's "up to date" note now goes away on its own.
 
 ## 0.8.13
 - A command-line tool that's already on the Mac another way (vercel from npm, a binary you put there) is no longer offered again and again: its command in Homebrew's bin folder counts, and so does Homebrew saying it's already installed another way.

@@ -7,62 +7,68 @@ struct MenuView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             header
-            Divider()
-            if let machines = model.overview?.machines, !machines.isEmpty {
-                VStack(spacing: 2) {
-                    ForEach(machines) { MachineRow(machine: $0) }
-                }
-                .padding(.vertical, 6)
-                .padding(.horizontal, 6)
-                Divider()
-            }
-            if let job = model.activeWork {
-                VStack(alignment: .leading, spacing: 5) {
-                    ProgressView(value: Double(min(job.done, job.total)), total: Double(max(job.total, 1))).progressViewStyle(.linear)
-                    TimelineView(.periodic(from: .now, by: 5)) { time in
-                        Text(job.line(at: time.date)).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+            if model.overview?.hasPendingChanges == true || model.activeWork != nil {
+                VStack(alignment: .leading, spacing: 10) {
+                    if model.overview?.hasPendingChanges == true {
+                        Button { ReviewWindow.shared.show(model: model) } label: {
+                            Text("Review Changes…").frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.large)
+                    }
+                    if let job = model.activeWork {
+                        VStack(alignment: .leading, spacing: 4) {
+                            ProgressView(value: Double(min(job.done, job.total)), total: Double(max(job.total, 1))).progressViewStyle(.linear)
+                            TimelineView(.periodic(from: .now, by: 5)) { time in
+                                Text(job.line(at: time.date)).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+                            }
+                        }
                     }
                 }
-                .padding(.horizontal, 14).padding(.vertical, 10)
-                Divider()
+                .padding(.horizontal, 14).padding(.bottom, 12)
             }
-            HomebrewRow(model: model)
             notices
-            actions
-            Divider()
-            footer
+            if let machines = model.overview?.machines, !machines.isEmpty {
+                MenuSection(title: "Your Macs") {
+                    ForEach(machines) { MachineRow(machine: $0) }
+                }
+            }
+            MenuSection(title: "Updates") {
+                HomebrewRow(model: model)
+                MacSyncUpdateRow(model: model)
+            }
+            Divider().padding(.top, 4)
+            toolbar
         }
         .frame(width: 340)
+        // The menu's window follows the content's height, so no empty glass is left above it.
+        .fixedSize(horizontal: false, vertical: true)
         .onAppear { model.menuOpened() }
     }
 
     private var header: some View {
         HStack(spacing: 10) {
-            VStack(alignment: .leading, spacing: 2) {
+            Image(systemName: model.menuBarSymbol)
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(.white)
+                .frame(width: 30, height: 30)
+                .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Color.accentColor.gradient))
+            VStack(alignment: .leading, spacing: 1) {
                 Text("MacSync").font(.headline)
                 Text(model.statusLine)
-                    .font(.subheadline)
+                    .font(.caption)
                     .foregroundStyle(.secondary)
+                    .lineLimit(2)
                     .fixedSize(horizontal: false, vertical: true)
             }
             Spacer()
-            if model.isSyncing || model.isApplying {
-                ProgressView().controlSize(.small)
-            }
+            if model.isSyncing || model.isApplying { ProgressView().controlSize(.small) }
         }
-        .padding(12)
+        .padding(14)
     }
 
     @ViewBuilder private var notices: some View {
-        let messages = [model.actionError, model.errorMessage, model.autoApplyMessage, model.undoMessage, model.updateMessage].compactMap { $0 } + (model.overview?.issues ?? [])
-        if let update = model.availableUpdate, !model.isUpdating {
-            Button { model.installUpdate(update) } label: {
-                Label("Update to MacSync \(update.version)", systemImage: "arrow.down.circle.fill").frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.borderedProminent)
-            .padding(12)
-            Divider()
-        }
+        let messages = [model.actionError, model.errorMessage, model.autoApplyMessage, model.undoMessage].compactMap { $0 } + (model.overview?.issues ?? [])
         if !messages.isEmpty {
             VStack(alignment: .leading, spacing: 6) {
                 ForEach(messages, id: \.self) { message in
@@ -72,110 +78,156 @@ struct MenuView: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
-            .padding(12)
-            Divider()
+            .padding(.horizontal, 14).padding(.bottom, 10)
         }
     }
 
-    private var actions: some View {
-        VStack(spacing: 8) {
-            if model.overview?.hasPendingChanges == true {
-                Button { ReviewWindow.shared.show(model: model) } label: {
-                    Text("Review Changes…").frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
-            }
-            HStack(spacing: 8) {
-                Button { model.syncNow() } label: {
-                    Text(model.isSyncing ? "Syncing…" : "Sync Now").frame(maxWidth: .infinity)
-                }
+    private var toolbar: some View {
+        HStack(spacing: 2) {
+            ToolbarButton(title: model.isSyncing ? "Syncing" : "Sync", symbol: "arrow.triangle.2.circlepath",
+                          help: "Save this Mac and check your other Macs now") { model.syncNow() }
                 .disabled(model.isSyncing || model.isApplying)
-                Button { model.undo() } label: {
-                    Text("Undo Last Apply").frame(maxWidth: .infinity)
-                }
+            ToolbarButton(title: "Undo", symbol: "arrow.uturn.backward",
+                          help: model.overview?.lastRestorePoint.map { "Undo \($0.summary) from \($0.sourceMachine)" } ?? "Nothing to undo yet") { model.undo() }
                 .disabled(model.overview?.lastRestorePoint == nil || model.isApplying)
-                .help(model.overview?.lastRestorePoint.map { "Undo \($0.summary) from \($0.sourceMachine)" } ?? "Nothing to undo yet")
+            ToolbarButton(title: "History", symbol: "clock.arrow.circlepath", help: "What changed and when") {
+                model.showHistory = true
+                ReviewWindow.shared.show(model: model)
             }
+            ToolbarButton(title: "Share", symbol: "square.and.arrow.up", help: "Share your setup with a friend") {
+                ReviewWindow.shared.show(model: model)
+                model.requestShare = true
+            }
+            // A menu's label is drawn in one line, so the word sits under it separately.
+            VStack(spacing: 3) {
+                settingsMenu
+                Text("Settings").font(.caption2)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 5)
         }
-        .padding(12)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
     }
 
-    private var footer: some View {
-        HStack {
-            Menu {
-                Button { ReviewWindow.shared.show(model: model) } label: { Label("Open Sync Window…", systemImage: "macwindow") }
-                Button {
-                    model.showHistory = true
-                    ReviewWindow.shared.show(model: model)
-                } label: { Label("History…", systemImage: "clock.arrow.circlepath") }
-                Button { ReviewWindow.shared.show(model: model); model.requestShare = true } label: {
-                    Label("Share My Setup…", systemImage: "square.and.arrow.up")
-                }
-                Button { model.chooseSharedSetup() } label: { Label("Open a Shared Setup…", systemImage: "tray.and.arrow.down") }
-                Section("Sync") {
-                    Toggle("Sync Automatically", isOn: $model.autoSync)
-                    Toggle("Apply Dock Changes When I Open the Lid", isOn: $model.autoApplyDock)
-                }
-                Section("Homebrew") {
-                    Toggle("Install Updates Automatically", isOn: $model.autoUpgrade)
-                    Button(model.upgrading ? "Checking…" : "Check for Updates Now") {
-                        if model.autoUpgrade { model.upgradeAll() } else { model.checkUpgrades() }
-                    }
-                    .disabled(model.upgrading)
-                }
-                Section("MacSync \(MacSyncEnvironment.appVersion)") {
-                    Toggle("Open at Login", isOn: Binding(get: { model.openAtLogin }, set: { model.setOpenAtLogin($0) }))
-                    Toggle("Update Automatically", isOn: $model.autoUpdate)
-                    Button("Check for Updates Now") { model.checkForUpdates(manual: true) }
-                }
-                Divider()
+    private var settingsMenu: some View {
+        Menu {
+            Button { ReviewWindow.shared.show(model: model) } label: { Label("Open Sync Window…", systemImage: "macwindow") }
+            Button { model.chooseSharedSetup() } label: { Label("Open a Shared Setup…", systemImage: "tray.and.arrow.down") }
+            Section("Sync") {
+                Toggle("Sync Automatically", isOn: $model.autoSync)
+                Toggle("Apply Dock Changes When I Open the Lid", isOn: $model.autoApplyDock)
+            }
+            Section("Updates") {
+                Toggle("Update Apps and Tools Automatically", isOn: $model.autoUpgrade)
+                Toggle("Update MacSync Automatically", isOn: $model.autoUpdate)
+            }
+            Section("MacSync \(MacSyncEnvironment.appVersion)") {
+                Toggle("Open at Login", isOn: Binding(get: { model.openAtLogin }, set: { model.setOpenAtLogin($0) }))
                 Button { NSWorkspace.shared.open(URL(string: "https://buymeacoffee.com/onlymoein")!) } label: {
                     Label("Support MacSync…", systemImage: "cup.and.saucer")
                 }
-            } label: {
-                Image(systemName: "gearshape")
             }
-            .menuStyle(.borderlessButton)
-            .menuIndicator(.hidden)
-            .fixedSize()
-            .accessibilityLabel("Settings")
-            .help("Settings")
-            Button {
-                model.showHistory = true
-                ReviewWindow.shared.show(model: model)
-            } label: { Image(systemName: "clock.arrow.circlepath") }
-                .buttonStyle(.borderless)
-                .padding(.leading, 10)
-                .help("History: what changed and when, with undo")
-                .accessibilityLabel("History")
-            Button { ReviewWindow.shared.show(model: model); model.requestShare = true } label: {
-                Image(systemName: "square.and.arrow.up")
-            }
-                .buttonStyle(.borderless)
-                .padding(.leading, 10)
-                .help("Share My Setup with a friend")
-                .accessibilityLabel("Share My Setup")
-            Button {
-                if let release = model.availableUpdate { model.installUpdate(release) } else { model.checkForUpdates(manual: true) }
-                if model.autoUpgrade { model.upgradeAll() } else { model.checkUpgrades() }
-            } label: {
-                Image(systemName: model.availableUpdate != nil ? "arrow.down.circle.fill" : "arrow.triangle.2.circlepath")
-                    .foregroundStyle(model.availableUpdate != nil ? Color.accentColor : Color.primary)
-            }
-                .buttonStyle(.borderless)
-                .padding(.leading, 10)
-                .disabled(model.isUpdating || model.upgrading)
-                .help(model.availableUpdate.map { "Update MacSync to \($0.version), and check apps and tools" }
-                      ?? "Check for updates to MacSync, apps and tools")
-                .accessibilityLabel("Update")
-            Spacer()
-            Button("Quit") { NSApp.terminate(nil) }
-                .buttonStyle(.borderless)
-                .foregroundStyle(.secondary)
+            Divider()
+            Button("Quit MacSync") { NSApp.terminate(nil) }.keyboardShortcut("q")
+        } label: {
+            Image(systemName: "gearshape").font(.system(size: 15))
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help("Settings")
+        .accessibilityLabel("Settings")
+    }
+}
+
+/// A titled group in the menu.
+private struct MenuSection<Content: View>: View {
+    let title: String
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title.uppercased())
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.tertiary)
+                .padding(.horizontal, 14)
+                .padding(.bottom, 2)
+            VStack(spacing: 0) { content }
+                .padding(.horizontal, 6)
+        }
+        .padding(.top, 6)
+        .padding(.bottom, 6)
+    }
+}
+
+/// An icon over a short word, like Control Center.
+private struct ToolbarButton: View {
+    let title: String
+    let symbol: String
+    let help: String
+    let action: () -> Void
+    @State private var hovering = false
+    @Environment(\.isEnabled) private var isEnabled
+
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 3) {
+                Image(systemName: symbol).font(.system(size: 15))
+                Text(title).font(.caption2)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 5)
+            .background(RoundedRectangle(cornerRadius: 7).fill(Color.primary.opacity(hovering && isEnabled ? 0.08 : 0)))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(isEnabled ? .primary : .tertiary)
+        .onHover { hovering = $0 }
+        .help(help)
+        .accessibilityLabel(title)
+    }
+}
+
+/// MacSync's own version: up to date, a check, or an Update button when one is ready.
+private struct MacSyncUpdateRow: View {
+    @ObservedObject var model: AppModel
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: model.availableUpdate != nil ? "arrow.down.circle.fill" : "checkmark.seal")
+                .font(.system(size: 16))
+                .foregroundStyle(model.availableUpdate != nil ? Color.accentColor : .secondary)
+                .frame(width: 28)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(model.availableUpdate.map { "MacSync \($0.version) is ready" } ?? "MacSync \(MacSyncEnvironment.appVersion)")
+                    .lineLimit(1)
+                Text(detail).font(.caption).foregroundStyle(.secondary).lineLimit(1).help(detail)
+            }
+            Spacer(minLength: 6)
+            if model.isUpdating {
+                ProgressView().controlSize(.small)
+            } else if let update = model.availableUpdate {
+                Button("Update") { model.installUpdate(update) }
+                    .buttonStyle(.borderedProminent).controlSize(.small)
+                    .help("Installs MacSync \(update.version) and reopens it")
+            } else {
+                Button("Check") {
+                    model.checkForUpdates(manual: true)
+                    if model.autoUpgrade { model.upgradeAll() } else { model.checkUpgrades() }
+                }
+                .buttonStyle(.borderless).font(.caption.weight(.semibold)).foregroundStyle(Color.accentColor)
+                .disabled(model.upgrading)
+                .help("Check for updates to MacSync, apps and tools")
+            }
+        }
+        .padding(.horizontal, 8).padding(.vertical, 5)
+    }
+
+    private var detail: String {
+        if let message = model.updateMessage { return message }
+        if model.availableUpdate != nil { return model.autoUpdate ? "Installs on its own when MacSync is idle" : "You're on \(MacSyncEnvironment.appVersion)" }
+        return "Up to date"
     }
 }
 
@@ -202,15 +254,21 @@ struct MachineRow: View {
                 .foregroundStyle(.secondary)
                 .frame(width: 28)
             VStack(alignment: .leading, spacing: 1) {
-                Text(machine.name + (machine.isThisMac ? " (this Mac)" : ""))
-                    .lineLimit(1)
+                HStack(spacing: 5) {
+                    Text(machine.name).lineLimit(1)
+                    if machine.isThisMac {
+                        Text("This Mac").font(.caption2.weight(.medium)).foregroundStyle(.secondary)
+                            .padding(.horizontal, 5).padding(.vertical, 1)
+                            .background(Capsule().fill(Color.primary.opacity(0.08)))
+                    }
+                }
                 Text("Saved \(machine.savedAt, format: .relative(presentation: .named)) · \(machine.dockItemCount) in Dock · \(machine.appCount) apps")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                 if machine.isOutdated {
                     Label {
-                        Text("MacSync \(machine.appVersion) · update it on that Mac").foregroundStyle(.primary)
+                        Text("Needs a MacSync update (has \(machine.appVersion))").foregroundStyle(.secondary)
                     } icon: {
                         Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(Color.warning)
                     }
@@ -223,7 +281,7 @@ struct MachineRow: View {
                 .font(.caption.weight(.medium))
                 .foregroundStyle(state.color)
         }
-        .padding(.horizontal, 6)
+        .padding(.horizontal, 8)
         .padding(.vertical, 5)
         .accessibilityElement(children: .combine)
     }
@@ -252,10 +310,9 @@ private struct HomebrewRow: View {
                         .foregroundStyle(Color.accentColor)
                 }
             }
-            .padding(.horizontal, 14).padding(.vertical, 8)
+            .padding(.horizontal, 8).padding(.vertical, 5)
             .contentShape(Rectangle())
             .onTapGesture { ReviewWindow.shared.show(model: model) }
-            Divider()
         }
     }
 

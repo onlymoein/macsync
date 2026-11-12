@@ -910,8 +910,15 @@ final class AppModel: ObservableObject {
             let release = await Blocking { updater.check() }.value
             do {
                 self.availableUpdate = release
-                if manual { self.updateMessage = release == nil ? "MacSync \(MacSyncEnvironment.appVersion) is the latest version." : nil }
-                if let release, self.autoUpdate, !NSApp.windows.contains(where: { $0.isVisible && $0.level == .normal }) {
+                if manual {
+                    self.updateMessage = release == nil ? "Up to date (\(MacSyncEnvironment.appVersion))" : nil
+                    // A note, not a notice: it goes away on its own.
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 8) { [weak self] in
+                        if self?.updateMessage?.hasPrefix("Up to date") == true { self?.updateMessage = nil }
+                    }
+                }
+                // Waits only while MacSync is busy; an open window alone used to hold updates back for good.
+                if let release, self.autoUpdate, self.activeWork == nil, !self.isApplying, !self.isSyncing {
                     self.installUpdate(release)
                 }
             }
