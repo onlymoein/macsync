@@ -23,7 +23,8 @@ ditto build/MacSync.app "$W/MacSync.app"
 
 submit() {  # file
   xcrun notarytool submit "$1" --keychain-profile "$PROFILE" ${KC:+--keychain "$KC"} --wait --timeout 12h | tee -a "$W/notary.log"
-  tail -20 "$W/notary.log" | grep -q "status: Accepted" || { echo "Apple didn't accept $1." >&2; exit 1; }
+  # grep -c reads everything: grep -q would quit early, and under pipefail tail's broken pipe reads as a failure.
+  [ "$(tail -5 "$W/notary.log" | grep -c "status: Accepted")" -gt 0 ] || { echo "Apple didn't accept $1." >&2; exit 1; }
 }
 
 echo "==> Notarize the app"
