@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.8.31
+## 1.0.0
 
 - The anonymous install count treats Macs that sync with each other as one install, and the menu no longer asks about it. Settings, Count This Install Anonymously turns it off.
 
