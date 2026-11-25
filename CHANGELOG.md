@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.8.30
 
 - MacSync counts how many Macs use it. Each Mac makes a random number and sends it with MacSync's version and macOS's major version, at most once a day: nothing about you, your Mac or what's on it. The menu says so before anything is sent, and Settings, Count This Mac Anonymously turns it off.
 - An app that already updated itself (Dropbox, say) is no longer listed as waiting because Homebrew's record is behind. MacSync goes by the version of the app on disk.
