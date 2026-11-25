@@ -27,6 +27,7 @@ export const nav = [
 
 // The rest, in the phone menu only.
 export const navMore = [
+  { id: "guides", label: "Guides" },
   { id: "install", label: "Install" },
   { id: "homebrew", label: "Homebrew" },
   { id: "developers", label: "Developers" },
@@ -76,6 +77,7 @@ export const optionGroups = [
       { label: "Update Apps and Tools Automatically", detail: "Homebrew apps, command-line tools, npm and uv, kept current. Off gives you a list instead.", on: true },
       { label: "Update MacSync Automatically", detail: "Installs new versions of MacSync when it's idle, and reopens.", on: true },
       { label: "Open at Login", detail: "Starts MacSync when you log in, in the menu bar.", on: true },
+      { label: "Count This Mac Anonymously", detail: "A random number, once a day, so there's a count of Macs using MacSync. Nothing about you or your Mac.", on: true },
     ],
   },
   {
@@ -133,7 +135,7 @@ export const sections = [
     points: ["Install All in one go, or one by one", "Dependencies are never offered on their own", "Remove a tool from every Mac"] },
   { id: "updates", label: "Updates", shot: "updates", title: "App and Homebrew updates",
     text: "What's out of date on this Mac, and what was just updated.",
-    points: ["From → to for each app and tool", "Update or Update All", "Open apps wait, with Quit and Update", "Self-updating apps like ChatGPT stay current too"] },
+    points: ["From → to for each app and tool", "Update or Update All", "Open apps update when you quit them, or with Quit and Update", "Self-updating apps like ChatGPT stay current too"] },
   { id: "aiApps", label: "AI apps", shot: "ai-apps", title: "AI apps",
     text: "Every well-known AI app, whether or not you have it yet.",
     points: ["Install on All Macs, or This Mac Only", "Your version next to the newest", "Update All", "The ones you don't have fold away"] },
@@ -168,7 +170,7 @@ export const homebrewPoints = [
   "Each Mac checks when MacSync opens and every six hours",
   "Apps, command-line tools, and apps that update themselves",
   "npm global packages and uv tools are kept current too",
-  "An open app is never quit under you: it waits, with Quit and Update",
+  "An open app is never quit under you: it updates after you quit it",
   "Rather choose? Turn automatic off and get a list, with Update All",
   "Uninstall on one Mac and the others offer to remove it, or keep it",
 ];
@@ -252,9 +254,15 @@ macsync upgrade
 macsync files`;
 
 export const faq = [
+  ["What is MacSync?", "MacSync is a free, open-source menu bar app for macOS 13 and later that keeps several Macs set up the same way. It syncs the Dock, apps, system settings, config files, AI tools and developer setup through your own iCloud Drive, and changes nothing until you press Apply."],
+  ["How do I sync the Dock between two Macs?", "Install MacSync on both Macs, signed in to the same Apple Account with iCloud Drive on. Arrange the Dock on one; MacSync saves it within seconds, and the other Mac takes the same apps in the same order when you open its lid or press Apply."],
+  ["Does iCloud sync the Dock or installed apps?", "Not by itself. iCloud syncs files, photos, passwords and some app data, but macOS has no setting that keeps the Dock's layout, your installed apps or most system settings the same on two Macs. MacSync does that, using your iCloud Drive to carry the list."],
+  ["How do I keep the same apps on all my Macs?", "MacSync lists the apps your other Macs have and this one doesn't. Homebrew apps install in one click, App Store apps open on their page, and others are downloaded from their developer and checked."],
+  ["Is MacSync free?", "Yes. It's free and open source under the MIT license, with no account and no subscription. You can buy its developer a coffee."],
+  ["Does MacSync collect any data?", "It counts how many Macs use it. Each Mac makes a random number and sends it with MacSync's version and macOS's major version, at most once a day. Nothing about you, your Mac, your apps or your settings is sent, and no IP addresses are kept. The app says so before it sends anything, and Settings, Count This Mac Anonymously turns it off."],
   ["macOS says it can't verify MacSync", "The download button gives you a version Apple has already notarized, so this shouldn't happen. If it does, open System Settings → Privacy & Security and click Open Anyway, then open MacSync again."],
   ["What are Stable and Beta?", "Two ways to get updates. Stable waits until Apple has notarized a version. Beta gets it as soon as it's out, before Apple has finished checking it. Every version is signed with MacSync's Developer ID either way. Pick one in the welcome window or in Settings, MacSync Versions."],
-  ["Do I need an account or a server?", "No. MacSync only uses your own iCloud Drive. Turn on iCloud Drive on each Mac, signed in to the same Apple Account."],
+  ["Do I need an account or a server?", "No. Your setup only goes through your own iCloud Drive. Turn on iCloud Drive on each Mac, signed in to the same Apple Account."],
   ["Will it delete my apps?", "Only when you ask. Remove from All Macs uninstalls an app after you confirm, and each other Mac asks before removing it there. Homebrew uninstalls its own apps; anything else goes to the Trash."],
   ["Why does an app say Install in Terminal?", "Some installers, like Docker Desktop or Adobe's, need your Mac password. MacSync never types a password, so it opens Terminal with the install ready and you type it there. Several at once share one window."],
   ["How does it install apps I downloaded myself?", "It finds where the app is published, through Homebrew's public list or the app's own update feed, downloads it from there, checks it, and installs it or opens the installer."],

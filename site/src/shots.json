@@ -1,0 +1,70 @@
+{
+ "menu": {
+  "width": 680,
+  "height": 926
+ },
+ "section-ai-apps": {
+  "width": 1360,
+  "height": 778
+ },
+ "section-ai": {
+  "width": 1360,
+  "height": 550
+ },
+ "section-appStore": {
+  "width": 1360,
+  "height": 448
+ },
+ "section-apps": {
+  "width": 1360,
+  "height": 482
+ },
+ "section-artcraft": {
+  "width": 1360,
+  "height": 2242
+ },
+ "section-config": {
+  "width": 1360,
+  "height": 702
+ },
+ "section-dock": {
+  "width": 1360,
+  "height": 596
+ },
+ "section-history": {
+  "width": 1360,
+  "height": 316
+ },
+ "section-settings": {
+  "width": 1360,
+  "height": 1074
+ },
+ "section-share": {
+  "width": 1360,
+  "height": 1468
+ },
+ "section-signin": {
+  "width": 1360,
+  "height": 598
+ },
+ "section-toRemove": {
+  "width": 1360,
+  "height": 344
+ },
+ "section-tools": {
+  "width": 1360,
+  "height": 448
+ },
+ "section-updates": {
+  "width": 1360,
+  "height": 752
+ },
+ "welcome": {
+  "width": 1120,
+  "height": 1570
+ },
+ "window": {
+  "width": 1360,
+  "height": 1240
+ }
+}

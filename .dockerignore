@@ -1,0 +1,13 @@
+.git
+.build
+build
+.swiftpm
+.claude
+**/node_modules
+site/.ssr
+raycast
+.firecrawl
+Sources/MacSyncApp
+Tests
+docs/assets/review-*
+docs/assets/applied-*

@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- MacSync counts how many Macs use it. Each Mac makes a random number and sends it with MacSync's version and macOS's major version, at most once a day: nothing about you, your Mac or what's on it. The menu says so before anything is sent, and Settings, Count This Mac Anonymously turns it off.
+- An app that already updated itself (Dropbox, say) is no longer listed as waiting because Homebrew's record is behind. MacSync goes by the version of the app on disk.
+- An open app that's waiting for an update is updated shortly after you quit it, when automatic updates are on. Before, it waited for the next six-hourly check.
+- Long build hashes no longer show after version numbers.
+- Adobe's button is a plain Open Creative Cloud, and the "Your Macs match" screen has a coffee link.
+
 ## 0.8.29
 
 - Homebrew's list of Craft apps stays true. ArtCraft Launcher updates them by itself, hours before Homebrew catches up, so Homebrew and Raycast showed updates that were already installed. MacSync keeps the disk image the launcher downloads and, once Homebrew knows that version, hands it to Homebrew: its record matches the app again and nothing is downloaded twice. ArtCraft and your Homebrew settings aren't changed.

@@ -1,0 +1,21 @@
+# MacSync
+
+> MacSync is a free, open-source (MIT) macOS menu bar app that keeps several Macs set up the same way: the Dock, apps, system settings, config files, AI setup and developer tools, through the user's own iCloud Drive. macOS 13 or later. No account. Nothing changes until you press Apply, and every Apply can be undone.
+
+- [Website](https://onlymoein.github.io/macsync/)
+- [Download](https://github.com/onlymoein/macsync/releases/latest/download/MacSync.dmg): notarized by Apple
+- [Source code](https://github.com/onlymoein/macsync)
+- [Changelog](https://github.com/onlymoein/macsync/blob/main/CHANGELOG.md)
+- Homebrew: `brew tap onlymoein/tap && brew trust onlymoein/tap && brew install --cask macsync`
+
+## Guides
+
+- [How to sync the Dock between Macs](https://onlymoein.github.io/macsync/sync-dock-between-macs/): Keep the same Dock, in the same order, on every Mac you own.
+- [How to install the same apps on all your Macs](https://onlymoein.github.io/macsync/sync-apps-between-macs/): See what your other Macs have and install it, without keeping a list.
+- [How to sync Mac settings between two computers](https://onlymoein.github.io/macsync/sync-mac-settings/): The same trackpad, keyboard, Finder and app settings on each Mac.
+- [How to set up a new Mac like your old one](https://onlymoein.github.io/macsync/set-up-new-mac/): A clean install with your Dock, apps, settings and dotfiles, without Migration Assistant.
+- [How to sync dotfiles and AI tool setup across Macs](https://onlymoein.github.io/macsync/sync-dotfiles-ai-tools-macs/): Shell, Git, editors, Claude, Codex and Cursor the same on each Mac, with keys left out.
+
+## Optional
+
+- [Everything in one file](https://onlymoein.github.io/macsync/llms-full.txt)

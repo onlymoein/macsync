@@ -71,6 +71,23 @@ final class AppModel: ObservableObject {
     @Published var autoUpgrade: Bool = UserDefaults.standard.object(forKey: "autoUpgrade") as? Bool ?? true {
         didSet { UserDefaults.standard.set(autoUpgrade, forKey: "autoUpgrade"); if autoUpgrade { upgradeIfDue() } }
     }
+    /// Counting this Mac in the number of installs. Nothing is sent until the notice has been seen.
+    @Published var countInstall: Bool = UserDefaults.standard.object(forKey: "countInstall") as? Bool ?? true {
+        didSet {
+            UserDefaults.standard.set(countInstall, forKey: "countInstall")
+            countNoticeSeen = true
+            if countInstall { sendInstallCount() } else { InstallCount(env: .current()).forget() }
+        }
+    }
+    @Published var countNoticeSeen: Bool = UserDefaults.standard.bool(forKey: "countNoticeSeen") {
+        didSet { UserDefaults.standard.set(countNoticeSeen, forKey: "countNoticeSeen") }
+    }
+    func sendInstallCount() {
+        // Only an installed copy counts, not a build run from the project folder.
+        guard countInstall, countNoticeSeen, Bundle.main.bundleURL.path.contains("/Applications/") else { return }
+        let count = InstallCount(env: .current())
+        Task.detached { await count.sendIfDue() }
+    }
     @Published var upgrading = false
     /// Set from the menu to open the share sheet in the window.
     @Published var requestShare = false
@@ -130,6 +147,8 @@ final class AppModel: ObservableObject {
             cloudRules = engine.cloudRules.current()
             refreshAdobe()
             CraftRecordsWatch.shared.start(env: MacSyncEnvironment.current())
+            watchForQuitApps()
+            sendInstallCount()
         }
         autoSync = UserDefaults.standard.object(forKey: "autoSync") as? Bool ?? true
         autoUpdate = UserDefaults.standard.object(forKey: "autoUpdate") as? Bool ?? true
@@ -928,6 +947,7 @@ final class AppModel: ObservableObject {
 
     /// Opening the menu looks again when it's been a couple of minutes, so a new release shows up there.
     func menuOpened() {
+        sendInstallCount()
         if Date().timeIntervalSince(lastUpdateCheck) > 120 { checkForUpdates(manual: false, force: true) }
         if adobeBusy == nil { refreshAdobe() }
     }

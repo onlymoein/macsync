@@ -38,6 +38,60 @@ final class UpgradeTests: XCTestCase {
         XCTAssertTrue(upgrader.isDue(now: Date(timeIntervalSince1970: 1000 + 7 * 3600)))
     }
 
+    final class SelfUpdatedRunner: CommandRunning {
+        var calls: [[String]] = []
+        func run(_ executable: String, _ arguments: [String], input: Data?, environment: [String: String]) -> CommandResult {
+            calls.append(arguments)
+            let json: String
+            switch arguments.first {
+            case "outdated": json = #"{"formulae": [], "casks": [{"name": "dropbox", "installed_versions": ["0.8"], "current_version": "1.0"}, {"name": "claude", "installed_versions": ["1.0,aaa"], "current_version": "1.0,bbb"}, {"name": "zed", "installed_versions": ["0.9"], "current_version": "1.3,cafe"}]}"#
+            case "info": json = #"{"casks": [{"token": "dropbox", "auto_updates": true, "name": ["Dropbox"], "artifacts": [{"app": ["Dropbox.app"]}]}, {"token": "claude", "auto_updates": true, "name": ["Claude"], "artifacts": [{"app": ["Claude.app"]}]}, {"token": "zed", "auto_updates": true, "name": ["Zed"], "artifacts": [{"app": ["Zed.app"]}]}]}"#
+            default: return CommandResult(status: 0)
+            }
+            return CommandResult(status: 0, stdout: Data(json.utf8))
+        }
+    }
+
+    func testAnAppThatAlreadyUpdatedItselfIsNotOfferedAndAWaitingOneSettles() throws {
+        let world = try TestWorld()
+        for (name, id) in [("Dropbox", "com.getdropbox.dropbox"), ("Claude", "com.example.claude"), ("Zed", "dev.zed.Zed")] {
+            try world.installDirectApp(name, bundleID: id, on: "studio")
+        }
+        let apps = world.root.appendingPathComponent("studio/Applications")
+        let env = MacSyncEnvironment(syncDirectory: world.sync, dataDirectory: world.root.appendingPathComponent("data"), machineID: "s",
+                                     machineName: "S", dockFile: nil, brewPath: "/fake/brew", applicationsDirectory: apps, homeDirectory: "/nowhere")
+        let runner = SelfUpdatedRunner()
+        var upgrader = Upgrader(env: env, runner: runner)
+        var open = true
+        upgrader.isRunning = { _ in open }
+        upgrader.appURL = { $0 == "dev.zed.Zed" ? apps.appendingPathComponent("Zed.app") : nil }
+        let brew = upgrader.brewOutdated()
+        XCTAssertEqual(brew.map(\.token), ["cask:claude", "cask:zed"], "Dropbox is already at 1.0; only Homebrew's record is behind")
+        XCTAssertEqual(brew.last?.from, "1.0", "the version on disk, not Homebrew's record")
+        XCTAssertEqual(brew.map(\.shownTo), ["1.0,bbb", "1.3"])
+        _ = upgrader.upgrade(brew, all: true)
+        XCTAssertNil(upgrader.waitingItem(quit: "dev.zed.Zed"), "still open")
+        open = false
+        XCTAssertEqual(upgrader.waitingItem(quit: "dev.zed.Zed")?.token, "cask:zed")
+        // Updating one keeps the other waiting.
+        let after = upgrader.upgrade([brew[0]])
+        XCTAssertEqual(after.waiting.map(\.token), ["cask:zed"])
+        // Zed updates itself.
+        let plist = apps.appendingPathComponent("Zed.app/Contents/Info.plist")
+        let info = try XCTUnwrap(NSMutableDictionary(contentsOf: plist))
+        info["CFBundleShortVersionString"] = "1.3"
+        try info.write(to: plist)
+        XCTAssertEqual(upgrader.lastReport()?.waiting, [])
+        XCTAssertNil(upgrader.waitingItem(quit: "dev.zed.Zed"))
+    }
+
+    func testVersionsThatCannotBeComparedAreStillOffered() {
+        XCTAssertFalse(Upgrader.isAlready("20", offered: "1.2", recorded: "1.1", selfUpdating: false))
+        XCTAssertTrue(Upgrader.isAlready("1.2", offered: "1.2,9", recorded: "1.1,8", selfUpdating: false))
+        XCTAssertFalse(Upgrader.isAlready("2026.2", offered: "2026.2.2.11,p3", recorded: "2026.2.2.10,p2", selfUpdating: true))
+        XCTAssertTrue(Upgrader.isAlready("281.0", offered: "280.4.5053", recorded: "278.4.4020", selfUpdating: true))
+    }
+
     func testCheckListsWithoutInstallingThenUpdateOne() throws {
         let world = try TestWorld()
         let env = MacSyncEnvironment(syncDirectory: world.sync, dataDirectory: world.root.appendingPathComponent("data"), machineID: "s",

@@ -1,0 +1,226 @@
+# MacSync
+
+> MacSync is a free, open-source (MIT) macOS menu bar app that keeps several Macs set up the same way: the Dock, apps, system settings, config files, AI setup and developer tools, through the user's own iCloud Drive. macOS 13 or later. No account. Nothing changes until you press Apply, and every Apply can be undone.
+
+- [Website](https://onlymoein.github.io/macsync/)
+- [Download](https://github.com/onlymoein/macsync/releases/latest/download/MacSync.dmg): notarized by Apple
+- [Source code](https://github.com/onlymoein/macsync)
+- [Changelog](https://github.com/onlymoein/macsync/blob/main/CHANGELOG.md)
+- Homebrew: `brew tap onlymoein/tap && brew trust onlymoein/tap && brew install --cask macsync`
+
+## Guides
+
+- [How to sync the Dock between Macs](https://onlymoein.github.io/macsync/sync-dock-between-macs/): Keep the same Dock, in the same order, on every Mac you own.
+- [How to install the same apps on all your Macs](https://onlymoein.github.io/macsync/sync-apps-between-macs/): See what your other Macs have and install it, without keeping a list.
+- [How to sync Mac settings between two computers](https://onlymoein.github.io/macsync/sync-mac-settings/): The same trackpad, keyboard, Finder and app settings on each Mac.
+- [How to set up a new Mac like your old one](https://onlymoein.github.io/macsync/set-up-new-mac/): A clean install with your Dock, apps, settings and dotfiles, without Migration Assistant.
+- [How to sync dotfiles and AI tool setup across Macs](https://onlymoein.github.io/macsync/sync-dotfiles-ai-tools-macs/): Shell, Git, editors, Claude, Codex and Cursor the same on each Mac, with keys left out.
+
+## Features
+
+- **One Dock**: Add an app to the Dock on one Mac and it's on all of them, in the same order. Drag to rearrange, click to remove. Pick which Mac's order wins. Saved seconds after a change. Applied when you open the lid, if you like.
+- **The same apps**: Apps on one Mac are offered on the others, one click each or all at once. Homebrew apps install by themselves. App Store apps open their page. Downloaded apps come from the developer. Every download checked against its checksum.
+- **The same settings**: Trackpad, keyboard, Finder, hot corners and more feel the same everywhere. Old value shown next to new. Keep any setting to one Mac. The settings of apps you pick. Passwords and keys never read.
+- **Homebrew, handled**: Every Homebrew app and tool stays current on every Mac, like Raycast does it. Updates install on their own. A list of what's out of date. npm and uv tools too. Open apps are never quit under you.
+- **Adobe apps**: Photoshop, Illustrator, InDesign and the rest, kept tidy and current, on a personal plan or a company one. Every Adobe app and its version, under ArtCraft in the sync window. Remove uses Adobe's own installer and keeps your settings. Company installs update with Adobe's updater. Spots an older year left behind, like InDesign 2026 next to 2027.
+- **AI apps**: Every well-known AI app in one list, installed and kept current on all your Macs. ChatGPT, Claude, Gemini, Grok and more. Install on all Macs or this one. Update All in one click. Apps you don't have are listed too.
+- **Config files**: Your shell, Git, editors and terminals come with you. zsh, fish, bash, Starship. VS Code, Cursor, Zed, Neovim, Ghostty. The fonts you installed. A file with a key in it stays home.
+- **AI setup**: Skills, rules and MCP servers for Claude, Codex and Cursor, on every Mac. CLAUDE.md, AGENTS.md, agents, commands. MCP servers with keys taken out. Claude Code plugins. Checked again for secrets before it leaves.
+- **Developer setup**: Xcode and Android Studio set up the way you like them, on every Mac. Xcode themes, key bindings, snippets. Simulators each Mac has. Android SDK platforms and images. Signing files never leave the Mac.
+- **Share my setup**: Give a friend your whole setup in one file, with only the parts you choose. Pick sections with switches. Send with AirDrop, Messages or Mail. They pick what to take. Secrets left out.
+- **Remove everywhere**: Remove an app from all your Macs at once, or from just this one. Homebrew uninstalls its apps. Everything else goes to the Trash. Each Mac asks before removing. Bring Back if you change your mind.
+- **Safe by design**: Nothing changes until you press Apply, and every Apply can be undone. Preview everything first. A restore point before each Apply. Go back to any of the last 20. Updates itself while you work.
+- **Ready to work**: The same apps open at login, extensions are in place, and a list helps you sign in. Login items. VS Code and Cursor extensions. Steam games, through Steam. A sign-in list, password manager first.
+
+## What syncs
+
+- Dock apps, order, icon size and position
+- Apps from Homebrew, the App Store and developers
+- Command-line tools, npm and uv tools
+- System settings and the app settings you pick
+- Hot corners, input sources, shortcuts, gestures
+- Config files, fonts, AI skills and rules, MCP servers
+- Login items, extensions, Claude Code plugins
+- Xcode and Android Studio setup, simulators, SDK packages
+
+## What never syncs
+
+- Passwords, tokens, API keys and license keys
+- SSH and GPG keys, ~/.aws, shell history, .env files
+- Provisioning profiles, keystores, adb keys
+- Window positions and per-Mac details
+- Your documents, photos and projects
+- The apps themselves: they come from where they're published
+
+## Questions
+
+### What is MacSync?
+
+MacSync is a free, open-source menu bar app for macOS 13 and later that keeps several Macs set up the same way. It syncs the Dock, apps, system settings, config files, AI tools and developer setup through your own iCloud Drive, and changes nothing until you press Apply.
+
+### How do I sync the Dock between two Macs?
+
+Install MacSync on both Macs, signed in to the same Apple Account with iCloud Drive on. Arrange the Dock on one; MacSync saves it within seconds, and the other Mac takes the same apps in the same order when you open its lid or press Apply.
+
+### Does iCloud sync the Dock or installed apps?
+
+Not by itself. iCloud syncs files, photos, passwords and some app data, but macOS has no setting that keeps the Dock's layout, your installed apps or most system settings the same on two Macs. MacSync does that, using your iCloud Drive to carry the list.
+
+### How do I keep the same apps on all my Macs?
+
+MacSync lists the apps your other Macs have and this one doesn't. Homebrew apps install in one click, App Store apps open on their page, and others are downloaded from their developer and checked.
+
+### Is MacSync free?
+
+Yes. It's free and open source under the MIT license, with no account and no subscription. You can buy its developer a coffee.
+
+### Does MacSync collect any data?
+
+It counts how many Macs use it. Each Mac makes a random number and sends it with MacSync's version and macOS's major version, at most once a day. Nothing about you, your Mac, your apps or your settings is sent, and no IP addresses are kept. The app says so before it sends anything, and Settings, Count This Mac Anonymously turns it off.
+
+### macOS says it can't verify MacSync
+
+The download button gives you a version Apple has already notarized, so this shouldn't happen. If it does, open System Settings → Privacy & Security and click Open Anyway, then open MacSync again.
+
+### What are Stable and Beta?
+
+Two ways to get updates. Stable waits until Apple has notarized a version. Beta gets it as soon as it's out, before Apple has finished checking it. Every version is signed with MacSync's Developer ID either way. Pick one in the welcome window or in Settings, MacSync Versions.
+
+### Do I need an account or a server?
+
+No. Your setup only goes through your own iCloud Drive. Turn on iCloud Drive on each Mac, signed in to the same Apple Account.
+
+### Will it delete my apps?
+
+Only when you ask. Remove from All Macs uninstalls an app after you confirm, and each other Mac asks before removing it there. Homebrew uninstalls its own apps; anything else goes to the Trash.
+
+### Why does an app say Install in Terminal?
+
+Some installers, like Docker Desktop or Adobe's, need your Mac password. MacSync never types a password, so it opens Terminal with the install ready and you type it there. Several at once share one window.
+
+### How does it install apps I downloaded myself?
+
+It finds where the app is published, through Homebrew's public list or the app's own update feed, downloads it from there, checks it, and installs it or opens the installer.
+
+### Does it sync Xcode and Android Studio?
+
+Their settings, themes, key bindings and templates, plus the simulators and Android SDK packages each Mac has. Never provisioning profiles, keystores or adb keys, and Android licenses are never accepted for you.
+
+### Does it work with ArtCraft Launcher?
+
+Yes. Craft apps install into the launcher's folder and are recorded in its list, so the launcher shows them and keeps them updated.
+
+### What if I don't like a change?
+
+Press Undo in the menu, or open History and restore any of the last 20 applies. Installed apps stay installed.
+
+### How does it stay up to date?
+
+MacSync checks for a new version when you open its menu and every ten minutes, and installs it once it isn't busy. Turn that off in Settings, or click Check in the menu.
+
+### Is it open source?
+
+Yes, under the MIT license. The code is on GitHub, and this page's glass is liquidglass, from the same GitHub.
+
+## How to sync the Dock between Macs
+
+macOS has no built-in Dock sync. Install MacSync, a free menu bar app, on each Mac with iCloud Drive on and the same Apple Account. A Dock change on one Mac is saved within seconds, and the others take the same apps in the same order when you open the lid or press Apply.
+
+### Step by step
+
+1. Turn on iCloud Drive on both Macs, signed in to the same Apple Account.
+2. Install MacSync on both and let it open at login.
+3. Arrange the Dock on one Mac.
+4. On the other, open the lid, or click MacSync in the menu bar, Review Changes and Apply.
+
+### What comes across
+
+The apps and their order, icon size, the Dock's position, and Safari web apps. An app a Mac doesn't have is skipped there and offered to install, so you never get a question mark in the Dock.
+
+### Keeping one Mac different
+
+Switch the Dock section off on that Mac. You can also choose whether the last change wins or one Mac always does.
+
+### Undoing it
+
+A restore point is saved before every Apply. Undo goes back one; History goes back to any of the last 20.
+
+## How to install the same apps on all your Macs
+
+Install MacSync on each Mac. It lists the apps your other Macs have and this one doesn't, and installs them: Homebrew apps in one click, App Store apps from their page, and others from their developer.
+
+### Step by step
+
+1. Install MacSync on each Mac, with iCloud Drive on.
+2. Open the sync window and look at Apps on your other Macs.
+3. Press Get on one app, or Get All.
+4. Switch off any app a Mac doesn't need; MacSync remembers.
+
+### Where the apps come from
+
+Never from your other Mac. Homebrew installs its own, the App Store its own, and the rest are downloaded from where their developer publishes them and checked against their checksum or signature.
+
+### Keeping them up to date
+
+MacSync updates Homebrew apps and tools, npm and uv packages, and apps that update themselves. An app you have open is updated after you quit it.
+
+### Removing an app everywhere
+
+Remove from All Macs uninstalls it here, and each other Mac asks before removing its own copy.
+
+## How to sync Mac settings between two computers
+
+MacSync copies the macOS settings you choose (trackpad, keyboard, Finder, Dock behaviour, hot corners, screenshots and more) between your Macs through your own iCloud Drive. Each change shows the old value next to the new one, and nothing changes until you press Apply.
+
+### Step by step
+
+1. Install MacSync on both Macs.
+2. Change a setting on one Mac as usual, in System Settings.
+3. On the other, open Settings in the sync window and compare old and new.
+4. Switch off anything that should stay different, and press Apply.
+
+### What never syncs
+
+Passwords, tokens, API keys, license keys, SSH and GPG keys, shell history and .env files. A config file with a key in it stays on its Mac.
+
+### Good to know
+
+Some trackpad, keyboard and appearance settings need you to log out once before they take full effect.
+
+## How to set up a new Mac like your old one
+
+Migration Assistant copies everything once, including what you'd rather leave behind. To start clean and still get your setup, install MacSync on the old Mac, let it save, then install it on the new one and press Apply: it brings the Dock, apps, settings, config files and developer setup, and keeps both Macs the same afterwards.
+
+### Step by step
+
+1. On the old Mac, install MacSync and let it sync.
+2. On the new Mac, sign in to the same Apple Account and turn on iCloud Drive.
+3. Install MacSync and open Review Changes.
+4. Choose what you want and press Apply, then work through the sign-in list.
+
+### MacSync or Migration Assistant?
+
+Migration Assistant moves accounts, documents and apps from one Mac to another, once. MacSync doesn't move documents; it keeps the setup of Macs you go on using the same.
+
+### MacSync or a Brewfile?
+
+brew bundle installs what a file you maintain says. MacSync works out the list from what each Mac has, and also covers App Store and downloaded apps, the Dock, settings and config files.
+
+## How to sync dotfiles and AI tool setup across Macs
+
+MacSync syncs config files (zsh, fish, bash, Git, VS Code, Cursor, Zed, Neovim, Ghostty) and AI setup (CLAUDE.md, AGENTS.md, skills, agents, rules and MCP servers) through your own iCloud Drive. Keys are taken out of MCP servers, and a config file containing a secret stays on its Mac.
+
+### Step by step
+
+1. Install MacSync on each Mac.
+2. Open Config files and AI setup in the sync window.
+3. Read the lines that would change.
+4. Press Apply, then add each Mac's own keys where MCP servers need them.
+
+### Do I need a dotfiles repo?
+
+No. There's no Git repository and no symlinks: MacSync reads the files where they are, and never replaces a newer edit of yours.
+
+### Editors and packages
+
+VS Code and Cursor extensions, npm global packages, uv tools, Homebrew taps and Claude Code plugins are offered on the Macs that lack them.

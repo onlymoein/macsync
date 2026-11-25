@@ -53,7 +53,7 @@ body {
 }
 a { color: var(--accent); text-decoration: none; }
 a:hover { text-decoration: underline; }
-img { max-width: 100%; display: block; }
+img { max-width: 100%; height: auto; display: block; }
 code, pre { font: 13.5px/1.6 ui-monospace, "SF Mono", Menlo, monospace; }
 h1, h2, h3 { font-family: -apple-system, "SF Pro Display", system-ui, sans-serif; letter-spacing: -0.02em; margin: 0; }
 p { margin: 0; }
@@ -337,3 +337,12 @@ main, .footer { max-width: 1180px; margin: 0 auto; padding: 0 20px; }
 .frame-welcome { max-width: 520px; justify-self: center; width: 100%; }
 .frame-welcome img { width: 100%; height: auto; display: block; }
 @media (max-width: 600px) { .channels { grid-template-columns: minmax(0, 1fr); } }
+
+/* Guides: one question each, plain HTML. */
+.guide { max-width: 720px; margin: 0 auto; padding: 28px 16px 80px; line-height: 1.6; }
+.guide .brand { display: inline-flex; margin-bottom: 36px; }
+.guide h1 { font-size: clamp(32px, 6vw, 48px); line-height: 1.1; letter-spacing: -0.02em; margin: 0 0 18px; text-wrap: balance; }
+.guide h2 { font-size: 22px; margin: 36px 0 8px; }
+.guide-answer { font-size: 19px; }
+.guide li { margin: 6px 0; }
+.guide-download { display: inline-block; padding: 10px 20px; margin-right: 10px; border-radius: 999px; background: #0068e0; color: #fff; text-decoration: none; font-weight: 600; }

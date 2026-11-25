@@ -572,7 +572,7 @@ struct UpdatesPanel: View {
             }
             if open {
                 Label(model.autoUpgrade
-                      ? "Checks when MacSync opens and every six hours, and installs every new version. Apps you have open wait until you quit them."
+                      ? "Checks when MacSync opens and every six hours, and installs every new version. Apps you have open update when you quit them."
                       : "Checks when MacSync opens and every six hours, and lists new versions here for you to update.",
                       systemImage: model.autoUpgrade ? "checkmark.circle" : "list.bullet")
                     .font(.caption).foregroundStyle(.secondary)
@@ -588,7 +588,7 @@ struct UpdatesPanel: View {
                             else { RowIcon(symbol: item.token.hasPrefix("cask:") ? "app.dashed" : "terminal") }
                             VStack(alignment: .leading, spacing: 1) {
                                 Text(item.name).font(.body.weight(.medium)).lineLimit(1)
-                                Text("\(item.from) → \(item.to) · \(Self.kind(item.token))").font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                                Text("\(item.shownFrom) → \(item.shownTo) · \(Self.kind(item.token))").font(.caption).foregroundStyle(.secondary).lineLimit(1)
                             }
                             Spacer()
                             if model.upgradeBusy.contains(item.token) { ProgressView().controlSize(.small) }
@@ -598,14 +598,15 @@ struct UpdatesPanel: View {
                     }
                 }
                 if !report.waiting.isEmpty {
-                    Text("Open right now, so they wait. Quit and Update closes the app, updates it and opens it again.")
+                    Text(model.autoUpgrade ? "Open right now, so they update when you quit them. Quit and Update does it now and opens the app again."
+                         : "Open right now, so they wait. Quit and Update closes the app, updates it and opens it again.")
                         .font(.caption).foregroundStyle(.secondary)
                     ForEach(report.waiting) { item in
                         HStack(spacing: 12) {
                             if let image = model.icon(forApp: item.bundleID) { Image(nsImage: image).resizable().frame(width: 28, height: 28) }
                             VStack(alignment: .leading, spacing: 1) {
                                 Text(item.name).font(.body.weight(.medium))
-                                Text("\(item.from) → \(item.to)").font(.caption).foregroundStyle(.secondary)
+                                Text("\(item.shownFrom) → \(item.shownTo)").font(.caption).foregroundStyle(.secondary)
                             }
                             Spacer()
                             if model.upgradeBusy.contains(item.token) { ProgressView().controlSize(.small) }
@@ -615,7 +616,7 @@ struct UpdatesPanel: View {
                     }
                 }
                 if !report.upgraded.isEmpty {
-                    Text("Updated: " + report.upgraded.map { "\($0.name) \($0.to)" }.joined(separator: ", "))
+                    Text("Updated: " + report.upgraded.map { "\($0.name) \($0.shownTo)" }.joined(separator: ", "))
                         .font(.caption).foregroundStyle(.secondary).lineLimit(3)
                 }
                 ForEach(report.failures, id: \.self) { failure in

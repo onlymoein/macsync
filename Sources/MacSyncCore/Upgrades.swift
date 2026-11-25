@@ -12,6 +12,12 @@ public struct OutdatedItem: Codable, Equatable, Identifiable {
     public var to: String
     public var bundleID: String?
     public var id: String { token }
+
+    /// "7.37095.0" rather than "7.37095.0,bc368c81…": what follows Homebrew's comma is a build or a
+    /// hash. Kept only when it's all that differs.
+    public var shownFrom: String { Self.head(from) == Self.head(to) ? from : Self.head(from) }
+    public var shownTo: String { Self.head(from) == Self.head(to) ? to : Self.head(to) }
+    static func head(_ version: String) -> String { version.split(separator: ",").first.map(String.init) ?? version }
 }
 
 public struct UpgradeReport: Codable, Equatable {
@@ -46,6 +52,9 @@ public struct Upgrader {
     /// Bundle IDs of apps that are open. Tests pass their own.
     var isRunning: (String) -> Bool = { id in !NSRunningApplication.runningApplications(withBundleIdentifier: id).isEmpty }
 
+    /// Where an app is, by bundle ID. Tests pass their own.
+    var appURL: (String) -> URL? = { NSWorkspace.shared.urlForApplication(withBundleIdentifier: $0) }
+
     /// Apps on this Mac from neither Homebrew nor the App Store, with their versions.
     var directApps: [DirectApp] = []
 
@@ -56,7 +65,35 @@ public struct Upgrader {
     var stateURL: URL { env.dataDirectory.appendingPathComponent("upgrades.json") }
 
     public func lastReport() -> UpgradeReport? {
-        (try? Data(contentsOf: stateURL)).flatMap { try? JSONDecoder.iso.decode(UpgradeReport.self, from: $0) }
+        (try? Data(contentsOf: stateURL)).flatMap { try? JSONDecoder.iso.decode(UpgradeReport.self, from: $0) }.map(settled)
+    }
+
+    /// Without the apps that have reached their new version by themselves since the check.
+    func settled(_ report: UpgradeReport) -> UpgradeReport {
+        var report = report
+        report.waiting.removeAll(where: hasArrived)
+        report.outdated?.removeAll(where: hasArrived)
+        return report
+    }
+
+    private func hasArrived(_ item: OutdatedItem) -> Bool {
+        guard ["cask", "adopt"].contains(Packages.kind(item.token)), let id = item.bundleID, let url = appURL(id),
+              let disk = Self.version(at: url), OutdatedItem.head(disk) != OutdatedItem.head(item.from) else { return false }
+        return !SelfUpdater.isNewer(item.to, than: disk)
+    }
+
+    static func version(at app: URL) -> String? {
+        NSDictionary(contentsOf: app.appendingPathComponent("Contents/Info.plist"))?["CFBundleShortVersionString"] as? String
+    }
+
+    /// The app already is the version Homebrew is offering: it updated itself and only Homebrew's
+    /// record is behind. A cask that doesn't update itself has to match exactly, as its app may
+    /// number versions another way.
+    static func isAlready(_ disk: String, offered: String, recorded: String, selfUpdating: Bool) -> Bool {
+        let offeredHead = OutdatedItem.head(offered)
+        // Only the build after the comma changed, which the app's version can't show.
+        if OutdatedItem.head(recorded) == offeredHead { return false }
+        return disk == offeredHead || (selfUpdating && !SelfUpdater.isNewer(offered, than: disk))
     }
 
     public func isDue(now: Date = Date()) -> Bool {
@@ -143,23 +180,28 @@ public struct Upgrader {
         for cask in root["casks"] as? [[String: Any]] ?? [] {
             guard let name = cask["name"] as? String, casks.contains(name) else { continue }
             let app = apps[name]
+            let recorded = (cask["installed_versions"] as? [String])?.last ?? "?"
+            let offered = cask["current_version"] as? String ?? "?"
+            let selfUpdating = app?.selfUpdating ?? false
+            if let disk = app?.version, Self.isAlready(disk, offered: offered, recorded: recorded, selfUpdating: selfUpdating) { continue }
+            // The app's own version, unless it's only a shorter form of the recorded one (Android Studio).
+            let from = selfUpdating && !recorded.hasPrefix(app?.version ?? recorded) ? app?.version ?? recorded : recorded
             items.append(OutdatedItem(token: "cask:" + name, name: app?.name ?? name,
-                                      from: (cask["installed_versions"] as? [String])?.last ?? "?",
-                                      to: cask["current_version"] as? String ?? "?", bundleID: app?.bundleID))
+                                      from: from, to: offered, bundleID: app?.bundleID))
         }
         return items
     }
 
-    private func appNames(_ casks: [String], brew: String) -> [String: (name: String, bundleID: String?)] {
+    private func appNames(_ casks: [String], brew: String) -> [String: (name: String, bundleID: String?, version: String?, selfUpdating: Bool)] {
         let info = runner.run(brew, ["info", "--json=v2", "--cask"] + casks, input: nil, environment: InventoryReader.brewEnvironment(brew))
         guard let data = info.output.data(using: .utf8),
               let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return [:] }
-        var out: [String: (String, String?)] = [:]
+        var out: [String: (name: String, bundleID: String?, version: String?, selfUpdating: Bool)] = [:]
         for cask in root["casks"] as? [[String: Any]] ?? [] {
             guard let token = cask["token"] as? String else { continue }
-            let file = (cask["artifacts"] as? [[String: Any]] ?? []).compactMap { ($0["app"] as? [Any])?.first as? String }.first
-            let bundle = file.flatMap { InventoryReader.bundleID(at: env.applicationsDirectory.appendingPathComponent($0).path) }
-            out[token] = ((cask["name"] as? [String])?.first ?? token, bundle)
+            let path = CraftRecords.appPath(cask, applications: env.applicationsDirectory)
+            out[token] = ((cask["name"] as? [String])?.first ?? token, path.flatMap(InventoryReader.bundleID),
+                          path.flatMap { Self.version(at: URL(fileURLWithPath: $0)) }, cask["auto_updates"] as? Bool ?? false)
         }
         return out
     }
@@ -173,18 +215,24 @@ public struct Upgrader {
         return report
     }
 
+    /// The app waiting with this bundle ID, if it's closed now and still behind.
+    public func waitingItem(quit bundleID: String) -> OutdatedItem? {
+        isRunning(bundleID) ? nil : lastReport()?.waiting.first { $0.bundleID == bundleID }
+    }
+
     /// Updates everything that isn't open. Saves the report.
     @discardableResult
     public func upgradeAll(now: Date = Date(), progress: (String) -> Void = { _ in }) -> UpgradeReport {
         progress("Checking for updates…")
-        return upgrade(outdated(), now: now, progress: progress)
+        return upgrade(outdated(), all: true, now: now, progress: progress)
     }
 
     /// Updates these. An app that is open waits, so it doesn't quit under you.
     @discardableResult
-    public func upgrade(_ items: [OutdatedItem], now: Date = Date(), progress: (String) -> Void = { _ in }) -> UpgradeReport {
-        var report = UpgradeReport(ranAt: now)
+    public func upgrade(_ items: [OutdatedItem], all: Bool = false, now: Date = Date(), progress: (String) -> Void = { _ in }) -> UpgradeReport {
         let previous = lastReport()
+        // Updating a few isn't a check: the next full one stays due when it was.
+        var report = UpgradeReport(ranAt: all ? now : previous?.ranAt ?? now)
         report.waiting = items.filter { item in item.bundleID.map(isRunning) ?? false }
         for item in items where !report.waiting.contains(item) {
             progress("Updating \(item.name)…")
@@ -193,7 +241,11 @@ public struct Upgrader {
         }
         // Anything found earlier and not part of this run is still waiting to be updated.
         let handled = Set(items.map(\.token))
-        report.outdated = (previous?.outdated ?? []).filter { !handled.contains($0.token) }
+        // A full run has just looked at everything, so what it didn't find is up to date.
+        if !all {
+            report.outdated = (previous?.outdated ?? []).filter { !handled.contains($0.token) }
+            report.waiting += (previous?.waiting ?? []).filter { !handled.contains($0.token) }
+        }
         save(report)
         return report
     }

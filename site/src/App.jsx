@@ -3,14 +3,17 @@ import { Button, Glass, GlassGroup, Input, Menu, Progress, SegmentedControl, Sli
 import { Icon } from "./icons.jsx";
 import * as c from "./content.js";
 
+import sizes from "./shots.json";
+import { guides } from "./guides.js";
+
 const asset = (name) => `assets/${name}`;
 
 /** A screenshot in both appearances; CSS shows the one that matches the page. */
 function Shot({ name, alt, className = "", eager = false }) {
   return (
     <span className={`shot ${className}`}>
-      <img className="shot-light" src={asset(`${name}-light.png`)} alt={alt} loading={eager ? "eager" : "lazy"} decoding="async" />
-      <img className="shot-dark" src={asset(`${name}-dark.png`)} alt="" aria-hidden="true" loading={eager ? "eager" : "lazy"} decoding="async" />
+      <img className="shot-light" src={asset(`${name}-light.webp`)} alt={alt} {...sizes[name]} loading={eager ? "eager" : "lazy"} decoding="async" />
+      <img className="shot-dark" src={asset(`${name}-dark.webp`)} alt="" {...sizes[name]} aria-hidden="true" loading={eager ? "eager" : "lazy"} decoding="async" />
     </span>
   );
 }
@@ -159,7 +162,7 @@ function Hero() {
         </a>
         <h1>Every Mac,<br /><span className="grad">set up the same.</span></h1>
         <p className="hero-lead">
-          One Dock, the same apps, the same settings, files and AI setup on every Mac you use.
+          MacSync is a free app that syncs your Macs: one Dock, the same apps, the same settings, files and AI setup on every Mac you use.
           Through your own iCloud Drive, with nothing changed until you press Apply.
         </p>
         <div className="hero-cta">
@@ -523,7 +526,7 @@ function Install() {
             <a className="text-link" href={c.links.releases}>Every release</a>
           </div>
         </div>
-        <Glass className="frame frame-welcome"><Shot name="welcome" alt="MacSync's welcome window: drag MacSync onto Applications, then choose Stable or New versions." /></Glass>
+        <Glass className="frame frame-welcome"><Shot name="welcome" alt="MacSync's welcome window: drag MacSync onto Applications, then choose Stable or Beta versions." /></Glass>
       </div>
     </Section>
   );
@@ -550,10 +553,22 @@ function How() {
 function Privacy() {
   return (
     <Section id="privacy" eyebrow="Privacy" title="What syncs, and what never does"
-      lead="Everything lives in your own iCloud Drive. There's no server and no account.">
+      lead="Your setup lives in your own iCloud Drive, with no account. The only thing MacSync sends its developer is an anonymous count: a random number, its version and macOS's, once a day, which you can turn off.">
       <div className="privacy">
         <Glass className="card"><h3><Icon name="sync" /> Kept the same</h3><Checks items={c.kept} /></Glass>
         <Glass className="card"><h3><Icon name="shield" /> Never copied</h3><Checks items={c.never} kind="never" /></Glass>
+      </div>
+    </Section>
+  );
+}
+
+function Guides() {
+  return (
+    <Section id="guides" eyebrow="Guides" title="How to keep two Macs the same">
+      <div className="split">
+        {guides.map((g) => (
+          <Glass key={g.slug} className="card"><h3><a href={`${g.slug}/`}>{g.title}</a></h3><p className="muted">{g.description}</p></Glass>
+        ))}
       </div>
     </Section>
   );
@@ -673,6 +688,7 @@ function Footer({ theme, setTheme }) {
         <a className="brand" href="#top"><img src={asset("icon.png")} alt="" width="26" height="26" /><span>MacSync</span></a>
         <nav aria-label="More">
           <a href={c.links.download}>Download</a>
+          <a href="#guides">Guides</a>
           <a href={c.links.changelog}>Changelog</a>
           <a href={c.links.github}>GitHub</a>
           <a href={c.links.support}>Buy me a coffee</a>
@@ -708,6 +724,7 @@ export default function App() {
         <Install />
         <Privacy />
         <Keyboard />
+        <Guides />
         <Faq />
         <GlassCredit />
         <Support />

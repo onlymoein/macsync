@@ -2,11 +2,23 @@
 
 # MacSync
 
-Keep all your Macs set up the same way: Dock layout, installed apps and, with Pro, settings.
-Sync goes through your own iCloud Drive. There is no server.
+MacSync is a free, open-source macOS menu bar app that keeps several Macs set up the same way: the
+Dock, installed apps, system settings, config files, AI setup and developer tools. It goes through
+your own iCloud Drive, with no account, and changes nothing until you press Apply.
 
-Status: early access. It has been run on one Mac only, not yet across two physical Macs, and the
-builds here are not signed or notarized yet. See [docs/RELEASING.md](docs/RELEASING.md).
+[Website](https://onlymoein.github.io/macsync/) · [Download](https://github.com/onlymoein/macsync/releases/latest/download/MacSync.dmg) (signed and notarized by Apple, macOS 13 or later) · [Changelog](CHANGELOG.md)
+
+```bash
+brew tap onlymoein/tap
+brew trust onlymoein/tap
+brew install --cask macsync
+```
+
+**What it sends its developer:** an anonymous count of Macs. Each Mac makes a random number and sends it
+with MacSync's version and macOS's major version, at most once a day. Nothing about you, your Mac or what's
+on it, and no IP addresses are kept. The menu says so before anything is sent, and Settings > Count This Mac
+Anonymously turns it off. The code is in [InstallCount.swift](Sources/MacSyncCore/InstallCount.swift) and
+[hindra/server.mjs](hindra/server.mjs).
 
 ## What it does
 

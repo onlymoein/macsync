@@ -104,4 +104,5 @@ for k in dock notInstalled artcraft apps appStore tools toRemove settings histor
   defaults delete com.onlymehdi.macsync "review.$k.open" 2>/dev/null || true
 done
 rm -rf build/probe   # the probe build is only for pictures
+scripts/make-webp.sh
 ls -1 "$OUT"

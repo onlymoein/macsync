@@ -55,10 +55,31 @@ extension AppModel {
 
     /// Runs on open and after a sync, at most every six hours.
     func upgradeIfDue() {
-        if upgradeReport == nil { upgradeReport = engine.upgrader.lastReport() }
+        sendInstallCount()
+        // Read again each time: an app may have updated itself since the check.
+        if !upgrading, upgradeBusy.isEmpty, let report = engine.upgrader.lastReport(), report != upgradeReport { upgradeReport = report }
         // Not while apps install: both need Homebrew, which does one job at a time.
         guard !upgrading, !isApplying, getting.isEmpty, craftBusy.isEmpty, engine.upgrader.isDue() else { return }
         if autoUpgrade && !cloudRules.isOff(.autoUpgrade) { upgradeAll() } else { checkUpgrades() }
+    }
+
+    /// Updates an app that was waiting as soon as it's quit. A moment later, so an app that's only
+    /// restarting, or replacing itself, is left alone.
+    func watchForQuitApps() {
+        Task { @MainActor [weak self] in
+            for await note in NSWorkspace.shared.notificationCenter.notifications(named: NSWorkspace.didTerminateApplicationNotification) {
+                guard let self else { return }
+                let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
+                guard let id = app?.bundleIdentifier, self.upgradeReport?.waiting.contains(where: { $0.bundleID == id }) == true else { continue }
+                Task { @MainActor [weak self] in
+                    try? await Task.sleep(nanoseconds: 20_000_000_000)
+                    guard let self, self.autoUpgrade, !self.cloudRules.isOff(.autoUpgrade), !self.upgrading, !self.isApplying,
+                          self.getting.isEmpty, self.craftBusy.isEmpty, self.upgradeBusy.isEmpty,
+                          let item = self.engine.upgrader.waitingItem(quit: id) else { return }
+                    self.upgrade([item])
+                }
+            }
+        }
     }
 
     /// Fetches the rules file (at most every six hours). A new one can change which apps count as
