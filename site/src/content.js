@@ -77,7 +77,7 @@ export const optionGroups = [
       { label: "Update Apps and Tools Automatically", detail: "Homebrew apps, command-line tools, npm and uv, kept current. Off gives you a list instead.", on: true },
       { label: "Update MacSync Automatically", detail: "Installs new versions of MacSync when it's idle, and reopens.", on: true },
       { label: "Open at Login", detail: "Starts MacSync when you log in, in the menu bar.", on: true },
-      { label: "Count This Mac Anonymously", detail: "A random number, once a day, so there's a count of Macs using MacSync. Nothing about you or your Mac.", on: true },
+      { label: "Count This Install Anonymously", detail: "A random number your Macs share, once a day, so there's a count of installs. Nothing about you or your Macs.", on: true },
     ],
   },
   {
@@ -259,7 +259,7 @@ export const faq = [
   ["Does iCloud sync the Dock or installed apps?", "Not by itself. iCloud syncs files, photos, passwords and some app data, but macOS has no setting that keeps the Dock's layout, your installed apps or most system settings the same on two Macs. MacSync does that, using your iCloud Drive to carry the list."],
   ["How do I keep the same apps on all my Macs?", "MacSync lists the apps your other Macs have and this one doesn't. Homebrew apps install in one click, App Store apps open on their page, and others are downloaded from their developer and checked."],
   ["Is MacSync free?", "Yes. It's free and open source under the MIT license, with no account and no subscription. You can buy its developer a coffee."],
-  ["Does MacSync collect any data?", "It counts how many Macs use it. Each Mac makes a random number and sends it with MacSync's version and macOS's major version, at most once a day. Nothing about you, your Mac, your apps or your settings is sent, and no IP addresses are kept. The app says so before it sends anything, and Settings, Count This Mac Anonymously turns it off."],
+  ["Does MacSync collect any data?", "Only an anonymous count of installs. Your Macs share one random number and send it with MacSync's version and macOS's major version, at most once a day each. Nothing about you, your Macs, your apps or your settings is sent, and no IP addresses are kept. Settings, Count This Install Anonymously turns it off."],
   ["macOS says it can't verify MacSync", "The download button gives you a version Apple has already notarized, so this shouldn't happen. If it does, open System Settings → Privacy & Security and click Open Anyway, then open MacSync again."],
   ["What are Stable and Beta?", "Two ways to get updates. Stable waits until Apple has notarized a version. Beta gets it as soon as it's out, before Apple has finished checking it. Every version is signed with MacSync's Developer ID either way. Pick one in the welcome window or in Settings, MacSync Versions."],
   ["Do I need an account or a server?", "No. Your setup only goes through your own iCloud Drive. Turn on iCloud Drive on each Mac, signed in to the same Apple Account."],

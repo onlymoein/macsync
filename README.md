@@ -14,10 +14,9 @@ brew trust onlymoein/tap
 brew install --cask macsync
 ```
 
-**What it sends its developer:** an anonymous count of Macs. Each Mac makes a random number and sends it
-with MacSync's version and macOS's major version, at most once a day. Nothing about you, your Mac or what's
-on it, and no IP addresses are kept. The menu says so before anything is sent, and Settings > Count This Mac
-Anonymously turns it off. The code is in [InstallCount.swift](Sources/MacSyncCore/InstallCount.swift) and
+**What it sends its developer:** an anonymous count of installs. Your Macs share one random number and send
+it with MacSync's version and macOS's major version, at most once a day each. Nothing about you, your Macs or
+what's on them, and no IP addresses are kept. Settings > Count This Install Anonymously turns it off. The code is in [InstallCount.swift](Sources/MacSyncCore/InstallCount.swift) and
 [hindra/server.mjs](hindra/server.mjs).
 
 ## What it does

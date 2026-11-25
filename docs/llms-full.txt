@@ -76,7 +76,7 @@ Yes. It's free and open source under the MIT license, with no account and no sub
 
 ### Does MacSync collect any data?
 
-It counts how many Macs use it. Each Mac makes a random number and sends it with MacSync's version and macOS's major version, at most once a day. Nothing about you, your Mac, your apps or your settings is sent, and no IP addresses are kept. The app says so before it sends anything, and Settings, Count This Mac Anonymously turns it off.
+Only an anonymous count of installs. Your Macs share one random number and send it with MacSync's version and macOS's major version, at most once a day each. Nothing about you, your Macs, your apps or your settings is sent, and no IP addresses are kept. Settings, Count This Install Anonymously turns it off.
 
 ### macOS says it can't verify MacSync
 

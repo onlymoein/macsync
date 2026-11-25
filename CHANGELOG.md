@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.8.31
+
+- The anonymous install count treats Macs that sync with each other as one install, and the menu no longer asks about it. Settings, Count This Install Anonymously turns it off.
+
 ## 0.8.30
 
 - MacSync counts how many Macs use it. Each Mac makes a random number and sends it with MacSync's version and macOS's major version, at most once a day: nothing about you, your Mac or what's on it. The menu says so before anything is sent, and Settings, Count This Mac Anonymously turns it off.

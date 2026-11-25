@@ -17,7 +17,6 @@ struct MenuView: View {
                 .padding(.horizontal, 14).padding(.bottom, 12)
             }
             notices
-            if !model.countNoticeSeen, showsCountNotice { countNotice }
             if let machines = model.overview?.machines, !machines.isEmpty {
                 MenuSection(title: "Your Macs") {
                     ForEach(machines) { MachineRow(machine: $0) }
@@ -84,27 +83,6 @@ struct MenuView: View {
         }
     }
 
-    /// Not in the demo pictures, unless asked for.
-    private var showsCountNotice: Bool {
-        MacSyncEnvironment.current().dockFile == nil || ProcessInfo.processInfo.environment["MACSYNC_SHOW_COUNT"] != nil
-    }
-
-    /// Shown once, before anything is sent.
-    private var countNotice: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Label("MacSync counts how many Macs use it: a random number, its version and macOS's, once a day. Nothing about you or your Mac.",
-                  systemImage: "number")
-                .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-            HStack(spacing: 12) {
-                Button("OK") { model.countInstall = true }
-                Button("Don't Count This Mac") { model.countInstall = false }
-            }
-            .buttonStyle(.borderless).font(.caption.weight(.semibold)).foregroundStyle(Color.accentColor)
-            .padding(.leading, 22)
-        }
-        .padding(.horizontal, 14).padding(.bottom, 10)
-    }
-
     private var toolbar: some View {
         HStack(spacing: 2) {
             ToolbarButton(title: model.isSyncing ? "Syncing" : "Sync", symbol: "arrow.triangle.2.circlepath",
@@ -154,7 +132,8 @@ struct MenuView: View {
             }
             Section("MacSync \(MacSyncEnvironment.appVersion)") {
                 Toggle("Open at Login", isOn: Binding(get: { model.openAtLogin }, set: { model.setOpenAtLogin($0) }))
-                Toggle("Count This Mac Anonymously", isOn: $model.countInstall)
+                Toggle("Count This Install Anonymously", isOn: $model.countInstall)
+                    .help("A random number shared by your Macs, once a day, so there's a count of installs. Nothing about you or your Macs.")
             }
             Divider()
             Button("Quit MacSync") { NSApp.terminate(nil) }.keyboardShortcut("q")

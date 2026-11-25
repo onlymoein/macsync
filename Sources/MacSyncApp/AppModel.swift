@@ -71,20 +71,16 @@ final class AppModel: ObservableObject {
     @Published var autoUpgrade: Bool = UserDefaults.standard.object(forKey: "autoUpgrade") as? Bool ?? true {
         didSet { UserDefaults.standard.set(autoUpgrade, forKey: "autoUpgrade"); if autoUpgrade { upgradeIfDue() } }
     }
-    /// Counting this Mac in the number of installs. Nothing is sent until the notice has been seen.
+    /// Counting this Mac in the number of installs.
     @Published var countInstall: Bool = UserDefaults.standard.object(forKey: "countInstall") as? Bool ?? true {
         didSet {
             UserDefaults.standard.set(countInstall, forKey: "countInstall")
-            countNoticeSeen = true
             if countInstall { sendInstallCount() } else { InstallCount(env: .current()).forget() }
         }
     }
-    @Published var countNoticeSeen: Bool = UserDefaults.standard.bool(forKey: "countNoticeSeen") {
-        didSet { UserDefaults.standard.set(countNoticeSeen, forKey: "countNoticeSeen") }
-    }
     func sendInstallCount() {
         // Only an installed copy counts, not a build run from the project folder.
-        guard countInstall, countNoticeSeen, Bundle.main.bundleURL.path.contains("/Applications/") else { return }
+        guard countInstall, Bundle.main.bundleURL.path.contains("/Applications/") else { return }
         let count = InstallCount(env: .current())
         Task.detached { await count.sendIfDue() }
     }

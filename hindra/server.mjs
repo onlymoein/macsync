@@ -1,6 +1,6 @@
 // Serves MacSync's website and counts installs. Node 22.13+ and nothing else.
 //
-//   POST /api/count     {id, version, macOS}: one Mac, at most once a day. 204.
+//   POST /api/count     {id, version, macOS, replaces?}: at most once a day per Mac. Macs that sync share an id. 204.
 //   GET  /api/installs  the totals. Needs "Authorization: Bearer $STATS_TOKEN".
 //   GET  /healthz       200 when the database answers.
 //
@@ -57,11 +57,15 @@ async function addInstall(req, res) {
   if (!allowed(req)) return res.writeHead(429).end();
   let m;
   try { m = JSON.parse(await body(req)); } catch { return res.headersSent || res.destroyed ? undefined : res.writeHead(400).end(); }
-  const ok = m && typeof m.id === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(m.id)
+  const uuid = (v) => typeof v === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(v);
+  const ok = m && uuid(m.id) && (m.replaces === undefined || uuid(m.replaces))
     && typeof m.version === "string" && /^\d{1,3}(\.\d{1,4}){1,3}$/.test(m.version)
     && typeof m.macOS === "string" && /^\d{2}$/.test(m.macOS);
   if (!ok) return res.writeHead(400).end();
-  upsert.run(m.id, day(), day(), m.version, m.macOS);
+  // A Mac that joined others: its old number becomes theirs, keeping the earlier first day.
+  const old = m.replaces && m.replaces !== m.id ? db.prepare("DELETE FROM installs WHERE id = ? RETURNING first").get(m.replaces) : undefined;
+  upsert.run(m.id, old?.first ?? day(), day(), m.version, m.macOS);
+  if (old) db.prepare("UPDATE installs SET first = min(first, ?) WHERE id = ?").run(old.first, m.id);
   res.writeHead(204).end();
 }
 

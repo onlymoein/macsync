@@ -33,7 +33,7 @@ curl -s https://macsync.hindra.studio/robots.txt
 curl -s -H "Authorization: Bearer $STATS_TOKEN" https://macsync.hindra.studio/api/installs
 ```
 
-`uniqueInstalls` is the number of Macs ever counted; `activeLast30Days` is how many still use it.
+`uniqueInstalls` is the number of installs ever counted, with all Macs that sync together as one; `activeLast30Days` is how many still use it.
 
 ## 4. Tell search engines
 
@@ -48,6 +48,6 @@ curl -s -H "Authorization: Bearer $STATS_TOKEN" https://macsync.hindra.studio/ap
 ## What the count means
 
 - The app's address for it is in `Sources/MacSyncCore/InstallCount.swift`. Change it there if the domain changes.
-- Only versions with the counter report, and only once their owner has seen the notice and pressed OK.
-  Macs that decline are never counted, so the real number is higher.
-- Reinstalling keeps the Mac's number; erasing the Mac, or turning counting off and on, makes a new one.
+- Only versions with the counter report. Macs with counting turned off in Settings aren't counted.
+- Macs on one iCloud Drive share a number (`MacSync/install-id.json`), so they count once, and reinstalling
+  or replacing a Mac keeps it. Two people on two Apple Accounts count as two.
